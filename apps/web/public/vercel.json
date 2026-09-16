@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    { "source": "/orders/:path+", "destination": "/orders/index.html" },
+    { "source": "/quotes/:path+", "destination": "/orders/index.html" },
+    { "source": "/merchant/:path+", "destination": "/orders/index.html" },
+    { "source": "/operator/:path+", "destination": "/orders/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/api/public-config",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}
