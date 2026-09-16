@@ -32,37 +32,30 @@ competing calls, from synthetic inputs.
 
 ## architecture
 
-solid arrows are implemented local paths. dashed arrows are the target connected flow, and are not
+solid edges are implemented local paths. dashed edges are the target connected flow, and are not
 acceptance evidence.
 
 ```mermaid
-sequenceDiagram
-    accTitle: Milo local and target paths
-    accDescr: Solid arrows are implemented locally. Dashed arrows are the target flow.
+flowchart LR
+    accTitle: Milo lanes and boundaries
+    accDescr: Implemented local paths are separate from the target connected flow. The two lanes never meet.
 
-    actor User
-    participant UI as React UI
-    participant Local as Domain simulator
-    participant Wallet as Lace wallet
-    participant Chain as Midnight node
-    participant API as Convex backend
+    subgraph local["implemented locally"]
+        U([user]) --> UI[react ui] --> SIM[domain simulator]
+        DIAG[native diagnostic] --> NODE[(local node)]
+    end
 
-    rect
-        Note over User,Local: implemented local paths
-        User->>UI: open sample workspace
-        UI->>Local: simulate order
-        Local->>UI: in-memory state
+    subgraph target["target connected flow, not acceptance evidence"]
+        UI -.-> API[convex backend]
+        API -.-> PAY[stripe test mode]
+        WALLET[lace wallet] -.-> CHAIN[(preprod chain)]
+        API -.-> CHAIN
     end
-    rect
-        Note over User,API: target connected flow
-        User-->>UI: sign in and consent
-        UI-->>Wallet: connect preprod wallet
-        UI-->>API: quote request with token
-        Wallet-->>Chain: submit via provider route
-        Chain-->>API: observed contract state
-        API-->>API: validate and bind
-        API-->>UI: observed order and receipt
-    end
+
+    classDef impl fill:#5434d7,stroke:#4223b8,color:#ffffff
+    classDef tgt fill:#5c5a57,stroke:#bbb4a8,color:#f6f3ee
+    class U,UI,SIM,DIAG,NODE impl
+    class API,PAY,WALLET,CHAIN tgt
 ```
 
 the contract behind that flow is a phase machine of 14 proof circuits, documented in the
