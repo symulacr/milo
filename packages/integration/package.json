@@ -1,0 +1,30 @@
+{
+  "name": "@milo/local-integration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.20.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "local": "node src/local.mjs",
+    "preprod": "node src/preprod.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/ledger-v8": "8.1.0",
+    "@midnight-ntwrk/midnight-js-compact": "4.1.1",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@polkadot/api": "16.5.6",
+    "rxjs": "7.8.2"
+  }
+}

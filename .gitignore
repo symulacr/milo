@@ -1,0 +1,80 @@
+# ---------------------------------------------------------------------------
+# Allowlist ("deny-by-default") ignore file.
+#
+# Everything is ignored first, then the buildable / runnable surface is
+# re-included explicitly via `!` rules. If a file you expect is missing from
+# `git status`, add it to the keep set below instead of deleting the leading
+# `*` rule.
+#
+# Two gotchas this file already handles for you:
+#   * `*` does NOT match dotfiles, so dotfiles are named explicitly.
+#   * A directory must be re-included before its contents can be
+#     (`!/dir/` before `!/dir/**`).
+# ---------------------------------------------------------------------------
+
+# 1. Ignore everything (tracked files already known to git are unaffected).
+*
+
+# 2. Never publish internal corpora, local tooling, generated output or junk.
+hardening/
+docs/
+.github/
+.scratch/
+__pycache__/
+node_modules/
+dist/
+.tools/
+.convex/
+.hoplite/
+packages/contract/generated/
+*.log
+*.diff
+*.pem
+.env
+.env.*
+*:Zone.Identifier
+*.Zone.Identifier
+.DS_Store
+
+# Root planning corpus (blueprints, manifests, per-phase evidence).
+01-blueprint.md
+02-roadmap.md
+03-building-guide.md
+04-ui-design.md
+05-ux-design.md
+06-backend-design.md
+07-video-design.md
+08-midnight-core-audit.md
+CHANGELOG.md
+EXECUTION_MANIFEST.md
+PROGRESS_MANIFEST.md
+PROTOCOL_VERIFICATION.md
+TASKS.md
+VERIFICATION.md
+
+# 3. Re-include the root files that ship with the repository.
+!/.gitignore
+!/LICENSE
+!/README.md
+!/THIRD_PARTY_NOTICES.md
+!/package.json
+!/tsconfig.json
+!/biome.json
+!/bun.lock
+!/.env.example
+
+# 4. Re-include the source trees needed to build and run (parents first).
+!/apps/
+!/apps/**
+!/packages/
+!/packages/**
+!/convex/
+!/convex/**
+!/scripts/
+!/scripts/**
+!/infra/
+!/infra/**
+
+# 5. Re-include the sample images asserted by apps/web/src/assets.test.ts.
+!apps/web/public/images/
+!apps/web/public/images/*.png
