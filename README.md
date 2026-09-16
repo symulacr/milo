@@ -41,26 +41,32 @@ sequenceDiagram
     accDescr: Solid arrows are implemented locally. Dashed arrows are the target flow.
 
     actor User
-    participant UI as React UI
-    participant Local as Domain simulator
-    participant Wallet as Lace wallet
-    participant Chain as Midnight node
-    participant API as Convex backend
+    box rgba(84, 52, 215, 0.12) implemented locally
+        participant UI as React UI
+        participant Local as Domain simulator
+    end
+    box rgba(92, 90, 87, 0.14) target only
+        participant Wallet as Lace wallet
+        participant Chain as Midnight node
+        participant API as Convex backend
+    end
 
     rect rgba(84, 52, 215, 0.10)
-        Note over User,Local: implemented local paths
+        Note over User,Local: <b>implemented local paths</b>
         User->>UI: open sample workspace
         UI->>Local: simulate order
-        Local->>UI: in-memory state
+        Local->>UI: in-memory state and receipt
     end
     rect rgba(92, 90, 87, 0.14)
-        Note over User,API: target connected flow
+        Note over User,API: <b>target connected flow</b> <i>not evidence</i>
         User-->>UI: sign in and consent
         UI-->>Wallet: connect preprod wallet
         UI-->>API: quote request with token
-        Wallet-->>Chain: submit via provider route
+        Wallet-->>Chain: <b>submit</b> via provider route
         Chain-->>API: observed contract state
-        API-->>API: validate and bind
+        activate API
+        API-->>API: <b>validate and bind</b>
+        deactivate API
         API-->>UI: observed order and receipt
     end
 ```
