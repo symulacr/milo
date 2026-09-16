@@ -47,13 +47,13 @@ sequenceDiagram
     participant Chain as Midnight node
     participant API as Convex backend
 
-    rect
+    rect rgba(84, 52, 215, 0.10)
         Note over User,Local: implemented local paths
         User->>UI: open sample workspace
         UI->>Local: simulate order
         Local->>UI: in-memory state
     end
-    rect
+    rect rgba(92, 90, 87, 0.14)
         Note over User,API: target connected flow
         User-->>UI: sign in and consent
         UI-->>Wallet: connect preprod wallet
