@@ -32,29 +32,41 @@ competing calls, from synthetic inputs.
 
 ## architecture
 
-the contract is a phase machine. every transition is an exported circuit with a local runtime test.
+solid arrows are implemented local paths. dashed arrows are the target connected flow, and are not
+acceptance evidence.
 
 ```mermaid
-stateDiagram-v2
-    accTitle: Milo order lifecycle
-    accDescr: The contract phase machine. Every transition is an exported circuit with a local runtime test.
+sequenceDiagram
+    accTitle: Milo local and target paths
+    accDescr: Solid arrows are implemented locally. Dashed arrows are the target flow.
 
-    [*] --> DEPLOYED
-    DEPLOYED --> RESERVED: reserve
-    RESERVED --> ACCEPTED: accept
-    ACCEPTED --> SUBMITTED: submitDelivery
-    SUBMITTED --> APPROVED: approve
-    ACCEPTED --> DISPUTED: disputeBuyer or disputeMerchant
-    SUBMITTED --> DISPUTED: escalateUnreviewed
-    DISPUTED --> APPROVED: resolve, approve true
-    DISPUTED --> CANCELLED: resolve, approve false
-    RESERVED --> CANCELLED: cancelReserved, decline, expireReserved
-    DEPLOYED --> CANCELLED: expireBootstrap
-    ACCEPTED --> CANCELLED: expireUndelivered
-    DISPUTED --> CANCELLED: expireDispute
-    APPROVED --> [*]
-    CANCELLED --> [*]
+    actor User
+    participant UI as React UI
+    participant Local as Domain simulator
+    participant Wallet as Lace wallet
+    participant Chain as Midnight node
+    participant API as Convex backend
+
+    rect
+        Note over User,Local: implemented local paths
+        User->>UI: open sample workspace
+        UI->>Local: simulate order
+        Local->>UI: in-memory state
+    end
+    rect
+        Note over User,API: target connected flow
+        User-->>UI: sign in and consent
+        UI-->>Wallet: connect preprod wallet
+        UI-->>API: quote request with token
+        Wallet-->>Chain: submit via provider route
+        Chain-->>API: observed contract state
+        API-->>API: validate and bind
+        API-->>UI: observed order and receipt
+    end
 ```
+
+the contract behind that flow is a phase machine of 14 proof circuits, documented in the
+[contract readme](packages/contract/README.md).
 
 the three lanes never meet, so no complete order is verifiable end to end yet. midnight does not verify
 stripe payment. privy identity does not confer lace signing authority. a browser success label is not
