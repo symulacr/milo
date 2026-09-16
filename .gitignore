@@ -79,3 +79,18 @@ VERIFICATION.md
 # 5. Re-include the sample images asserted by apps/web/src/assets.test.ts.
 !apps/web/public/images/
 !apps/web/public/images/*.png
+
+# 6. Local-only workflow tooling. Kept on disk for development, never published.
+#    Untracked in 098573a. Not needed to build or run the app.
+#    NOT listed here on purpose, because a tracked file depends on them:
+#      scripts/native-processes.ts   imported by setup-native-node.ts and
+#                                    setup-integration-runtime.ts, and by a test
+#      scripts/convex-local-lifecycle-check.py   a documented command in
+#                                    packages/backend/ADMISSION.md
+apps/web/artwork/
+scripts/check-plan.ts
+scripts/convex-local-*
+!scripts/convex-local-lifecycle-check.py
+scripts/native-node-smoke.ts
+scripts/native-services-health.ts
+scripts/preprod-observe.mjs
