@@ -1,13 +1,25 @@
-# Milo order contract — local compiler/runtime slice
+# Milo order contract, local compiler and runtime slice
 
-Canonical authority: blueprint §§2.4, 3.7, 4 and roadmap M-02/M-03. This is an original Milo order state machine, not the synthetic UI/domain simulator. `src/order.compact` is the only contract source. Generated output is disposable; never edit it.
+Canonical authority: blueprint sections 2.4, 3.7, 4 and roadmap M-02/M-03. Those documents are not published in this repository. This is an original Milo order state machine, not the synthetic UI/domain simulator. `src/order.compact` is the only contract source. Generated output is disposable; never edit it.
+
+## Circuit inventory
+
+`src/order.compact` declares 25 circuits. Sixteen carry the `export` keyword, two of them pure helpers (`hashCapability`, `hashTerms`). The remaining **14 are the proof-bearing state-transition circuits**, and `scripts/compile-contract.ts` asserts that exact set against compiler metadata:
+
+```
+accept, approve, cancelReserved, decline, disputeBuyer, disputeMerchant,
+escalateUnreviewed, expireBootstrap, expireDispute, expireReserved,
+expireUndelivered, reserve, resolve, submitDelivery
+```
+
+The other nine circuits are internal. Their phase machine is documented under State/time policy.
 
 ## Toolchain and evidence boundary
 
 - Compact compiler **0.31.1**, language **0.23**, `@midnight-ntwrk/compact-runtime` **0.16.0**, `@midnight-ntwrk/onchain-runtime-v3` **3.0.0**.
 - From the repository root, full compilation: `.tools/compact/compiler/compactc packages/contract/src/order.compact packages/contract/generated`. Ensure the compiler's sibling `zkir` is executable; do not use `--skip-zk` for complete artifact evidence.
 - Focused harness: `bun test packages/contract/tests` (use the repository-pinned Bun installation). Generated JavaScript and ZKIR without keys are only a partial compiler result.
-- Tests execute actual compiler-generated circuits and onchain-runtime query contexts with synthetic inputs. They are **not** proof generation, proof verification, wallet balancing, deployment, node acceptance, indexer observation or browser evidence. MID-T01–T14 names identify runtime-owned portions only; no provider/operation row is closed by these tests.
+- Tests execute actual compiler-generated circuits and onchain-runtime query contexts with synthetic inputs. They are **not** proof generation, proof verification, wallet balancing, deployment, node acceptance, indexer observation or browser evidence. MID-T01 to T14 names identify runtime-owned portions only; no provider/operation row is closed by these tests.
 - Constructor tests validate computed bootstrap configuration/state. Raw-ledger injection tests bypass constructor validation and require the proved `reserve` circuit to reject malformed configuration and bootstrap fields. This is generated-runtime evidence, not malicious network deployment evidence. Verifier-key substitution, canonical address admission, authority relinquishment and maintenance/circuit replacement still require the supported local-network integration. No invented maintenance-disable API exists here. Block immutable-order admission until those checks pass.
 
 ## Versioned encoding
@@ -65,4 +77,4 @@ The exact installed compiler/runtime output is decisive for this slice. Upstream
 - https://docs.midnight.network/compact/data-types/ledger-adt
 - https://docs.midnight.network/develop/reference/compact/compact-std-library
 
-Those live pages describe language 0.23/compiler 0.31.0; this package is checked with the pinned **0.31.1** binary, not an inferred latest version. No upstream sample contract is copied. No Firecrawl CLI invocation is claimed by this package's local test evidence.
+Those live pages describe language 0.23/compiler 0.31.0; this package is checked with the pinned **0.31.1** binary, not an inferred latest version. No upstream sample contract is copied.
