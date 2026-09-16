@@ -62,6 +62,39 @@ Payment, quality, file availability, manifest byte validation, access control fo
 
 ## State/time policy
 
+Every arrow below is one proof-bearing circuit call. The label gives the required phase guard and what the caller supplies. The five timeout and escalation calls invoke no witness.
+
+```mermaid
+sequenceDiagram
+    accTitle: Milo order lifecycle, circuit calls by role
+    accDescr: Each arrow is one proof-bearing circuit call. The label gives the required phase guard and the state or input the caller supplies. The five timeout and escalation calls need no order secret.
+
+    actor B as Buyer
+    actor M as Merchant
+    actor O as Operator
+    participant K as Any funded caller
+    participant C as Order contract
+
+    Note over B,C: normal path, one role capability per call
+    B->>C: reserve, needs DEPLOYED, opens terms and limit
+    M->>C: accept, needs RESERVED, opens terms
+    M->>C: submitDelivery, needs ACCEPTED, commits digest
+    B->>C: approve, needs SUBMITTED, terms and delivery
+    Note over B,M: cancelReserved and decline also exit RESERVED
+
+    alt dispute instead of approval
+        B->>C: disputeBuyer, ACCEPTED or SUBMITTED, evidence
+        M->>C: disputeMerchant, needs ACCEPTED, evidence
+        O->>C: resolve, needs DISPUTED, approve or cancel
+    else deadline passes with no action
+        K->>C: expireBootstrap, needs DEPLOYED, no secret
+        K->>C: expireReserved, needs RESERVED, no secret
+        K->>C: expireUndelivered, needs ACCEPTED, no secret
+        K->>C: escalateUnreviewed, needs SUBMITTED, no secret
+        K->>C: expireDispute, needs DISPUTED, no secret
+    end
+```
+
 Bootstrap is `DEPLOYED` revision zero with empty delivery/evidence; only real buyer `reserve` enters `RESERVED`. `ACCEPTED` is the first mutual acceptance. All canonical transitions are represented, with separate buyer/merchant dispute entry points for their distinct phase permissions. `APPROVED` and `CANCELLED` are terminal. No `DRAFT`/`SETTLED` on-chain state, payment oracle, partial capture or automatic quality decision is introduced.
 
 Reservation does not trust constructor execution: it rechecks protocol version one, deployed phase, revision zero, empty delivery/evidence, nonzero network/nonce/commitments, distinct role commitments and positive strictly ordered deadlines. Constructor and reservation share the same public-configuration validator. A malformed deployment cannot obtain a valid reservation merely by presenting matching buyer/terms openings. Correctly committed non-USD terms are rejected against artifact policy, including with raw-injected configuration.
