@@ -1,0 +1,15 @@
+# Static-host route split (01 §9.1), mirroring scripts/dev.ts. First match
+# wins: the lean public entry (01 §7.4) is listed first so the workspace
+# catch-all never swallows a public deep link (C-C-02).
+/demo /public-app.html 200
+/sign-in /public-app.html 200
+/how-it-works /public-app.html 200
+/privacy /public-app.html 200
+/terms /public-app.html 200
+/pilot /public-app.html 200
+/m/* /public-app.html 200
+/quotes/* /app.html 200
+/orders/* /app.html 200
+/merchant/* /app.html 200
+/operator/* /app.html 200
+/* /app.html 200

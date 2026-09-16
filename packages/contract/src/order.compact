@@ -1,0 +1,247 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum Phase { DEPLOYED, RESERVED, ACCEPTED, SUBMITTED, DISPUTED, APPROVED, CANCELLED }
+export enum Role { BUYER, MERCHANT, OPERATOR }
+
+export struct Terms {
+  serviceVersion: Uint<16>,
+  packQuantity: Uint<8>,
+  outputCount: Uint<8>,
+  unitPrice: Uint<64>,
+  total: Uint<64>,
+  currency: Bytes<3>,
+  scopeDigest: Bytes<32>,
+  rightsDigest: Bytes<32>,
+  paymentPolicy: Bytes<32>,
+  salt: Bytes<32>
+}
+
+export struct Configuration {
+  network: Bytes<32>,
+  orderNonce: Bytes<32>,
+  termsCommitment: Bytes<32>,
+  buyerCommitment: Bytes<32>,
+  merchantCommitment: Bytes<32>,
+  operatorCommitment: Bytes<32>,
+  acceptanceDeadline: Uint<64>,
+  deliveryDeadline: Uint<64>,
+  reviewDeadline: Uint<64>,
+  resolutionDeadline: Uint<64>
+}
+
+export ledger protocolVersion: Uint<16>;
+export ledger configuration: Configuration;
+export ledger phase: Phase;
+export ledger revision: Uint<64>;
+export ledger deliveryCommitment: Bytes<32>;
+export ledger evidenceCommitment: Bytes<32>;
+
+witness buyerSecret(): Bytes<32>;
+witness merchantSecret(): Bytes<32>;
+witness operatorSecret(): Bytes<32>;
+witness agreedTerms(): Terms;
+witness buyerApprovalLimit(): Uint<64>;
+
+export pure circuit hashCapability(network: Bytes<32>, nonce: Bytes<32>, role: Role, secret: Bytes<32>): Bytes<32> {
+  return persistentHash<[Bytes<32>, Uint<16>, Bytes<32>, Bytes<32>, Role, Bytes<32>]>(
+    [pad(32, "milo:capability:v1"), 1, network, nonce, role, secret]);
+}
+
+export pure circuit hashTerms(network: Bytes<32>, nonce: Bytes<32>, terms: Terms): Bytes<32> {
+  return persistentHash<[Bytes<32>, Uint<16>, Bytes<32>, Bytes<32>, Terms]>(
+    [pad(32, "milo:terms:v1"), 1, network, nonce, terms]);
+}
+
+constructor(config: Configuration) {
+  const c = disclose(config);
+  checkPublicConfiguration(c);
+  protocolVersion = 1;
+  configuration = c;
+  phase = Phase.DEPLOYED;
+  revision = 0;
+  deliveryCommitment = default<Bytes<32>>;
+  evidenceCommitment = default<Bytes<32>>;
+}
+
+circuit checkPublicConfiguration(c: Configuration): [] {
+  assert(c.network != default<Bytes<32>>, "empty network");
+  assert(c.orderNonce != default<Bytes<32>>, "empty nonce");
+  assert(c.termsCommitment != default<Bytes<32>>, "empty terms");
+  assert(c.buyerCommitment != default<Bytes<32>>, "empty buyer");
+  assert(c.merchantCommitment != default<Bytes<32>>, "empty merchant");
+  assert(c.operatorCommitment != default<Bytes<32>>, "empty operator");
+  assert(c.buyerCommitment != c.merchantCommitment && c.buyerCommitment != c.operatorCommitment && c.merchantCommitment != c.operatorCommitment, "distinct roles required");
+  assert(c.acceptanceDeadline > 0 && c.acceptanceDeadline < c.deliveryDeadline && c.deliveryDeadline < c.reviewDeadline && c.reviewDeadline < c.resolutionDeadline, "unordered deadlines");
+}
+
+circuit checkRevision(expectedRevision: Uint<64>): [] {
+  assert(revision == disclose(expectedRevision), "stale revision");
+  assert(revision < 18446744073709551615, "revision exhausted");
+}
+
+circuit move(next: Phase): [] {
+  phase = next;
+  revision = (revision + 1) as Uint<64>;
+}
+
+circuit buyer(): [] {
+  assert(hashCapability(configuration.network, configuration.orderNonce, Role.BUYER, buyerSecret()) == configuration.buyerCommitment, "buyer capability required");
+}
+
+circuit merchant(): [] {
+  assert(hashCapability(configuration.network, configuration.orderNonce, Role.MERCHANT, merchantSecret()) == configuration.merchantCommitment, "merchant capability required");
+}
+
+circuit operator(): [] {
+  assert(hashCapability(configuration.network, configuration.orderNonce, Role.OPERATOR, operatorSecret()) == configuration.operatorCommitment, "operator capability required");
+}
+
+circuit terms(): Terms {
+  const t = agreedTerms();
+  assert(hashTerms(configuration.network, configuration.orderNonce, t) == configuration.termsCommitment, "terms opening mismatch");
+  assert(t.serviceVersion == 1 && t.packQuantity == 1 && t.outputCount == 3, "unsupported image pack");
+  assert(t.unitPrice > 0 && t.unitPrice <= 18446744073709551615, "invalid unit price");
+  // Quantity is constrained to one before arithmetic; the product fits Uint<64>.
+  assert(t.total == t.unitPrice * t.packQuantity, "invalid total");
+  // Currency policy changes require a new reviewed artifact and admission.
+  assert(t.currency == pad(3, "USD"), "unsupported currency");
+  return t;
+}
+
+export circuit reserve(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.DEPLOYED, "reserve requires deployed");
+  // Deployment can supply raw state without executing the constructor.
+  assert(protocolVersion == 1, "unsupported protocol");
+  assert(revision == 0, "invalid bootstrap revision");
+  assert(deliveryCommitment == default<Bytes<32>>, "bootstrap delivery not empty");
+  assert(evidenceCommitment == default<Bytes<32>>, "bootstrap evidence not empty");
+  checkPublicConfiguration(configuration);
+  buyer();
+  const t = terms();
+  assert(t.total <= buyerApprovalLimit(), "buyer limit exceeded");
+  assert(kernel.blockTimeLessThan(configuration.acceptanceDeadline), "acceptance deadline reached");
+  move(Phase.RESERVED);
+}
+
+export circuit accept(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.RESERVED, "accept requires reserved");
+  merchant();
+  terms();
+  assert(kernel.blockTimeLessThan(configuration.acceptanceDeadline), "acceptance deadline reached");
+  move(Phase.ACCEPTED);
+}
+
+export circuit cancelReserved(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.RESERVED, "cancel requires reserved");
+  buyer();
+  move(Phase.CANCELLED);
+}
+
+export circuit decline(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.RESERVED, "decline requires reserved");
+  merchant();
+  move(Phase.CANCELLED);
+}
+
+export circuit submitDelivery(expectedRevision: Uint<64>, commitment: Bytes<32>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.ACCEPTED, "submit requires accepted");
+  merchant();
+  assert(kernel.blockTimeLessThan(configuration.deliveryDeadline), "delivery deadline reached");
+  assert(deliveryCommitment == default<Bytes<32>>, "delivery already set");
+  const c = disclose(commitment);
+  assert(c != default<Bytes<32>>, "empty delivery");
+  deliveryCommitment = c;
+  move(Phase.SUBMITTED);
+}
+
+export circuit approve(expectedRevision: Uint<64>, expectedDelivery: Bytes<32>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.SUBMITTED, "approve requires submitted");
+  buyer();
+  terms();
+  assert(deliveryCommitment == disclose(expectedDelivery), "delivery mismatch");
+  assert(kernel.blockTimeLessThan(configuration.reviewDeadline), "review deadline reached");
+  move(Phase.APPROVED);
+}
+
+export circuit disputeBuyer(expectedRevision: Uint<64>, evidence: Bytes<32>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.ACCEPTED || phase == Phase.SUBMITTED, "buyer dispute phase");
+  buyer();
+  recordDispute(evidence);
+}
+
+export circuit disputeMerchant(expectedRevision: Uint<64>, evidence: Bytes<32>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.ACCEPTED, "merchant dispute phase");
+  merchant();
+  recordDispute(evidence);
+}
+
+circuit recordDispute(evidence: Bytes<32>): [] {
+  const e = disclose(evidence);
+  assert(e != default<Bytes<32>>, "empty evidence");
+  evidenceCommitment = e;
+  move(Phase.DISPUTED);
+}
+
+export circuit resolve(expectedRevision: Uint<64>, approveOrder: Boolean, evidence: Bytes<32>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.DISPUTED, "resolve requires disputed");
+  operator();
+  assert(kernel.blockTimeLessThan(configuration.resolutionDeadline), "resolution deadline reached");
+  const approval = disclose(approveOrder);
+  assert(!approval || deliveryCommitment != default<Bytes<32>>, "approval requires submitted delivery");
+  const e = disclose(evidence);
+  assert(e != default<Bytes<32>>, "empty resolution evidence");
+  evidenceCommitment = e;
+  move(approval ? Phase.APPROVED : Phase.CANCELLED);
+}
+
+// Integer seconds: normal action t < d, timeout t >= d, with no boundary gap.
+circuit reached(deadline: Uint<64>): [] {
+  assert(kernel.blockTimeGreaterThan(deadline - 1), "deadline not reached");
+}
+
+export circuit expireBootstrap(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.DEPLOYED, "expire requires deployed");
+  reached(configuration.acceptanceDeadline);
+  move(Phase.CANCELLED);
+}
+
+export circuit expireReserved(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.RESERVED, "expire requires reserved");
+  reached(configuration.acceptanceDeadline);
+  move(Phase.CANCELLED);
+}
+
+export circuit expireUndelivered(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.ACCEPTED, "expire requires accepted");
+  reached(configuration.deliveryDeadline);
+  move(Phase.CANCELLED);
+}
+
+export circuit escalateUnreviewed(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.SUBMITTED, "escalate requires submitted");
+  reached(configuration.reviewDeadline);
+  move(Phase.DISPUTED);
+}
+
+export circuit expireDispute(expectedRevision: Uint<64>): [] {
+  checkRevision(expectedRevision);
+  assert(phase == Phase.DISPUTED, "expire requires disputed");
+  reached(configuration.resolutionDeadline);
+  move(Phase.CANCELLED);
+}

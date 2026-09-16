@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: Apache-2.0
+# Derived from midnightntwrk/midnight-local-dev standalone.yml at
+# 902561ddc27a4b096f19835ab1528f38ace515f1; attribution and changes in docs/local-network-candidate.md.
+name: ${MILO_LOCAL_PROJECT:?Set a unique disposable Compose project name}
+
+services:
+  proof-server:
+    profiles: [local-candidate]
+    image: midnightntwrk/proof-server:8.1.0@sha256:801bbc0340e9e96f16735f77b523f23c7459e3359842f7c79c2c53f4e994d531
+    command: [midnight-proof-server, '-v']
+    ports:
+      - '127.0.0.1:${MILO_LOCAL_PROOF_PORT:?Set an unused loopback port}:6300'
+    environment:
+      RUST_BACKTRACE: full
+    healthcheck:
+      test: [CMD-SHELL, 'echo > /dev/tcp/127.0.0.1/6300']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  indexer:
+    profiles: [local-candidate]
+    image: midnightntwrk/indexer-standalone:4.3.3@sha256:03afd079b00bcd229df29a24771439c5e7695c339cd89216d0763ce40731cc4b
+    ports:
+      - '127.0.0.1:${MILO_LOCAL_INDEXER_PORT:?Set an unused loopback port}:8088'
+    environment:
+      RUST_LOG: 'indexer=info,chain_indexer=info,indexer_api=info,wallet_indexer=info,indexer_common=info,fastrace_opentelemetry=off,info'
+      APP__INFRA__NODE__URL: ws://node:9944
+      APP__APPLICATION__NETWORK_ID: undeployed
+      APP__INFRA__SECRET: ${MILO_LOCAL_INDEXER_SECRET:?Supply a private 32-byte hex indexer secret}
+      APP__INFRA__SPO_NODE__URL: ws://node:9944
+      APP__INFRA__SPO_NODE__BLOCKFROST_ID: e2e-test-dummy-id
+    healthcheck:
+      test: [CMD-SHELL, 'cat /var/run/indexer-standalone/running']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      node:
+        condition: service_healthy
+
+  node:
+    profiles: [local-candidate]
+    image: midnightntwrk/midnight-node:1.0.0@sha256:ede01da35e982b6a4b85461ad8492ae2753ef14246fba33c8039b782aa8e39fb
+    ports:
+      - '127.0.0.1:${MILO_LOCAL_NODE_PORT:?Set an unused loopback port}:9944'
+    environment:
+      CFG_PRESET: dev
+      SIDECHAIN_BLOCK_BENEFICIARY: '04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e'
+    healthcheck:
+      # The indexer needs block 1, not merely a responding RPC port.
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf -X POST -H "Content-Type: application/json"
+          -d '{"jsonrpc":"2.0","id":1,"method":"chain_getBlockHash","params":[1]}'
+          http://localhost:9944 | grep -q '"result":"0x'
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
