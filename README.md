@@ -7,6 +7,15 @@ one delivery of three images. Midnight is intended to enforce private order rule
 Stripe handles payment outside the chain. This is **not a live marketplace,
 escrow service or admitted end-to-end Midnight application**.
 
+## Demo
+
+[![Milo. One private commission end to end.](https://img.youtube.com/vi/bF968ODpTos/maxresdefault.jpg)](https://youtu.be/bF968ODpTos)
+
+Click the preview to watch the walkthrough on YouTube. A page that embeds the
+player directly is at [milo-xkq.vercel.app/watch.html](https://milo-xkq.vercel.app/watch.html).
+GitHub strips `iframe` and `video` tags from Markdown, so a direct embed cannot
+render inside this file.
+
 ## Status
 
 **R0 — bounded implementation evidence. Provider acceptance: 0/6; operation
