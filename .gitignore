@@ -62,6 +62,7 @@ VERIFICATION.md
 !/biome.json
 !/bun.lock
 !/.env.example
+!/demo.gif
 
 # 4. Re-include the source trees needed to build and run (parents first).
 !/apps/
