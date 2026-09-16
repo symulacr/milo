@@ -9,12 +9,12 @@ escrow service or admitted end-to-end Midnight application**.
 
 ## Demo
 
-[![Milo. One private commission end to end.](https://img.youtube.com/vi/bF968ODpTos/maxresdefault.jpg)](https://youtu.be/bF968ODpTos)
+<a href="https://youtu.be/bF968ODpTos"><img src="https://img.youtube.com/vi/bF968ODpTos/maxresdefault.jpg" width="100%" alt="Milo. One private commission end to end."></a>
 
-Click the preview to watch the walkthrough on YouTube. A page that embeds the
-player directly is at [milo-xkq.vercel.app/watch.html](https://milo-xkq.vercel.app/watch.html).
-GitHub strips `iframe` and `video` tags from Markdown, so a direct embed cannot
-render inside this file.
+[Direct embed](https://symulacr.github.io/milo/) · [YouTube](https://youtu.be/bF968ODpTos) · [Live workspace](https://milo-xkq.vercel.app)
+
+GitHub strips `iframe` and `video` tags from Markdown, so this file can only show
+a preview image. The direct embed runs on GitHub Pages, which permits full HTML.
 
 ## Status
 
