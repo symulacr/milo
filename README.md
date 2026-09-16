@@ -1,49 +1,41 @@
-# Milo
+# milo
 
-**Private agreements. Clear approvals.**
+private agreements. clear approvals.
 
-A privacy-first creative commissioning workspace: one fixed-price agreement and
-one delivery of three images. Midnight is intended to enforce private order rules;
-Stripe handles payment outside the chain. This is **not a live marketplace,
-escrow service or admitted end-to-end Midnight application**.
+a privacy-first commissioning workspace. one fixed-price deal, one delivery of three images.
+midnight enforces the order rules. stripe handles payment off chain.
+this is not a live marketplace, an escrow service, or an admitted end-to-end midnight app.
 
-## Demo
+## demo
 
-![Milo. One private commission end to end.](demo.gif)
+![milo. one private commission end to end.](demo.gif)
 
-[Full walkthrough](https://youtu.be/bF968ODpTos) · [Direct embed](https://symulacr.github.io/milo/) · [Live workspace](https://milo-xkq.vercel.app)
+[walkthrough](https://youtu.be/bF968ODpTos) · [player page](https://symulacr.github.io/milo/) · [live workspace](https://milo-xkq.vercel.app)
 
-## Status
+## status
 
-**R0 — bounded implementation evidence. Provider acceptance: 0/6; operation
-acceptance: 0/14. R1–R5 remain open.** The progress manifest owns readiness;
-installed SDKs and successful wallet connections do not close gates.
+R0, bounded implementation evidence. provider acceptance 0/6. operation acceptance 0/14. R1 to R5 stay open.
 
-| Layer | Current boundary |
+| layer | boundary |
 | --- | --- |
-| Browser demo | Fictional participants, original sample PNGs and reset-on-refresh simulation; role changes are not authorization |
-| Compact contract | Real contract, generated artifacts and local runtime tests; 14 proof circuits |
-| Native Midnight | Isolated node/indexer/prover, staged deployment and maintenance/recovery diagnostics; no canonical admission or buyer reservation |
-| Connected providers | `/connections` diagnostics for Privy/Lace and optional Convex authentication are separate from synthetic orders; Stripe is read-only test preparation, not settlement |
-| Public networks | Preprod is the connected testing target; mainnet is gated and not enabled |
+| browser demo | fictional participants, original sample pngs, reset on refresh. role changes are not authorization |
+| compact contract | real contract, real local runtime tests, 14 proof circuits |
+| native midnight | isolated node, indexer and prover. no canonical admission, no buyer reservation |
+| providers | `/connections` diagnostics for privy and lace. stripe is read-only test prep, not settlement |
+| networks | preprod is the testing target. mainnet is gated and off |
 
-The full single-transaction deployment exceeds the measured execution budget.
-Staged bootstrap installs the original keys and locks
-maintenance on a disposable local address; it does not prove a business circuit
-or admit an order. See the integration map.
-No Preprod transaction has been executed. The native admission observer remains
-restricted to the isolated `undeployed` network, not a verified Preprod stack.
+no preprod transaction has run. the native observer stays on the isolated `undeployed` network, not a
+verified preprod stack. the full single-transaction deployment exceeds the measured execution budget, so
+staged bootstrap runs on a disposable local address instead. it does not prove a business circuit or
+admit an order.
 
-The [Convex admission mutation](packages/backend/ADMISSION.md) now has real local
-concurrency/restart evidence: one canonical binding across 16 competing calls.
-Its test inputs are synthetic; trusted provisioning and real provider acceptance
-remain open. Run `npm run test:convex-local` for the isolated native database check.
+the [convex admission mutation](packages/backend/ADMISSION.md) has real local concurrency and restart
+evidence. one canonical binding across 16 competing calls. its inputs are synthetic.
 
-## Architecture and flow
+## how it works
 
-Solid arrows below show implemented **local** paths. Dashed arrows describe the
-**target connected order flow**, not completed acceptance evidence. Connection
-diagnostics do not join the simulated order state to that target.
+solid arrows are implemented local paths. dashed arrows are the target connected flow, not acceptance
+evidence. connection diagnostics do not join the simulated order state to that target.
 
 ```mermaid
 sequenceDiagram
@@ -57,7 +49,7 @@ sequenceDiagram
     participant API as Convex backend (target)
     participant Pay as Stripe test mode (target)
     rect rgb(235, 245, 250)
-        Note over User,Chain: Implemented local paths — independent of each other
+        Note over User,Chain: Implemented local paths, independent of each other
         User->>UI: Open sample workspace
         UI->>Local: Simulate order / approval / capture
         Local->>UI: In-memory state and sample receipt
@@ -66,7 +58,7 @@ sequenceDiagram
         Note over CLI,Chain: No canonical admission or buyer reserve
     end
     rect rgb(250, 245, 230)
-        Note over User,Pay: Target connected flow — Preprod, admission and provider gates open
+        Note over User,Pay: Target connected flow, Preprod gates open
         User-->>UI: Sign in and connect with consent
         UI-->>Auth: Sign in
         Auth-->>UI: Access token
@@ -87,21 +79,18 @@ sequenceDiagram
     end
 ```
 
-Midnight does not verify Stripe payment or judge creative quality. Privy identity
-does not confer Lace signing authority. The backend must independently validate
-observations and authorize actions; a browser success label is not proof.
+midnight does not verify stripe payment or judge creative quality. privy identity does not confer lace
+signing authority. the backend must independently validate observations and authorize actions. a browser
+success label is not proof.
 
-## Local development
+## run it
 
-Setup pins Bun, Compact and the supported cohort. Compiler bootstrap requires
-Linux x86_64, Node/npm, Python 3, curl, tar/xz and SHA-256 tooling. No provider
-credentials are needed for the demo, compilation or local unit tests.
+needs linux x86_64, node, npm, python 3, curl, tar/xz and sha-256 tooling.
+no provider credentials are needed for the demo, compilation or unit tests.
 
 ```sh
 sh scripts/setup.sh
-npm run dev
-# http://localhost:3000 — landing; /demo — guided sample tour (public); /orders/sample-001 — sample workspace
-
+npm run dev        # localhost:3000, /demo, /orders/sample-001
 npm run contract:compile
 npm run typecheck
 npm run lint
@@ -109,55 +98,33 @@ npm run test:unit
 npm run build
 ```
 
-Compile before typecheck/tests after checkout or contract edits. Generated keys
-and receipts live in ignored `packages/contract/generated/`. The build produces
-static web output, **not a Convex deployment**. Hoplite's managed Preview uses
-the run command in `.hoplite/settings.json`.
+compile before typecheck or tests, after checkout or contract edits. generated keys and receipts stay in
+ignored `packages/contract/generated/`. the build writes static web output, not a convex deployment.
+it writes three allowlisted public settings to `dist/api/public-config`, which must be served as json
+with `cache-control: no-store`. no server secret is included.
 
-Static builds write only the three allowlisted public settings to
-`dist/api/public-config`. Rebuild after changing them; serve that exact path as
-JSON with `Cache-Control: no-store` (the `_headers` file supports compatible hosts).
-No server secret is included.
+the [integration readme](packages/integration/README.md) covers the isolated native lane.
 
-For native services and opt-in disposable transactions, follow
-native-network.md and the
-[integration README](packages/integration/README.md); these use an isolated pinned
-Node runtime. The Docker candidate is separate
-and unverified, not the executed native lane.
+## safety
 
-## Provider setup and safety
+use public `PRIVY_APP_ID` and optional `CONVEX_URL` for browser settings only. keep `PRIVY_APP_SECRET`
+and `STRIPE_SECRET_KEY` server side. never bundle them, and never put wallet recovery material in
+environment examples. use `.env.example` for configuration names. `/connections` keeps missing convex
+configuration explicit, and privy login alone does not establish a backend session.
 
-Use public `PRIVY_APP_ID` and optional `CONVEX_URL` configuration only for the
-browser-facing settings. Keep `PRIVY_APP_SECRET` and `STRIPE_SECRET_KEY` server-side;
-never bundle them or put wallet recovery material in environment examples.
-See the provider setup and network policy for boundaries and remaining gates.
-Use `.env.example` for configuration names. `/connections` keeps missing Convex
-configuration explicit; only a successful authenticated backend query establishes
-a verified backend session. Privy login alone does not establish that session.
+rotate any secret shared in chat, even test keys. replace any wallet whose seed was disclosed. never
+reuse that wallet on mainnet. do not enter real credentials, payment details or customer data in the
+synthetic demo.
 
-**Rotate any secrets shared in chat, even test keys. Replace any wallet whose seed
-or private keys were disclosed.** Never reuse that wallet for mainnet. Use approved
-secret storage, a fresh disposable Preprod wallet and Stripe test mode. Do not enter
-real credentials, payment details or customer data in the synthetic demo.
+sample receipts are not payment confirmations or chain proofs. sample hash checks establish local byte
+equality, not ownership, creative quality or chain commitments.
 
-Sample receipts are not payment confirmations or chain proofs. Sample hash checks
-establish local byte equality, not ownership, creative quality or chain commitments.
+## specs
 
-## Specifications and continuation
+the internal specification and audit corpus is not published in this repository.
+[contract readme](packages/contract/README.md) covers circuit and dependency boundaries.
 
-The internal specification and audit corpus (blueprints, manifests, task list and
-per-phase verification evidence) is not published in this repository.
+## license
 
-- Working task list (TASKS.md) and live execution manifest (EXECUTION_MANIFEST.md):
-  current repairs, verification evidence, blockers and next implementation work.
-
-- Blueprint (01-blueprint.md): protocol, privacy and authority; roadmap (02-roadmap.md): acceptance gates.
-- Building guide (03-building-guide.md), UI (04-ui-design.md), UX (05-ux-design.md), backend (06-backend-design.md): implementation contracts.
-- [Contract README](packages/contract/README.md) and Midnight audit (08-midnight-core-audit.md): circuit and dependency boundaries.
-- Execution plan (docs/EXECUTION_PLAN.md), handoff (docs/AGENT_HANDOFF.md), deployment checklist (docs/DEPLOYMENT_TODO.md): next work.
-- Verification (VERIFICATION.md), protocol verification (PROTOCOL_VERIFICATION.md), changelog (CHANGELOG.md): recorded evidence and changes.
-
-## License
-
-Project-original material is licensed under [MIT](LICENSE). Third-party and derived
-material retains its own license; see [third-party notices](THIRD_PARTY_NOTICES.md).
+project-original material is MIT, see [LICENSE](LICENSE). third-party material keeps its own license,
+see [third-party notices](THIRD_PARTY_NOTICES.md).
