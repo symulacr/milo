@@ -9,12 +9,9 @@ escrow service or admitted end-to-end Midnight application**.
 
 ## Demo
 
-<a href="https://youtu.be/bF968ODpTos"><img src="https://img.youtube.com/vi/bF968ODpTos/maxresdefault.jpg" width="100%" alt="Milo. One private commission end to end."></a>
+![Milo. One private commission end to end.](demo.gif)
 
-[Direct embed](https://symulacr.github.io/milo/) · [YouTube](https://youtu.be/bF968ODpTos) · [Live workspace](https://milo-xkq.vercel.app)
-
-GitHub strips `iframe` and `video` tags from Markdown, so this file can only show
-a preview image. The direct embed runs on GitHub Pages, which permits full HTML.
+[Full walkthrough](https://youtu.be/bF968ODpTos) · [Direct embed](https://symulacr.github.io/milo/) · [Live workspace](https://milo-xkq.vercel.app)
 
 ## Status
 
