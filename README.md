@@ -84,8 +84,9 @@ npm run build
 
 compile before typecheck or tests. generated keys stay in ignored
 `packages/contract/generated/`. the build writes static output and three public settings to
-`dist/api/public-config`. the [integration readme](packages/integration/README.md) covers the native lane. it
-admits no order.
+`dist/api/public-config`. the [integration readme](packages/integration/README.md) covers the native lane. `bun run
+test:integration` provisions the pinned node and the integration dependency set on first
+run. it admits no order.
 
 ## safety
 
