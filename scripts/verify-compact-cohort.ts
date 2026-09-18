@@ -27,7 +27,7 @@ const versions = {
   ).version as string,
 };
 assert.equal(versions.compactRuntime, "0.16.0");
-assert.equal(versions.onchainRuntime, "3.0.0");
+assert.equal(versions.onchainRuntime, "3.1.1");
 
 for (const [flag, expected] of [
   ["--version", "0.31.1"],

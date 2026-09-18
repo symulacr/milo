@@ -23,7 +23,7 @@
     "@noble/hashes": "1.4.0",
     "@midnight-ntwrk/compact-runtime": "0.16.0",
     "@midnight-ntwrk/dapp-connector-api": "4.0.1",
-    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
     "@privy-io/react-auth": "3.40.0",
     "convex": "1.45.0",
     "radix-ui": "1.6.7",
