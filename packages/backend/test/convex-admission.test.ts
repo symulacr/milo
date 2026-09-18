@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { GenericId } from "convex/values";
-import { REQUIRED_ENTRYPOINTS } from "../src/admission-policy";
-import { type AdmissionContext, admitCanonical } from "../src/convex-admission";
+import type { AdmissionContext } from "../../../convex/admissionContext";
+import { admitCanonical } from "../../../convex/canonicalAdmission";
 import {
   MONITOR_DURATION_MS,
   type MonitorQueryContext,
   monitorBinding,
-} from "../src/payment-monitor";
+} from "../../../convex/paymentMonitor";
+import { REQUIRED_ENTRYPOINTS } from "../src/admission-policy";
 import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,

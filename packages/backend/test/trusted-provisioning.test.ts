@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { AdmissionContext } from "../../../convex/admissionContext";
 import { requireMembership } from "../../../convex/auth/identity";
+import {
+  type AdmissionInput,
+  admitCanonical,
+} from "../../../convex/canonicalAdmission";
 import {
   begin,
   finish,
@@ -11,11 +16,6 @@ import {
   provision,
   revoke,
 } from "../../../convex/trustedProvisioning";
-import {
-  type AdmissionContext,
-  type AdmissionInput,
-  admitCanonical,
-} from "../src/convex-admission";
 import { provisionTestCustomerFacts } from "../src/stripe-customer-provisioning.server";
 import {
   canonicalPayload,

@@ -1,24 +1,18 @@
-import type {
-  DataModelFromSchemaDefinition,
-  GenericMutationCtx,
-} from "convex/server";
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import { admissionArgs } from "../../../convex/admissionValidators";
-import { requireMembership } from "../../../convex/auth/identity";
-import type schema from "../../../convex/schema";
-import { assertProvisioningActive } from "../../../convex/trustedProvisioning";
+import { admissionArgs } from "./admissionValidators";
+import { requireMembership } from "./auth/identity";
+import type schema from "./schema";
+import { assertProvisioningActive } from "./trustedProvisioning";
 import {
   type AdmissionBinding,
   type AdmissionDecision,
   decideCanonicalAdmission,
-} from "./admission-policy";
-import { monitorReceiptUsable } from "./payment-monitor";
-import { requirePrivySubject } from "./privy-identity";
+} from "../packages/backend/src/admission-policy";
+import type { AdmissionContext } from "./admissionContext";
+import { monitorReceiptUsable } from "./paymentMonitor";
+import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 
-export type AdmissionContext = GenericMutationCtx<
-  DataModelFromSchemaDefinition<typeof schema>
->;
 const inputValidator = v.object(admissionArgs);
 export type AdmissionInput = Infer<typeof inputValidator>;
 

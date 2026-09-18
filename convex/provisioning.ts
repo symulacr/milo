@@ -4,7 +4,7 @@ import {
   mutationGeneric,
 } from "convex/server";
 import { v } from "convex/values";
-import type { AdmissionContext } from "../packages/backend/src/convex-admission";
+import type { AdmissionContext } from "./admissionContext";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import {
   PROVIDER_LEASE_MS,
