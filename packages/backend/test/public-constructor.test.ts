@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,
@@ -93,5 +95,52 @@ describe("versioned public constructor", () => {
         }),
       ).toBe(true);
     }
+  });
+});
+
+// The admission-observation fingerprint is defined twice on purpose: the
+// integration observer (node:crypto) and this backend reconstruction
+// (@noble/hashes) must produce byte-identical values or admission silently
+// diverges. A shared module would cross the TS/mjs package boundary, so this
+// tripwire pins the encoding on both sides instead.
+describe("fingerprint parity with the integration observer", () => {
+  const canonical = (kind: string, value: unknown) =>
+    createHash("sha256")
+      .update(JSON.stringify(["milo:admission-observation:v2", kind, value]))
+      .digest("hex");
+
+  test("backend fingerprints equal the canonical sha256 encoding", () => {
+    const roles = [
+      quote.buyerCommitment,
+      quote.merchantCommitment,
+      quote.operatorCommitment,
+    ];
+    const { rolesFingerprint, initialStateFingerprint } =
+      publicConstructorFingerprints(quote);
+    expect(rolesFingerprint).toBe(canonical("roles", roles));
+    expect(typeof initialStateFingerprint).toBe("string");
+    expect(initialStateFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  test("both sides use the same tag and JSON array encoding", () => {
+    const shape =
+      /JSON\.stringify\(\[(?<literal>"milo:[^"]+"|[a-z]+), (?<kind>[a-z]+), (?<value>[a-z]+)\]\)/;
+    const backend = readFileSync(
+      new URL("../src/public-constructor.mjs", import.meta.url),
+      "utf8",
+    );
+    const observer = readFileSync(
+      new URL(
+        "../../../packages/integration/src/admission-observation.mjs",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const backendLiteral = backend.match(/"(?<tag>milo:[a-z:-]+)"/)?.groups
+      ?.tag;
+    const observerLiteral = observer.match(/"(?<tag>milo:[a-z:-]+)"/)?.groups
+      ?.tag;
+    expect(backendLiteral).toBe(observerLiteral);
+    expect(observer).toMatch(shape);
   });
 });
