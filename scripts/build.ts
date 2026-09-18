@@ -1,24 +1,13 @@
-import { publicConfig } from "./public-config";
+import {
+  publicAppPrefixes,
+  publicAppRoutes,
+  workspaceAppPrefixes,
+  workspaceAppRoutes,
+} from "../apps/web/src/route-table";
+import { publicConfig } from "../packages/backend/src/public-config";
 
 const browserConfig = publicConfig(process.env);
 
-// Lean public SPA (01 §7.4): no auth/wallet/backend/simulator code.
-const publicAppRoutes = [
-  "/demo",
-  "/sign-in",
-  "/how-it-works",
-  "/privacy",
-  "/terms",
-  "/pilot",
-];
-const workspaceAppRoutes = [
-  "/orders",
-  "/merchant/orders",
-  "/merchant/quotes/new",
-  "/operator/cases",
-  "/account",
-  "/connections",
-];
 const outdir = "dist";
 const buildEntrypoints = ".tools/build-entrypoints";
 
@@ -95,6 +84,14 @@ const publicDirectory = "apps/web/public";
 for (const path of new Bun.Glob("**/*").scanSync(publicDirectory)) {
   await Bun.write(`${outdir}/${path}`, Bun.file(`${publicDirectory}/${path}`));
 }
+// Static-host route file is generated so a fresh clone cannot drift from the table.
+const redirects = [
+  ...publicAppRoutes.map((route) => `${route} /public-app.html 200`),
+  ...publicAppPrefixes.map((prefix) => `${prefix}/* /public-app.html 200`),
+  ...workspaceAppPrefixes.map((prefix) => `${prefix}/* /app.html 200`),
+  "/* /app.html 200",
+].join("\n");
+await Bun.write(`${outdir}/_redirects`, `${redirects}\n`);
 
 // §7.4 bundle inventory: report emitted JS so lazy/public chunks stay visible.
 for (const output of result.outputs) {

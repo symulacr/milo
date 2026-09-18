@@ -2,33 +2,12 @@ import type {
   ConnectedAPI,
   InitialAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import { z } from "zod";
+import {
+  type PublicConfig,
+  publicConfigSchema,
+} from "../../../packages/backend/src/public-config";
 
-const publicConfigSchema = z
-  .object({
-    privyAppId: z
-      .string()
-      .regex(/^[a-zA-Z0-9_-]{1,128}$/)
-      .nullish(),
-    convexUrl: z
-      .url()
-      .refine((value) => {
-        const url = new URL(value);
-        return (
-          url.protocol === "https:" &&
-          url.hostname.endsWith(".convex.cloud") &&
-          !url.username &&
-          !url.password &&
-          url.pathname === "/" &&
-          !url.search &&
-          !url.hash
-        );
-      })
-      .nullish(),
-    midnightNetwork: z.literal("preprod"),
-  })
-  .strict();
-export type PublicConfig = z.infer<typeof publicConfigSchema>;
+export type { PublicConfig };
 
 export async function loadPublicConfig(
   signal?: AbortSignal,

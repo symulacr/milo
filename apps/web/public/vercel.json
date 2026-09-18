@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/m/:path+", "destination": "/public-app.html" },
     { "source": "/orders/:path+", "destination": "/orders/index.html" },
     { "source": "/quotes/:path+", "destination": "/orders/index.html" },
     { "source": "/merchant/:path+", "destination": "/orders/index.html" },

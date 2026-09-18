@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { publicConfig, publicConfigResponse } from "./public-config";
+import {
+  publicConfig,
+  publicConfigResponse,
+} from "../packages/backend/src/public-config";
 
 describe("browser public configuration", () => {
   test("allowlists public fields, never provider secrets", async () => {
