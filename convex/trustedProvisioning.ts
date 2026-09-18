@@ -1,6 +1,6 @@
 import { internalMutationGeneric } from "convex/server";
 import { type Infer, v } from "convex/values";
-import type { AdmissionContext } from "../packages/backend/src/convex-admission";
+import type { AdmissionContext } from "./admissionContext";
 import {
   validateFreeze,
   validateImagePackPolicy,

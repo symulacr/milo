@@ -1,5 +1,15 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type Stripe from "stripe";
+import type { AdmissionContext } from "../../../convex/admissionContext";
+import {
+  MONITOR_DURATION_MS,
+  MONITOR_INTERVAL_MS,
+  MONITOR_LEASE_MS,
+  type MonitorStatus,
+  monitorLive,
+  monitorReceiptUsable,
+  projectMonitorStatus,
+} from "../../../convex/paymentMonitor";
 import * as monitoring from "../../../convex/paymentMonitoring";
 import {
   begin,
@@ -13,16 +23,6 @@ import type {
   FrozenQuote,
   PaymentAuthorization,
 } from "../src/admission-policy";
-import type { AdmissionContext } from "../src/convex-admission";
-import {
-  MONITOR_DURATION_MS,
-  MONITOR_INTERVAL_MS,
-  MONITOR_LEASE_MS,
-  type MonitorStatus,
-  monitorLive,
-  monitorReceiptUsable,
-  projectMonitorStatus,
-} from "../src/payment-monitor";
 import {
   PROVIDER_LEASE_MS,
   PROVIDER_RETRY_WINDOW_MS,

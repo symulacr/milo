@@ -1,4 +1,4 @@
-import type { MonitorStatus } from "../../../packages/backend/src/payment-monitor";
+import type { MonitorStatus } from "../../../convex/paymentMonitor";
 
 export type { MonitorStatus };
 export interface MonitoringTransport {

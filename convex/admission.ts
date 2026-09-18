@@ -1,5 +1,5 @@
 import { mutationGeneric } from "convex/server";
-import { admitCanonical } from "../packages/backend/src/convex-admission";
+import { admitCanonical } from "./canonicalAdmission";
 import { admissionArgs, admissionResult } from "./admissionValidators";
 
 export const bind = mutationGeneric({

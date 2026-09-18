@@ -5,7 +5,7 @@ import {
   queryGeneric,
 } from "convex/server";
 import { type GenericId, v } from "convex/values";
-import type { AdmissionContext } from "../packages/backend/src/convex-admission";
+import type { AdmissionContext } from "./admissionContext";
 import {
   MONITOR_DURATION_MS,
   MONITOR_INTERVAL_MS,
@@ -14,7 +14,7 @@ import {
   monitorBinding,
   monitorLive,
   projectMonitorStatus,
-} from "../packages/backend/src/payment-monitor";
+} from "./paymentMonitor";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import { paymentAuthorization } from "./admissionValidators";

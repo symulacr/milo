@@ -5,7 +5,7 @@ version, deployment observation ID, payment-intent document ID (`authorizationId
 and contract address. Convex validates these arguments. Verified Privy identity
 and current active buyer membership in the frozen quote's scope are required.
 
-`src/convex-admission.ts` executes within that mutation. It reads the frozen quote,
+`convex/canonicalAdmission.ts` executes within that mutation. It reads the frozen quote,
 quote/version-provenanced deployment observation, immutable payment binding and
 current payment observation, server timing policy, and all three canonical
 uniqueness indexes. `.unique()` fails closed on duplicate rows; indexes alone are
@@ -57,7 +57,7 @@ unsafe. There is deliberately no automatic retry that can bypass this boundary.
 
 ## Verification and unclosed gates
 
-`test/convex-admission.test.ts` is explicitly a DB double. It verifies indexed
+`test/convex-admission.test.ts` (against `convex/canonicalAdmission.ts`) is explicitly a DB double. It verifies indexed
 reads, duplicate failures, conflict snapshots representing a competing winner,
 quote-version changes, current authorization/freshness, authorization checks,
 and awaited/failed inserts. It does **not** implement or prove Convex OCC,
