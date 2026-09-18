@@ -78,6 +78,14 @@ export class LaceConnection {
       if (revision !== this.revision) return;
       await this.verify(api);
       if (revision !== this.revision) return;
+      // Advisory per the v4 spec: tell the wallet which connected-API methods
+      // this session uses. Older wallets may not implement it, and a declined
+      // hint must never fail an otherwise valid connection.
+      try {
+        await api.hintUsage?.(["getConnectionStatus", "getConfiguration"]);
+      } catch {
+        // Hint-only failure: keep the verified connection.
+      }
       this.api = api;
       this.update({
         status: "connected",
