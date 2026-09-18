@@ -17,7 +17,7 @@
     "typecheck": "sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit",
     "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check .",
     "test:unit": "sh scripts/with-bun.sh test apps/web packages/domain packages/contract packages/backend scripts",
-    "test:integration": "node --test packages/integration/test/*.test.mjs"
+    "test:integration": "sh scripts/with-bun.sh scripts/test-integration.ts"
   },
   "dependencies": {
     "@noble/hashes": "1.4.0",
