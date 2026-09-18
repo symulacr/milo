@@ -5,7 +5,10 @@ import {
   queryGeneric,
 } from "convex/server";
 import { type GenericId, v } from "convex/values";
+import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
+import { paymentAuthorization } from "./admissionValidators";
 import {
   MONITOR_DURATION_MS,
   MONITOR_INTERVAL_MS,
@@ -15,9 +18,6 @@ import {
   monitorLive,
   projectMonitorStatus,
 } from "./paymentMonitor";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
-import { usableObservation } from "../packages/backend/src/provisioning-policy";
-import { paymentAuthorization } from "./admissionValidators";
 
 const tickRef = makeFunctionReference<"mutation">("paymentMonitoring:tick");
 const runRef = makeFunctionReference<"action">("stripeMonitoring:run");
@@ -301,8 +301,7 @@ export const begin = internalMutationGeneric({
   handler: async (ctx: AdmissionContext, args) => {
     const session = await ctx.db.get(args.monitorId);
     if (
-      !session ||
-      session.state !== "running" ||
+      session?.state !== "running" ||
       session.generation !== args.generation ||
       session.attempt !== args.attempt
     )
@@ -338,8 +337,7 @@ export const finish = internalMutationGeneric({
   handler: async (ctx: AdmissionContext, args) => {
     const session = await ctx.db.get(args.monitorId);
     if (
-      !session ||
-      session.state !== "running" ||
+      session?.state !== "running" ||
       session.generation !== args.generation ||
       session.attempt !== args.attempt
     )

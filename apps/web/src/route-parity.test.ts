@@ -32,28 +32,40 @@ describe("route parity (01 §7.4/§9.1)", () => {
     );
   });
 
-  test("public router tree serves every public route and the studio page", () => {
+  test("public router tree and the table cover each other exactly", () => {
+    const declared = [...publicMain.matchAll(/path="([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    // The router serves the table's public routes, the studio page, and the
+    // catch-all that renders NotFound; nothing else may appear.
+    expect([...declared].sort()).toEqual(
+      [...publicAppRoutes, "/m/north-studio", "*"].sort(),
+    );
     for (const route of publicAppRoutes) {
-      expect(publicMain).toContain(`path="${route}"`);
+      expect(declared).toContain(route);
     }
-    expect(publicMain).toContain('path="/m/north-studio"');
   });
 
   test("vercel.json rewrites cover every prefix with the right target", () => {
-    const rewrites = new Map(
+    // Vercel applies rewrites first-match-wins: the FIRST rule for a source
+    // decides, so duplicates or a wrong early rule must fail here, not only
+    // on the deployed host.
+    const sources = vercelJson.rewrites.map((rewrite) => rewrite.source);
+    expect(new Set(sources).size).toBe(sources.length);
+    const first = new Map(
       vercelJson.rewrites.map((rewrite) => [rewrite.source, rewrite]),
     );
     for (const prefix of publicAppPrefixes) {
-      expect(rewrites.get(`${prefix}/:path+`)?.destination).toBe(
+      expect(first.get(`${prefix}/:path+`)?.destination).toBe(
         "/public-app.html",
       );
     }
     for (const prefix of workspaceAppPrefixes) {
-      expect(rewrites.get(`${prefix}/:path+`)?.destination).toBe(
+      expect(first.get(`${prefix}/:path+`)?.destination).toBe(
         "/orders/index.html",
       );
     }
-    expect(rewrites.size).toBe(
+    expect(sources.length).toBe(
       publicAppPrefixes.length + workspaceAppPrefixes.length,
     );
   });

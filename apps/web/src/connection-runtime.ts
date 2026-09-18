@@ -86,6 +86,9 @@ export class LaceConnection {
       } catch {
         // Hint-only failure: keep the verified connection.
       }
+      // The hint can await the wallet; a disconnect during that window must
+      // win over the now-stale connect attempt.
+      if (revision !== this.revision) return;
       this.api = api;
       this.update({
         status: "connected",

@@ -88,7 +88,7 @@ commitment, and operator approval with no submitted delivery is forbidden.
 ## Toolchain
 
 Compact compiler **0.31.1**, language **0.23**, `@midnight-ntwrk/compact-runtime` **0.16.0**,
-`@midnight-ntwrk/onchain-runtime-v3` **3.0.0**.
+`@midnight-ntwrk/onchain-runtime-v3` **3.1.1**.
 
 ```sh
 .tools/compact/compiler/compactc packages/contract/src/order.compact packages/contract/generated

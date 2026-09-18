@@ -3,9 +3,9 @@ import type {
   GenericQueryCtx,
 } from "convex/server";
 import type { GenericId } from "convex/values";
-import type schema from "./schema";
-import type { AdmissionContext } from "./admissionContext";
 import { canonicalPayload } from "../packages/backend/src/trusted-provisioning-policy";
+import type { AdmissionContext } from "./admissionContext";
+import type schema from "./schema";
 
 export const MONITOR_DURATION_MS = 5 * 60_000;
 export const MONITOR_INTERVAL_MS = 15_000;

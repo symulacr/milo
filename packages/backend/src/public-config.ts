@@ -36,9 +36,10 @@ export function publicConfig(
   if (env.MIDNIGHT_NETWORK && env.MIDNIGHT_NETWORK !== "preprod") {
     throw new Error("Only Midnight preprod is enabled for browser connections");
   }
+  // Empty strings mean unset, as the previous hand-written checks did.
   return publicConfigSchema.parse({
-    privyAppId: env.PRIVY_APP_ID ?? null,
-    convexUrl: env.CONVEX_URL ?? null,
+    privyAppId: env.PRIVY_APP_ID || null,
+    convexUrl: env.CONVEX_URL || null,
     midnightNetwork: "preprod",
   });
 }
