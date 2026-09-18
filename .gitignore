@@ -90,6 +90,7 @@ VERIFICATION.md
 apps/web/artwork/
 # re-ignored here because `!/packages/**` above overrides the section-2 rule
 packages/contract/generated/
+packages/integration/node_modules/
 scripts/check-plan.ts
 scripts/convex-local-*
 !scripts/convex-local-lifecycle-check.py
