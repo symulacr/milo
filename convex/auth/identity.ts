@@ -15,7 +15,7 @@ export async function requireMembership(ctx: Context, scopeId: string) {
       q.eq("privySubject", subject).eq("scopeId", scopeId),
     )
     .unique();
-  if (!membership || membership.status !== "active") {
+  if (membership?.status !== "active") {
     throw new Error("Active membership required");
   }
   return membership;

@@ -4,7 +4,6 @@ import {
   mutationGeneric,
 } from "convex/server";
 import { v } from "convex/values";
-import type { AdmissionContext } from "./admissionContext";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import {
   PROVIDER_LEASE_MS,
@@ -15,6 +14,7 @@ import {
   validJobClock,
 } from "../packages/backend/src/provisioning-policy";
 import { validPublicConstructor } from "../packages/backend/src/public-constructor.mjs";
+import type { AdmissionContext } from "./admissionContext";
 import { frozenQuoteFields, paymentAuthorization } from "./admissionValidators";
 import { requireMembership } from "./auth/identity";
 import { assertProvisioningActive } from "./trustedProvisioning";
@@ -294,8 +294,7 @@ export const finish = internalMutationGeneric({
       )
       .unique();
     if (
-      !membership ||
-      membership.status !== "active" ||
+      membership?.status !== "active" ||
       membership.role !== "buyer" ||
       membership.accountId !== quote.buyerAccountId
     ) {

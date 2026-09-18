@@ -1,6 +1,5 @@
 import { internalMutationGeneric } from "convex/server";
-import { type Infer, v } from "convex/values";
-import type { AdmissionContext } from "./admissionContext";
+import { type GenericId, type Infer, v } from "convex/values";
 import {
   validateFreeze,
   validateImagePackPolicy,
@@ -9,6 +8,7 @@ import {
   canonicalPayload,
   validateProvenance,
 } from "../packages/backend/src/trusted-provisioning-policy";
+import type { AdmissionContext } from "./admissionContext";
 import { frozenQuoteFields } from "./admissionValidators";
 
 const provenance = v.object({
@@ -98,7 +98,7 @@ export const provision = internalMutationGeneric({
       if (prior.operation !== operation)
         throw new Error("Provisioning request conflict");
       const binding = await ctx.db.get(prior.bindingId);
-      if (!binding || binding.status !== "active")
+      if (binding?.status !== "active")
         throw new Error("Trusted provisioning revoked");
       return prior.bindingId;
     }
@@ -121,7 +121,10 @@ export const provision = internalMutationGeneric({
       )
     )
       throw new Error("Nonempty bounded binding identifiers required");
-    let targetId;
+    let targetId:
+      | GenericId<"memberships">
+      | GenericId<"approvedQuotes">
+      | GenericId<"stripeCustomers">;
     if (input.kind === "membership") {
       if (!/^did:privy:[a-zA-Z0-9_-]+$/.test(input.value.privySubject))
         throw new Error("Privy subject required");

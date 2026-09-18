@@ -5,6 +5,7 @@
       "apps/**",
       "packages/**",
       "scripts/**",
+      "convex/**",
       "*.json",
       "!packages/contract/generated"
     ]
@@ -16,6 +17,8 @@
   },
   "linter": {
     "enabled": true,
-    "rules": { "preset": "recommended" }
+    "rules": {
+      "preset": "recommended"
+    }
   }
 }

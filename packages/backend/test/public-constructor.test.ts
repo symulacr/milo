@@ -136,11 +136,13 @@ describe("fingerprint parity with the integration observer", () => {
       ),
       "utf8",
     );
-    const backendLiteral = backend.match(/"(?<tag>milo:[a-z:-]+)"/)?.groups
-      ?.tag;
-    const observerLiteral = observer.match(/"(?<tag>milo:[a-z:-]+)"/)?.groups
-      ?.tag;
+    // Anchor on the fingerprint call itself: each file's first milo: literal
+    // is a different constant, so only the JSON.stringify shape identifies it.
+    const tagShape = /JSON\.stringify\(\["(?<tag>milo:[a-z0-9:-]+)",/;
+    const backendLiteral = backend.match(tagShape)?.groups?.tag;
+    const observerLiteral = observer.match(tagShape)?.groups?.tag;
     expect(backendLiteral).toBe(observerLiteral);
+    expect(backendLiteral).toBe("milo:admission-observation:v2");
     expect(observer).toMatch(shape);
   });
 });

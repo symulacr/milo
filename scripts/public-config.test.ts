@@ -56,3 +56,11 @@ describe("browser public configuration", () => {
     expect(response.headers.get("Allow")).toBe("GET");
   });
 });
+
+test("empty-string settings mean unset, as before the shared schema", () => {
+  expect(publicConfig({ PRIVY_APP_ID: "", CONVEX_URL: "" })).toEqual({
+    privyAppId: null,
+    convexUrl: null,
+    midnightNetwork: "preprod",
+  });
+});

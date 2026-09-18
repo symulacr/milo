@@ -1,17 +1,16 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import { admissionArgs } from "./admissionValidators";
-import { requireMembership } from "./auth/identity";
-import type schema from "./schema";
-import { assertProvisioningActive } from "./trustedProvisioning";
 import {
   type AdmissionBinding,
   type AdmissionDecision,
   decideCanonicalAdmission,
 } from "../packages/backend/src/admission-policy";
-import type { AdmissionContext } from "./admissionContext";
-import { monitorReceiptUsable } from "./paymentMonitor";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import type { AdmissionContext } from "./admissionContext";
+import { admissionArgs } from "./admissionValidators";
+import { requireMembership } from "./auth/identity";
+import { monitorReceiptUsable } from "./paymentMonitor";
+import { assertProvisioningActive } from "./trustedProvisioning";
 
 const inputValidator = v.object(admissionArgs);
 export type AdmissionInput = Infer<typeof inputValidator>;
