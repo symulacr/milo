@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 /**
  * The 14 proof-bearing circuit names are declared in four hand-maintained
@@ -21,7 +21,9 @@ const generated: string[] = (() => {
     ),
   ) as { circuits: { name: string; proof: boolean }[] };
   if (!info.circuits?.length)
-    throw new Error("generated circuit manifest is empty; run contract:compile");
+    throw new Error(
+      "generated circuit manifest is empty; run contract:compile",
+    );
   return info.circuits
     .filter((circuit) => circuit.proof)
     .map((circuit) => circuit.name)
