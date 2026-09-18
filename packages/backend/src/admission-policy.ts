@@ -125,6 +125,10 @@ export type AdmissionDecision =
 const ADDRESS = /^[a-f0-9]{64}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const MAX_OBSERVATION_AGE_MS = 5 * 60_000;
+// ADMISSION.md invariant: a payment observation authorizes admission for one
+// minute. Every consumer below imports this constant; the literals were
+// drift-prone copies of the same fact.
+export const PAYMENT_AUTHORIZATION_WINDOW_MS = 60_000;
 const MAX_FUTURE_SKEW_MS = 30_000;
 
 export function decideCanonicalAdmission(

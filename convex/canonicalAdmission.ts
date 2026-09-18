@@ -4,6 +4,7 @@ import {
   type AdmissionBinding,
   type AdmissionDecision,
   decideCanonicalAdmission,
+  PAYMENT_AUTHORIZATION_WINDOW_MS,
 } from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import type { AdmissionContext } from "./admissionContext";
@@ -128,8 +129,9 @@ export async function admitCanonical(
   const now = Date.now();
   if (
     authorization.id !== payment._id ||
-    authorization.usableUntil - authorization.usableFrom > 60_000 ||
-    now - authorization.usableFrom >= 60_000
+    authorization.usableUntil - authorization.usableFrom >
+      PAYMENT_AUTHORIZATION_WINDOW_MS ||
+    now - authorization.usableFrom >= PAYMENT_AUTHORIZATION_WINDOW_MS
   )
     return reject("current payment observation is stale or mismatched");
   let pending: AdmissionBinding | undefined;

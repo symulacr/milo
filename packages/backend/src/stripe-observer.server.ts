@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import type { PaymentAuthorization } from "./admission-policy";
+import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "./admission-policy";
 
 export const STRIPE_API_VERSION = "2026-08-26.dahlia" as const;
 
@@ -62,7 +63,7 @@ export function normalizeTestPayment(
   if (
     !validBinding(binding) ||
     !Number.isSafeInteger(observedAt) ||
-    !Number.isSafeInteger(observedAt + 60_000) ||
+    !Number.isSafeInteger(observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS) ||
     observedAt < 0
   )
     return blocked("Invalid test payment binding or clock");
@@ -172,7 +173,10 @@ export function normalizeTestPayment(
       usableFrom: observedAt,
       usableUntil:
         status === "authorized"
-          ? Math.min(captureBeforeMs, observedAt + 60_000)
+          ? Math.min(
+              captureBeforeMs,
+              observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS,
+            )
           : observedAt,
       captureBeforeMs,
       source: "payment-observer",

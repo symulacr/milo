@@ -1,4 +1,5 @@
 import type { FrozenQuote, PaymentAuthorization } from "./admission-policy";
+import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "./admission-policy";
 import { validPublicConstructor } from "./public-constructor.mjs";
 
 export const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60_000;
@@ -105,9 +106,10 @@ export function usableObservation(
     Number.isSafeInteger(authorization.usableUntil) &&
     authorization.usableFrom >= startedAt &&
     authorization.usableFrom <= now &&
-    now - authorization.usableFrom < 60_000 &&
+    now - authorization.usableFrom < PAYMENT_AUTHORIZATION_WINDOW_MS &&
     authorization.usableUntil >= authorization.usableFrom &&
-    authorization.usableUntil - authorization.usableFrom <= 60_000 &&
+    authorization.usableUntil - authorization.usableFrom <=
+      PAYMENT_AUTHORIZATION_WINDOW_MS &&
     /^[a-f0-9]{64}$/.test(authorization.providerReceiptFingerprint)
   );
 }
