@@ -103,6 +103,34 @@ export interface AdmissionTransaction {
   getBindingByQuote(quoteId: string): AdmissionBinding | undefined;
   insertBinding(binding: AdmissionBinding): void;
 }
+// The 5-field payment-to-quote identity kernel. The two sides use different
+// field names (payment carriers: quoteId, quoteVersion; quote carriers: id,
+// version), so transposed arguments fail to compile.
+export function paymentBindsQuote(
+  payment: {
+    quoteId: string;
+    quoteVersion: number;
+    buyerAccountId: string;
+    amountMinor: number;
+    currency: string;
+  },
+  quote: {
+    id: string;
+    version: number;
+    buyerAccountId: string;
+    amountMinor: number;
+    currency: string;
+  },
+): boolean {
+  return (
+    payment.quoteId === quote.id &&
+    payment.quoteVersion === quote.version &&
+    payment.buyerAccountId === quote.buyerAccountId &&
+    payment.amountMinor === quote.amountMinor &&
+    payment.currency === quote.currency
+  );
+}
+
 /** Server-owned capture safety policy; callers cannot supply it in admission input. */
 export interface AdmissionTimingPolicy {
   captureSafetyMarginMs: number;
@@ -204,11 +232,7 @@ function validate(
   if (
     !validAuthorization(authorization) ||
     authorization.id !== input.authorizationId ||
-    authorization.quoteId !== quote.id ||
-    authorization.quoteVersion !== quote.version ||
-    authorization.buyerAccountId !== accountId ||
-    authorization.amountMinor !== quote.amountMinor ||
-    authorization.currency !== quote.currency
+    !paymentBindsQuote(authorization, quote)
   )
     return "payment authorization is not bound to the exact frozen quote";
   if (now < authorization.usableFrom || now >= authorization.usableUntil)

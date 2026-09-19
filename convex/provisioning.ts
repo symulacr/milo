@@ -4,6 +4,7 @@ import {
   mutationGeneric,
 } from "convex/server";
 import { v } from "convex/values";
+import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import {
   PROVIDER_LEASE_MS,
@@ -110,10 +111,7 @@ export async function requestPaymentJob(
   if (!customer) throw new Error("Trusted Stripe customer binding required");
   if (
     payment &&
-    (payment.quoteVersion !== quote.version ||
-      payment.buyerAccountId !== quote.buyerAccountId ||
-      payment.amountMinor !== quote.amountMinor ||
-      payment.currency !== quote.currency ||
+    (!paymentBindsQuote(payment, quote) ||
       payment.stripeAccountId !== customer.stripeAccountId ||
       payment.stripeCustomerId !== customer.stripeCustomerId ||
       payment.environment !== "test" ||
@@ -344,10 +342,7 @@ export const finish = internalMutationGeneric({
       throw new Error("Immutable payment binding required");
     if (authorization && payment) {
       if (
-        payment.quoteVersion !== quote.version ||
-        payment.buyerAccountId !== quote.buyerAccountId ||
-        payment.amountMinor !== quote.amountMinor ||
-        payment.currency !== quote.currency ||
+        !paymentBindsQuote(payment, quote) ||
         payment.stripeAccountId !== job.stripeAccountId ||
         payment.stripeCustomerId !== job.stripeCustomerId ||
         payment.environment !== "test" ||
@@ -356,11 +351,7 @@ export const finish = internalMutationGeneric({
         throw new Error("Immutable payment binding mismatch");
       if (
         authorization.id !== payment._id ||
-        authorization.quoteId !== quote.id ||
-        authorization.quoteVersion !== quote.version ||
-        authorization.buyerAccountId !== quote.buyerAccountId ||
-        authorization.amountMinor !== quote.amountMinor ||
-        authorization.currency !== quote.currency ||
+        !paymentBindsQuote(authorization, quote) ||
         !usableObservation(authorization, now, job.startedAt)
       )
         throw new Error("Invalid or stale trusted observation");

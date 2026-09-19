@@ -5,6 +5,7 @@ import {
   type AdmissionDecision,
   decideCanonicalAdmission,
   PAYMENT_AUTHORIZATION_WINDOW_MS,
+  paymentBindsQuote,
 } from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import type { AdmissionContext } from "./admissionContext";
@@ -116,11 +117,7 @@ export async function admitCanonical(
   if (
     quotePayment?._id !== payment._id ||
     providerPayment?._id !== payment._id ||
-    payment.quoteId !== quote.id ||
-    payment.quoteVersion !== quote.version ||
-    payment.buyerAccountId !== quote.buyerAccountId ||
-    payment.amountMinor !== quote.amountMinor ||
-    payment.currency !== quote.currency ||
+    !paymentBindsQuote(payment, quote) ||
     payment.network !== quote.network ||
     payment.environment !== "test"
   )
