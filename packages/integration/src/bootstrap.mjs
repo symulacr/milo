@@ -6,8 +6,8 @@ import {
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { proofCircuits } from "./artifacts.mjs";
 import { publicReceipt } from "./config.mjs";
-import { intentExpiry } from "./tx.mjs";
 import { generated, witnesses } from "./order.mjs";
+import { intentExpiry } from "./tx.mjs";
 
 // Generated readers require Compact's WASM identity, not ledger-v8's.
 const ledgerOf = (state) =>

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
-import { intentExpiry, maintenanceTx } from "./tx.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { balanceWithDustReadiness } from "./dust.mjs";
 import { deploymentPreflight } from "./resources.mjs";
 import { captureSubmissions } from "./submissions.mjs";
+import { intentExpiry, maintenanceTx } from "./tx.mjs";
 
 let stage = "configuration";
 let boundary = "harness";
