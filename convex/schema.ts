@@ -4,6 +4,7 @@ import {
   bindingFields,
   deploymentObservationFields,
   frozenQuoteFields,
+  imagePackPolicyFields,
   paymentAuthorization,
 } from "./admissionValidators";
 
@@ -36,12 +37,7 @@ export default defineSchema({
   }).index("by_request", ["requestId"]),
   approvedQuotes: defineTable({
     ...frozenQuoteFields,
-    imagePackPolicy: v.object({
-      serviceVersion: v.literal(1),
-      packQuantity: v.literal(1),
-      outputCount: v.literal(3),
-      unitPriceMinor: v.number(),
-    }),
+    imagePackPolicy: v.object(imagePackPolicyFields),
     expiresAt: v.number(),
   }).index("by_quote", ["id"]),
   stripeCustomers: defineTable({

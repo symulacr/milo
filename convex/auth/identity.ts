@@ -20,3 +20,25 @@ export async function requireMembership(ctx: Context, scopeId: string) {
   }
   return membership;
 }
+
+/**
+ * One definition of "this membership row is an active buyer of this quote".
+ * Call sites own their own rejection messages; this predicate owns the fact.
+ */
+export function isQuoteBuyer(
+  membership:
+    | {
+        status: "active" | "revoked";
+        role: "buyer" | "merchant" | "operator";
+        accountId: string;
+      }
+    | null
+    | undefined,
+  buyerAccountId: string,
+): boolean {
+  return (
+    membership?.status === "active" &&
+    membership.role === "buyer" &&
+    membership.accountId === buyerAccountId
+  );
+}

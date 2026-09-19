@@ -6,6 +6,7 @@ import type { GenericId } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { canonicalPayload } from "../packages/backend/src/trusted-provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
+import { isQuoteBuyer } from "./auth/identity";
 import type schema from "./schema";
 
 export const MONITOR_DURATION_MS = 5 * 60_000;
@@ -111,9 +112,7 @@ export async function monitorBinding(
     ),
   );
   if (
-    membership?.status !== "active" ||
-    membership.role !== "buyer" ||
-    membership.accountId !== quote.buyerAccountId ||
+    !isQuoteBuyer(membership, quote.buyerAccountId) ||
     authorities.some((a) => a?.status === "revoked") ||
     !customer ||
     !payment ||
@@ -157,4 +156,27 @@ export async function monitorReceiptUsable(
     session.consentSubject,
   );
   return current?.binding === session.binding;
+}
+
+// One definition of "invalidate the current payment observation before
+// external I/O or consent loss". With a monitor fence, only that monitor's
+// own observation is removed.
+export async function invalidatePaymentObservation(
+  ctx: Pick<AdmissionContext, "db">,
+  paymentIntentId: GenericId<"paymentIntents">,
+  monitorId?: GenericId<"paymentMonitors">,
+  generation?: number,
+) {
+  const row = await ctx.db
+    .query("paymentObservations")
+    .withIndex("by_payment_intent", (q) =>
+      q.eq("paymentIntentId", paymentIntentId),
+    )
+    .unique();
+  if (
+    row &&
+    (!monitorId ||
+      (row.monitorId === monitorId && row.monitorGeneration === generation))
+  )
+    await ctx.db.delete(row._id);
 }
