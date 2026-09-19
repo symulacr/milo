@@ -8,42 +8,19 @@ import {
   monitorBinding,
 } from "../../../convex/paymentMonitor";
 import { REQUIRED_ENTRYPOINTS } from "../src/admission-policy";
-import {
-  CONSTRUCTOR_ENCODING,
-  publicConstructorFingerprints,
-} from "../src/public-constructor.mjs";
+import { buildQuote } from "./fixtures";
 
 // Explicit DB double: verifies adapter reads/writes, not Convex transaction/OCC behavior.
 function databaseDouble() {
   const now = Date.now();
   const hash = "a".repeat(64);
-  const quote = {
-    constructorVersion: 1 as const,
-    constructorEncoding: CONSTRUCTOR_ENCODING,
-    buyerCommitment: "1".repeat(64),
-    merchantCommitment: "2".repeat(64),
-    operatorCommitment: "3".repeat(64),
+  const quote = buildQuote({
     _id: "quote-row",
-    id: "quote-1",
-    scopeId: "scope-1",
-    network: "preprod",
-    nonce: "4".repeat(64),
-    version: 1,
-    amountMinor: 36000,
-    currency: "USD",
-    buyerAccountId: "buyer-1",
-    termsCommitment: hash,
-    artifactFingerprint: hash,
-    keySetFingerprint: hash,
-    rolesFingerprint: hash,
-    initialStateFingerprint: hash,
-    genesisHash: hash,
     acceptanceDeadlineSeconds: Math.floor(now / 1000) + 60,
     deliveryDeadlineSeconds: Math.floor(now / 1000) + 120,
     reviewDeadlineSeconds: Math.floor(now / 1000) + 180,
     resolutionDeadlineSeconds: Math.floor(now / 1000) + 240,
-  };
-  Object.assign(quote, publicConstructorFingerprints(quote));
+  });
   const payment = {
     _id: "payment-1",
     quoteId: quote.id,

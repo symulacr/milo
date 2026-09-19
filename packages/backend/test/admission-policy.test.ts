@@ -13,33 +13,16 @@ import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,
 } from "../src/public-constructor.mjs";
+import { buildQuote } from "./fixtures";
 
 const hash = "a".repeat(64);
-const quote: FrozenQuote = {
-  constructorVersion: 1,
-  constructorEncoding: CONSTRUCTOR_ENCODING,
-  buyerCommitment: "1".repeat(64),
-  merchantCommitment: "2".repeat(64),
-  operatorCommitment: "3".repeat(64),
-  id: "quote-1",
-  network: "preprod",
-  nonce: "4".repeat(64),
-  version: 1,
-  amountMinor: 36000,
-  currency: "USD",
-  termsCommitment: hash,
-  buyerAccountId: "buyer-1",
-  artifactFingerprint: hash,
-  keySetFingerprint: hash,
-  rolesFingerprint: hash,
-  initialStateFingerprint: hash,
-  genesisHash: hash,
+const quote: FrozenQuote = buildQuote({
+  scopeId: undefined,
   acceptanceDeadlineSeconds: 151,
   deliveryDeadlineSeconds: 152,
   reviewDeadlineSeconds: 153,
   resolutionDeadlineSeconds: 154,
-};
-Object.assign(quote, publicConstructorFingerprints(quote));
+});
 const authorization: PaymentAuthorization = {
   id: "auth-1",
   quoteId: quote.id,
