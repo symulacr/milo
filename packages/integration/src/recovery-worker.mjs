@@ -8,10 +8,10 @@ import {
   prepareBootstrap,
   requireCompletedLockedBootstrap,
 } from "./bootstrap.mjs";
-import { intentExpiry } from "./tx.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { artifacts, freshOrder, generated } from "./order.mjs";
 import { openBootstrapRecoveryStore } from "./recovery-store.mjs";
+import { intentExpiry } from "./tx.mjs";
 
 let serial = 0;
 const requests = new Map();
