@@ -3,6 +3,7 @@ import type {
   GenericQueryCtx,
 } from "convex/server";
 import type { GenericId } from "convex/values";
+import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { canonicalPayload } from "../packages/backend/src/trusted-provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
 import type schema from "./schema";
@@ -116,10 +117,7 @@ export async function monitorBinding(
     authorities.some((a) => a?.status === "revoked") ||
     !customer ||
     !payment ||
-    payment.quoteVersion !== quote.version ||
-    payment.buyerAccountId !== quote.buyerAccountId ||
-    payment.amountMinor !== quote.amountMinor ||
-    payment.currency !== quote.currency ||
+    !paymentBindsQuote(payment, quote) ||
     payment.network !== "preprod" ||
     quote.network !== "preprod" ||
     payment.environment !== "test" ||

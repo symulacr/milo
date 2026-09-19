@@ -5,6 +5,7 @@ import {
   queryGeneric,
 } from "convex/server";
 import { type GenericId, v } from "convex/values";
+import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
@@ -369,11 +370,10 @@ export const finish = internalMutationGeneric({
     if (
       auth &&
       auth.id === payment._id &&
-      auth.quoteId === payment.quoteId &&
-      auth.quoteVersion === payment.quoteVersion &&
-      auth.buyerAccountId === payment.buyerAccountId &&
-      auth.amountMinor === payment.amountMinor &&
-      auth.currency === payment.currency &&
+      // monitorBinding has already kernel-bound current.payment to current.quote,
+      // so comparing the authorization against the quote equals comparing it
+      // against the payment row.
+      paymentBindsQuote(auth, current.quote) &&
       usableObservation(auth, now, session.startedAt)
     ) {
       await ctx.db.insert("paymentObservations", {
