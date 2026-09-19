@@ -49,25 +49,25 @@ describe("route parity (01 §7.4/§9.1)", () => {
   test("vercel.json rewrites cover every prefix with the right target", () => {
     // Vercel applies rewrites first-match-wins: the FIRST rule for a source
     // decides, so duplicates or a wrong early rule must fail here, not only
-    // on the deployed host.
-    const sources = vercelJson.rewrites.map((rewrite) => rewrite.source);
-    expect(new Set(sources).size).toBe(sources.length);
-    const first = new Map(
-      vercelJson.rewrites.map((rewrite) => [rewrite.source, rewrite]),
-    );
-    for (const prefix of publicAppPrefixes) {
-      expect(first.get(`${prefix}/:path+`)?.destination).toBe(
-        "/public-app.html",
-      );
+    // on the deployed host. Index scan, not a Map: a Map would keep the LAST
+    // duplicate and could pass a wrong-destination-first pair.
+    const rewrites = vercelJson.rewrites;
+    const firstBySource = new Map<string, string>();
+    for (const rewrite of rewrites) {
+      if (!firstBySource.has(rewrite.source)) {
+        firstBySource.set(rewrite.source, rewrite.destination);
+      }
     }
-    for (const prefix of workspaceAppPrefixes) {
-      expect(first.get(`${prefix}/:path+`)?.destination).toBe(
-        "/orders/index.html",
-      );
-    }
-    expect(sources.length).toBe(
+    expect(rewrites.length).toBe(firstBySource.size);
+    expect(rewrites.length).toBe(
       publicAppPrefixes.length + workspaceAppPrefixes.length,
     );
+    for (const prefix of publicAppPrefixes) {
+      expect(firstBySource.get(`${prefix}/:path+`)).toBe("/public-app.html");
+    }
+    for (const prefix of workspaceAppPrefixes) {
+      expect(firstBySource.get(`${prefix}/:path+`)).toBe("/orders/index.html");
+    }
   });
 
   test("no stale static route files are resurrected", () => {
