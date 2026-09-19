@@ -9,10 +9,7 @@ import {
   type PaymentAuthorization,
   REQUIRED_ENTRYPOINTS,
 } from "../src/admission-policy";
-import {
-  CONSTRUCTOR_ENCODING,
-  publicConstructorFingerprints,
-} from "../src/public-constructor.mjs";
+import { publicConstructorFingerprints } from "../src/public-constructor.mjs";
 import { buildQuote } from "./fixtures";
 
 const hash = "a".repeat(64);
