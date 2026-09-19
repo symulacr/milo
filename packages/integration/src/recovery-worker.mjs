@@ -8,6 +8,7 @@ import {
   prepareBootstrap,
   requireCompletedLockedBootstrap,
 } from "./bootstrap.mjs";
+import { intentExpiry } from "./tx.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { artifacts, freshOrder, generated } from "./order.mjs";
 import { openBootstrapRecoveryStore } from "./recovery-store.mjs";
@@ -91,7 +92,7 @@ async function run({ resume, binding, directory, key, coinPublicKey }) {
       "undeployed",
       undefined,
       undefined,
-      L.Intent.new(new Date(Date.now() + 600_000)).addDeploy(deployment),
+      L.Intent.new(intentExpiry()).addDeploy(deployment),
     );
     record = {
       ...order,
@@ -188,7 +189,7 @@ async function run({ resume, binding, directory, key, coinPublicKey }) {
               plan,
               signingKey: record.signingKey,
               networkId: "undeployed",
-              ttl: new Date(Date.now() + 600_000),
+              ttl: intentExpiry(),
               lock: step.name === "lock",
             });
       receipt = await call("submit", {

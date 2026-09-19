@@ -5,15 +5,10 @@ import { proofCircuits } from "./artifacts.mjs";
 import { inspectBootstrap } from "./bootstrap.mjs";
 import { publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
+import { maintenanceTx } from "./tx.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
-const wrap = (update, networkId) =>
-  L.Transaction.fromParts(
-    networkId,
-    undefined,
-    undefined,
-    L.Intent.new(new Date(Date.now() + 600_000)).addMaintenanceUpdate(update),
-  );
+const wrap = (update, networkId) => maintenanceTx(networkId, update);
 
 export function controlUpdate({
   address,

@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { requireCompletedLockedBootstrap } from "./bootstrap.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
+import { intentExpiry, maintenanceTx } from "./tx.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 export const maintenanceCases = Object.freeze([
@@ -178,9 +179,7 @@ export async function runRetainedKeyAudit({
             networkId,
             undefined,
             undefined,
-            L.Intent.new(new Date(Date.now() + 600_000)).addMaintenanceUpdate(
-              replayUpdate,
-            ),
+            maintenanceTx(networkId, replayUpdate),
           )
         : retainedKeyProposal({
             kind: kind.startsWith("locked-") ? "restore-authority" : kind,
@@ -195,7 +194,7 @@ export async function runRetainedKeyAudit({
             plan,
             signingKey,
             networkId,
-            ttl: new Date(Date.now() + 600_000),
+            ttl: intentExpiry(),
           });
     emit("maintenance-proposal-constructed", {
       kind,

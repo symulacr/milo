@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
+import { intentExpiry, maintenanceTx } from "./tx.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { balanceWithDustReadiness } from "./dust.mjs";
 import { deploymentPreflight } from "./resources.mjs";
@@ -186,7 +187,7 @@ async function main() {
         dustSecretKey: funder.dustSecretKey,
       },
       {
-        ttl: new Date(Date.now() + 600_000),
+        ttl: intentExpiry(),
       },
     );
     const signed = await funder.wallet.signRecipe(recipe, (payload) =>
@@ -550,12 +551,7 @@ async function main() {
       oldAuthority.counter,
     );
     update = update.addSignature(0n, L.signData(signingKey, update.dataToSign));
-    const unprovenTx = L.Transaction.fromParts(
-      env.networkId,
-      undefined,
-      undefined,
-      L.Intent.new(new Date(Date.now() + 600_000)).addMaintenanceUpdate(update),
-    );
+    const unprovenTx = maintenanceTx(env.networkId, update);
     const lockReceipt = publicReceipt(
       await submitTx(providers, { unprovenTx }),
     );
