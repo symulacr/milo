@@ -13,6 +13,7 @@ import {
   transition,
 } from "../../../../packages/domain/src/prototype";
 import { sampleFiles, verifySampleFiles } from "../assets";
+import { workspaceRoutes } from "../route-table";
 
 export const originalQuote = {
   name: "Still — a quieter kind of care",
@@ -78,14 +79,9 @@ type WorkspaceModal =
 /** Per-route document titles; matched most-specific first. */
 export function routeTitle(pathname: string): string {
   const path = pathname.replace(/\/+$/, "") || "/";
-  const exact: Record<string, string> = {
-    "/orders": "Your orders",
-    "/merchant/orders": "Studio queue",
-    "/merchant/quotes/new": "New sample quote",
-    "/operator/cases": "Resolution desk",
-    "/account": "Account",
-    "/connections": "Connection diagnostics",
-  };
+  const exact: Record<string, string> = Object.fromEntries(
+    workspaceRoutes.map((route) => [route.path, route.title]),
+  );
   if (exact[path]) return `Milo — ${exact[path]}`;
   if (/^\/orders\/sample-001\/receipt$/.test(path))
     return "Milo — Sample receipt";
