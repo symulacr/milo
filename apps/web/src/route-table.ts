@@ -26,7 +26,14 @@ export const workspaceAppRoutes = [
 /** Prefixes served by the public entry (dev wildcard + static-host rule). */
 export const publicAppPrefixes = ["/m"];
 
-/** Prefixes served by the workspace entry (dev wildcard + Vercel rewrite). */
+/**
+ * Prefixes served by the workspace entry (dev wildcard + Vercel rewrite).
+ * Host note: unknown paths fall through to the workspace app in dev and via
+ * the generated _redirects catch-all, while Vercel 404s them (its rewrites
+ * have no catch-all here and filesystem always wins over rewrites). That
+ * difference is intentional: no rewrite may shadow the emitted
+ * dist/api/public-config file or the static assets.
+ */
 export const workspaceAppPrefixes = [
   "/quotes",
   "/orders",
