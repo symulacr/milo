@@ -6,6 +6,7 @@ import {
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { proofCircuits } from "./artifacts.mjs";
 import { publicReceipt } from "./config.mjs";
+import { intentExpiry } from "./tx.mjs";
 import { generated, witnesses } from "./order.mjs";
 
 // Generated readers require Compact's WASM identity, not ledger-v8's.
@@ -203,7 +204,7 @@ export async function runStagedBootstrap({
     reservationEntrypointInitiallyAvailable: false,
     immutableOrderAdmission: false,
   });
-  const ttl = () => new Date(Date.now() + 600_000);
+  const ttl = intentExpiry;
   const sendAndObserve = async (name, unprovenTx) => {
     step(name);
     const receipt = publicReceipt(await submit(unprovenTx));
