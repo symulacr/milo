@@ -14,14 +14,19 @@ export const publicAppRoutes = [
   "/pilot",
 ];
 
-export const workspaceAppRoutes = [
-  "/orders",
-  "/merchant/orders",
-  "/merchant/quotes/new",
-  "/operator/cases",
-  "/account",
-  "/connections",
-];
+/** Workspace routes with their document titles; workspaceAppRoutes and model.tsx routeTitle derive from this table. */
+export const workspaceRoutes = [
+  { path: "/orders", title: "Your orders" },
+  { path: "/merchant/orders", title: "Studio queue" },
+  { path: "/merchant/quotes/new", title: "New sample quote" },
+  { path: "/operator/cases", title: "Resolution desk" },
+  { path: "/account", title: "Account" },
+  { path: "/connections", title: "Connection diagnostics" },
+] as const;
+
+export const workspaceAppRoutes = workspaceRoutes.map(
+  (route): string => route.path,
+);
 
 /** Prefixes served by the public entry (dev wildcard + static-host rule). */
 export const publicAppPrefixes = ["/m"];
