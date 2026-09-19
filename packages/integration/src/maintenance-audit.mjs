@@ -141,6 +141,41 @@ export async function observeFinalizedContract({
   throw new Error("Indexed observation deadline exceeded");
 }
 
+
+/**
+ * The single construction point for audit-case transactions. The replay case
+ * wraps the signed update itself; nesting a Transaction where an update
+ * belongs produced a silently-invalid transaction (intents undefined), so
+ * this helper is the shape gate's test subject.
+ */
+export function auditCaseTx({
+  kind,
+  replayUpdate,
+  address,
+  state,
+  plan,
+  signingKey,
+  networkId,
+}) {
+  return kind === "locked-signed-update-replay"
+    ? maintenanceTx(networkId, replayUpdate)
+    : retainedKeyProposal({
+        kind: kind.startsWith("locked-") ? "restore-authority" : kind,
+        counterDelta:
+          kind === "locked-stale-counter"
+            ? -1n
+            : kind === "locked-future-counter"
+              ? 1n
+              : 0n,
+        address,
+        state,
+        plan,
+        signingKey,
+        networkId,
+        ttl: intentExpiry(),
+      });
+}
+
 export async function runRetainedKeyAudit({
   address,
   state,
@@ -173,29 +208,15 @@ export async function runRetainedKeyAudit({
     const before = await snapshot(address);
     requireCompletedLockedBootstrap(before.state, plan);
     assert.equal(hash(before.state.serialize()), expectedStateHash);
-    const tx =
-      kind === "locked-signed-update-replay"
-        ? L.Transaction.fromParts(
-            networkId,
-            undefined,
-            undefined,
-            maintenanceTx(networkId, replayUpdate),
-          )
-        : retainedKeyProposal({
-            kind: kind.startsWith("locked-") ? "restore-authority" : kind,
-            counterDelta:
-              kind === "locked-stale-counter"
-                ? -1n
-                : kind === "locked-future-counter"
-                  ? 1n
-                  : 0n,
-            address,
-            state: before.state,
-            plan,
-            signingKey,
-            networkId,
-            ttl: intentExpiry(),
-          });
+    const tx = auditCaseTx({
+      kind,
+      replayUpdate,
+      address,
+      state: before.state,
+      plan,
+      signingKey,
+      networkId,
+    });
     emit("maintenance-proposal-constructed", {
       kind,
       address,
