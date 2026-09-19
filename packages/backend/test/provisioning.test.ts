@@ -28,58 +28,28 @@ import {
   PROVIDER_RETRY_WINDOW_MS,
   usableObservation,
 } from "../src/provisioning-policy";
+import { publicConstructorFingerprints } from "../src/public-constructor.mjs";
 import { provisionTestIntent } from "../src/stripe-provisioning.server";
+import { buildQuote } from "./fixtures";
 
 type Row = Record<string, unknown>;
-
-import {
-  CONSTRUCTOR_ENCODING,
-  publicConstructorFingerprints,
-} from "../src/public-constructor.mjs";
 
 // Explicit transaction/provider doubles: not hosted OCC or real Stripe evidence.
 function fixture() {
   const now = Date.now();
-  const quote = {
-    constructorVersion: 1 as const,
-    constructorEncoding: CONSTRUCTOR_ENCODING,
-    buyerCommitment: "1".repeat(64),
-    merchantCommitment: "2".repeat(64),
-    operatorCommitment: "3".repeat(64),
-    termsCommitment: "a".repeat(64),
+  const quote = buildQuote({
     _id: "approved",
     _creationTime: now,
     id: "quote",
     scopeId: "scope",
-    network: "preprod",
-    nonce: "4".repeat(64),
-    version: 1,
     amountMinor: 1200,
-    currency: "USD",
-    imagePackPolicy: {
-      serviceVersion: 1,
-      packQuantity: 1,
-      outputCount: 3,
-      unitPriceMinor: 1200,
-    },
     buyerAccountId: "buyer",
-    ...Object.fromEntries(
-      [
-        "termsCommitment",
-        "artifactFingerprint",
-        "keySetFingerprint",
-        "rolesFingerprint",
-        "initialStateFingerprint",
-        "genesisHash",
-      ].map((key) => [key, "a".repeat(64)]),
-    ),
+    expiresAt: now + 300_000,
     acceptanceDeadlineSeconds: Math.floor(now / 1000) + 600,
     deliveryDeadlineSeconds: Math.floor(now / 1000) + 1200,
     reviewDeadlineSeconds: Math.floor(now / 1000) + 1800,
     resolutionDeadlineSeconds: Math.floor(now / 1000) + 2400,
-    expiresAt: now + 300_000,
-  };
-  Object.assign(quote, publicConstructorFingerprints(quote));
+  });
   const tables: Record<string, Row[]> = {
     trustedProvisioning: [],
     approvedQuotes: [quote],

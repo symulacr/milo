@@ -21,6 +21,7 @@ import {
   canonicalPayload,
   validateProvenance,
 } from "../src/trusted-provisioning-policy";
+import { buildQuote } from "./fixtures";
 
 type Row = Record<string, unknown>;
 const provenance = {
@@ -132,55 +133,21 @@ const customer = {
   },
 };
 
-import {
-  CONSTRUCTOR_ENCODING,
-  publicConstructorFingerprints,
-} from "../src/public-constructor.mjs";
-
 function quote() {
   const now = Date.now();
-  const result = {
-    kind: "quote",
-    value: {
-      constructorVersion: 1 as const,
-      constructorEncoding: CONSTRUCTOR_ENCODING,
-      buyerCommitment: "1".repeat(64),
-      merchantCommitment: "2".repeat(64),
-      operatorCommitment: "3".repeat(64),
-      termsCommitment: "a".repeat(64),
-      id: "quote",
-      scopeId: "scope",
-      network: "preprod",
-      nonce: "4".repeat(64),
-      version: 2,
-      amountMinor: 1200,
-      currency: "USD",
-      buyerAccountId: "buyer",
-      ...Object.fromEntries(
-        [
-          "termsCommitment",
-          "artifactFingerprint",
-          "keySetFingerprint",
-          "rolesFingerprint",
-          "initialStateFingerprint",
-          "genesisHash",
-        ].map((key) => [key, "a".repeat(64)]),
-      ),
-      acceptanceDeadlineSeconds: Math.floor(now / 1000) + 600,
-      deliveryDeadlineSeconds: Math.floor(now / 1000) + 1200,
-      reviewDeadlineSeconds: Math.floor(now / 1000) + 1800,
-      resolutionDeadlineSeconds: Math.floor(now / 1000) + 2400,
-      expiresAt: now + 300000,
-      imagePackPolicy: {
-        serviceVersion: 1,
-        packQuantity: 1,
-        outputCount: 3,
-        unitPriceMinor: 1200,
-      },
-    },
-  };
-  Object.assign(result.value, publicConstructorFingerprints(result.value));
-  return result;
+  const value = buildQuote({
+    id: "quote",
+    scopeId: "scope",
+    version: 2,
+    amountMinor: 1200,
+    buyerAccountId: "buyer",
+    expiresAt: now + 300000,
+    acceptanceDeadlineSeconds: Math.floor(now / 1000) + 600,
+    deliveryDeadlineSeconds: Math.floor(now / 1000) + 1200,
+    reviewDeadlineSeconds: Math.floor(now / 1000) + 1800,
+    resolutionDeadlineSeconds: Math.floor(now / 1000) + 2400,
+  });
+  return { kind: "quote", value };
 }
 const args = (payload: unknown, requestId = "request-1") => ({
   payload,
