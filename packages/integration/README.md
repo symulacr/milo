@@ -2,8 +2,8 @@
 
 ## Separate Preprod profile
 
-`npm run preprod` runs a read-only profile check in this package's pinned Node
-24.20.0 process. It never constructs a testkit wallet, reads a seed, signs,
+`node src/preprod-profile.mjs` (run from this package) is a read-only profile
+check in this package's pinned Node 24.20.0 process. It never constructs a testkit wallet, reads a seed, signs,
 submits, deploys, or records order admission. `local.mjs`, `bootstrap.mjs` and the
 native admission observer retain their `undeployed` guards unchanged.
 
