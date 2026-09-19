@@ -36,6 +36,13 @@ export const frozenQuoteFields = {
   ...fingerprints,
   ...deadlines,
 };
+/** The image-pack policy shape, shared by the schema table and the trusted payload union. */
+export const imagePackPolicyFields = {
+  serviceVersion: v.literal(1),
+  packQuantity: v.literal(1),
+  outputCount: v.literal(3),
+  unitPriceMinor: v.number(),
+};
 export const deploymentObservationFields = {
   ...publicConstructorFields,
   id: v.string(),

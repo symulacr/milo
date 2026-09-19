@@ -17,7 +17,8 @@ import {
 import { validPublicConstructor } from "../packages/backend/src/public-constructor.mjs";
 import type { AdmissionContext } from "./admissionContext";
 import { frozenQuoteFields, paymentAuthorization } from "./admissionValidators";
-import { requireMembership } from "./auth/identity";
+import { isQuoteBuyer, requireMembership } from "./auth/identity";
+import { invalidatePaymentObservation } from "./paymentMonitor";
 import { assertProvisioningActive } from "./trustedProvisioning";
 
 export async function freezeApprovedQuote(
@@ -32,10 +33,7 @@ export async function freezeApprovedQuote(
   if (!approved) throw new Error("Approved quote required");
   await assertProvisioningActive(ctx, "quote", input.quoteId);
   const membership = await requireMembership(ctx, approved.scopeId);
-  if (
-    membership.role !== "buyer" ||
-    membership.accountId !== approved.buyerAccountId
-  )
+  if (!isQuoteBuyer(membership, approved.buyerAccountId))
     throw new Error("Quote buyer required");
   if (approved.version !== input.expectedVersion)
     throw new Error("Quote version changed");
@@ -83,10 +81,7 @@ export async function requestPaymentJob(
   await assertProvisioningActive(ctx, "quote", quote.id);
   await assertProvisioningActive(ctx, "customer", quote.buyerAccountId);
   const membership = await requireMembership(ctx, quote.scopeId);
-  if (
-    membership.role !== "buyer" ||
-    membership.accountId !== quote.buyerAccountId
-  )
+  if (!isQuoteBuyer(membership, quote.buyerAccountId))
     throw new Error("Quote buyer required");
   const now = Date.now();
   const monitor = await ctx.db
@@ -163,15 +158,7 @@ export async function requestPaymentJob(
       consentAt: now,
     });
   // Invalidate before external I/O: failed refreshes must not retain a usable authorization.
-  if (payment) {
-    const observation = await ctx.db
-      .query("paymentObservations")
-      .withIndex("by_payment_intent", (q) =>
-        q.eq("paymentIntentId", payment._id),
-      )
-      .unique();
-    if (observation) await ctx.db.delete(observation._id);
-  }
+  if (payment) await invalidatePaymentObservation(ctx, payment._id);
   await ctx.scheduler.runAfter(
     0,
     makeFunctionReference<"action">("stripeProvisioning:run"),
@@ -229,10 +216,7 @@ export const begin = internalMutationGeneric({
       !quote ||
       (job.mode === "observe" && !payment) ||
       !validJobClock(job, now) ||
-      !membership ||
-      membership.status !== "active" ||
-      membership.role !== "buyer" ||
-      membership.accountId !== quote.buyerAccountId ||
+      !isQuoteBuyer(membership, quote.buyerAccountId) ||
       (!payment && quote.acceptanceDeadlineSeconds * 1000 <= now) ||
       (!payment &&
         job.firstAttemptAt !== undefined &&
@@ -291,11 +275,7 @@ export const finish = internalMutationGeneric({
         q.eq("privySubject", job.consentSubject).eq("scopeId", quote.scopeId),
       )
       .unique();
-    if (
-      membership?.status !== "active" ||
-      membership.role !== "buyer" ||
-      membership.accountId !== quote.buyerAccountId
-    ) {
+    if (!isQuoteBuyer(membership, quote.buyerAccountId)) {
       await ctx.db.patch(job._id, { state: "blocked" });
       return null;
     }
@@ -355,13 +335,7 @@ export const finish = internalMutationGeneric({
         !usableObservation(authorization, now, job.startedAt)
       )
         throw new Error("Invalid or stale trusted observation");
-      const current = await ctx.db
-        .query("paymentObservations")
-        .withIndex("by_payment_intent", (q) =>
-          q.eq("paymentIntentId", payment._id),
-        )
-        .unique();
-      if (current) await ctx.db.delete(current._id);
+      await invalidatePaymentObservation(ctx, payment._id);
       await ctx.db.insert("paymentObservations", {
         paymentIntentId: payment._id,
         authorization,

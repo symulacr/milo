@@ -4,13 +4,15 @@ import {
   mutationGeneric,
   queryGeneric,
 } from "convex/server";
-import { type GenericId, v } from "convex/values";
+import { v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
 import { paymentAuthorization } from "./admissionValidators";
+import { isQuoteBuyer } from "./auth/identity";
 import {
+  invalidatePaymentObservation,
   MONITOR_DURATION_MS,
   MONITOR_INTERVAL_MS,
   MONITOR_LEASE_MS,
@@ -86,9 +88,7 @@ export const status = queryGeneric({
         ));
       if (
         !quote ||
-        membership?.status !== "active" ||
-        membership.role !== "buyer" ||
-        membership.accountId !== quote.buyerAccountId ||
+        !isQuoteBuyer(membership, quote.buyerAccountId) ||
         authorities?.some((row) => row?.status === "revoked")
       )
         throw new Error(
@@ -128,26 +128,6 @@ export const status = queryGeneric({
     };
   },
 });
-
-async function invalidate(
-  ctx: AdmissionContext,
-  paymentIntentId: GenericId<"paymentIntents">,
-  monitorId?: GenericId<"paymentMonitors">,
-  generation?: number,
-) {
-  const row = await ctx.db
-    .query("paymentObservations")
-    .withIndex("by_payment_intent", (q) =>
-      q.eq("paymentIntentId", paymentIntentId),
-    )
-    .unique();
-  if (
-    row &&
-    (!monitorId ||
-      (row.monitorId === monitorId && row.monitorGeneration === generation))
-  )
-    await ctx.db.delete(row._id);
-}
 
 export const start = mutationGeneric({
   args: {
@@ -197,7 +177,7 @@ export const start = mutationGeneric({
     };
     const id = old?._id ?? (await ctx.db.insert("paymentMonitors", value));
     if (old) await ctx.db.patch(id, value);
-    await invalidate(ctx, current.payment._id);
+    await invalidatePaymentObservation(ctx, current.payment._id);
     await ctx.scheduler.runAfter(0, tickRef, {
       monitorId: id,
       generation: value.generation,
@@ -220,7 +200,7 @@ export const stop = mutationGeneric({
       throw new Error("Monitoring consent owner required");
     // Withdrawing consent remains possible after membership or quote revocation.
     if (session && session.state !== "stopped") {
-      await invalidate(
+      await invalidatePaymentObservation(
         ctx,
         session.paymentIntentId,
         session._id,
@@ -255,7 +235,7 @@ export const tick = internalMutationGeneric({
       session.consentSubject,
     );
     if (!monitorLive(session, now) || current?.binding !== session.binding) {
-      await invalidate(
+      await invalidatePaymentObservation(
         ctx,
         session.paymentIntentId,
         session._id,
@@ -270,7 +250,7 @@ export const tick = internalMutationGeneric({
         : session.nextAt;
     if (now < due) return null;
     const attempt = session.attempt + 1;
-    await invalidate(
+    await invalidatePaymentObservation(
       ctx,
       session.paymentIntentId,
       session._id,
@@ -318,7 +298,7 @@ export const begin = internalMutationGeneric({
       Date.now() >= session.startedAt + MONITOR_LEASE_MS ||
       current?.binding !== session.binding
     ) {
-      await invalidate(
+      await invalidatePaymentObservation(
         ctx,
         session.paymentIntentId,
         session._id,
@@ -351,7 +331,7 @@ export const finish = internalMutationGeneric({
       session.quoteId,
       session.consentSubject,
     );
-    await invalidate(
+    await invalidatePaymentObservation(
       ctx,
       session.paymentIntentId,
       session._id,

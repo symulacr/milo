@@ -10,7 +10,7 @@ import {
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import type { AdmissionContext } from "./admissionContext";
 import { admissionArgs } from "./admissionValidators";
-import { requireMembership } from "./auth/identity";
+import { isQuoteBuyer, requireMembership } from "./auth/identity";
 import { monitorReceiptUsable } from "./paymentMonitor";
 import { assertProvisioningActive } from "./trustedProvisioning";
 
@@ -31,10 +31,7 @@ export async function admitCanonical(
   await assertProvisioningActive(ctx, "quote", quote.id);
   await assertProvisioningActive(ctx, "customer", quote.buyerAccountId);
   const membership = await requireMembership(ctx, quote.scopeId);
-  if (
-    membership.role !== "buyer" ||
-    membership.accountId !== quote.buyerAccountId
-  )
+  if (!isQuoteBuyer(membership, quote.buyerAccountId))
     throw new Error("Authenticated quote buyer required");
   const reject = (reason: string): AdmissionDecision => ({
     kind: "rejected",

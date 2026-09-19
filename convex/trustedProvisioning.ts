@@ -9,7 +9,10 @@ import {
   validateProvenance,
 } from "../packages/backend/src/trusted-provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
-import { frozenQuoteFields } from "./admissionValidators";
+import {
+  frozenQuoteFields,
+  imagePackPolicyFields,
+} from "./admissionValidators";
 
 const provenance = v.object({
   operatorId: v.string(),
@@ -43,12 +46,7 @@ const payload = v.union(
     value: v.object({
       ...frozenQuoteFields,
       expiresAt: v.number(),
-      imagePackPolicy: v.object({
-        serviceVersion: v.literal(1),
-        packQuantity: v.literal(1),
-        outputCount: v.literal(3),
-        unitPriceMinor: v.number(),
-      }),
+      imagePackPolicy: v.object(imagePackPolicyFields),
     }),
   }),
 );
