@@ -5,6 +5,7 @@ import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { proofCircuits } from "../src/artifacts.mjs";
 import { prepareBootstrap } from "../src/bootstrap.mjs";
 import {
+  auditCaseTx,
   maintenanceCases,
   observeFinalizedContract,
   retainedKeyProposal,
@@ -332,4 +333,26 @@ test("MID-T01 snapshots use node as-of state on empty blocks, cross-check indexe
     }),
     /No later/,
   );
+});
+
+test("audit-case construction wraps the replay update in exactly one intent (double-wrap gate)", () => {
+  const f = fixture();
+  const proposal = retainedKeyProposal({ ...f, kind: "replace-verifier" });
+  const signedUpdate = [...proposal.intents.values()][0].actions[0];
+  const tx = auditCaseTx({
+    kind: "locked-signed-update-replay",
+    replayUpdate: signedUpdate,
+    address: f.address,
+    state: f.state,
+    plan: f.plan,
+    signingKey: f.signingKey,
+    networkId: f.networkId,
+  });
+  // A Transaction nested where an update belongs yields intents === undefined.
+  assert(tx.intents !== undefined, "intents must be defined");
+  const intents = [...tx.intents.values()];
+  assert.equal(intents.length, 1);
+  assert.equal(intents[0].actions.length, 1);
+  assert(intents[0].actions[0] instanceof L.MaintenanceUpdate);
+  assert.equal(intents[0].actions[0].address, f.address);
 });
