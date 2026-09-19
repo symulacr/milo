@@ -141,7 +141,6 @@ export async function observeFinalizedContract({
   throw new Error("Indexed observation deadline exceeded");
 }
 
-
 /**
  * The single construction point for audit-case transactions. The replay case
  * wraps the signed update itself; nesting a Transaction where an update
