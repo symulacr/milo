@@ -145,6 +145,31 @@ describe("read-only PREPROD Lace", () => {
     await connection.refresh();
     expect(states.at(-1)?.status).toBe("error");
   });
+  test("forget during the usage hint cannot restore connected state", async () => {
+    const fake = wallet();
+    const { connection, states } = session();
+    // v4 hintUsage may await user interaction; a disconnect during that
+    // window must win over the now-stale connect attempt.
+    let resolveHint!: () => void;
+    const hintInvoked = new Promise<void>((invoked) => {
+      (fake.api as unknown as Record<string, unknown>).hintUsage = () => {
+        invoked();
+        return new Promise<void>((done) => {
+          resolveHint = done;
+        });
+      };
+    });
+    const pending = connection.connect(fake);
+    await hintInvoked;
+    connection.disconnect();
+    resolveHint();
+    await pending;
+    expect(states.at(-1)?.status).toBe("disconnected");
+    // The stale handle must not be retained: refresh() stays a no-op.
+    const statusCalls = fake.status.mock.calls.length;
+    await connection.refresh();
+    expect(fake.status.mock.calls.length).toBe(statusCalls);
+  });
   test("forget during an in-flight status check cannot restore connected state", async () => {
     const fake = wallet();
     const { connection, states } = session();
