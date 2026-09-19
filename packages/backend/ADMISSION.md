@@ -80,7 +80,7 @@ explicit; deployment observation storage still has no application write API.
 
 ## Real local Convex verification
 
-Run `npm run test:convex-local` on Linux x64. The isolated project and credentials
+Run the local verification (`node scripts/convex-local-verify.mjs`, wrapped by the lifecycle check below) on Linux x64. The isolated project and credentials
 stay under ignored `.tools/convex-local`; root environment configuration is not
 modified. The exact official native backend is SHA-256 checked before execution.
 This uses the [official anonymous local mode](https://docs.convex.dev/cli/agent-mode),
