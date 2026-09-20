@@ -71,12 +71,7 @@ export function retainedKeyProposal({
   const signature = L.signData(signingKey, update.dataToSign);
   assert(L.verifySignature(plan.signer, update.dataToSign, signature));
   update = update.addSignature(0n, signature);
-  return L.Transaction.fromParts(
-    networkId,
-    undefined,
-    undefined,
-    L.Intent.new(ttl).addMaintenanceUpdate(update),
-  );
+  return maintenanceTx(networkId, update, ttl);
 }
 
 export async function observeFinalizedContract({
