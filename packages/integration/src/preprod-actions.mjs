@@ -115,8 +115,6 @@ async function maintenanceKey(config) {
 async function deployOrder({
   Contract,
   providers,
-  config,
-  signingKey,
   configuration,
   privateStateFor,
   label,
@@ -128,8 +126,11 @@ async function deployOrder({
   const compiled = await compiledContract(Contract);
   const deployed = await deployContract(providers, {
     compiledContract: compiled,
+    // The constructor takes the configuration: ContractConstructorOptionsWithArguments
+    // requires `args` whenever the constructor has parameters.
+    args: [configuration],
     privateStateId: `${label}-buyer`,
-    initialPrivateState: order.privateState("buyer"),
+    initialPrivateState: privateStateFor("buyer"),
     ...(signingKey ? { signingKey } : {}),
   });
   const receipt = {
@@ -524,7 +525,7 @@ async function negatives({ Contract, providers, config, emit }) {
 }
 
 /** The circuit breaker: the deployer's maintenance authority, exercised. */
-async function breaker({ deployed, circuit, zkConfigProvider, emit }) {
+async function breaker({ deployed, circuit, emit }) {
   const handle = deployed.circuitMaintenanceTx[circuit];
   assert(handle, `no maintenance interface for ${circuit}`);
   await attempt(emit, { breaker: "removeVerifierKey", circuit }, () =>
@@ -640,8 +641,7 @@ export async function run({
     initialPrivateState: order.privateState("buyer"),
   });
   const circuit = flags[flags.indexOf(mode) + 1];
-  if (mode === "--breaker")
-    return breaker({ deployed, circuit, zkConfigProvider, emit });
+  if (mode === "--breaker") return breaker({ deployed, circuit, emit });
   if (mode === "--restore")
     return restore({ deployed, circuit, zkConfigProvider, emit });
   if (mode === "--freeze") return freeze({ deployed, key: circuit, emit });
