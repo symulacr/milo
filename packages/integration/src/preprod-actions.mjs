@@ -106,6 +106,11 @@ async function maintenanceKey(config) {
   const path = resolve(config.runDir, "maintenance-key.json");
   try {
     const stored = JSON.parse(await readFile(path, "utf8"));
+    // Stored verbatim. SigningKey is a plain hex STRING whose decoded byte length must be
+    // 32..=35 (platform-js SigningKey.js: ConstrainedPlainHex({ byteLength: '32..=35' })), so
+    // sampleSigningKey()'s 64-character hex value is already the right shape. Hex-encoding it
+    // on write doubled it to 128 characters and deployContract failed with InvalidData at
+    // keys.signing.
     return { path, key: stored.key, created: false };
   } catch {
     return { path, key: undefined, created: true };
@@ -119,6 +124,9 @@ async function deployOrder({
   privateStateFor,
   label,
   emit,
+  // The caller supplies the maintenance signing key; without it in scope the spread below
+  // threw ReferenceError and the deploy never reached the network.
+  signingKey,
 }) {
   const { deployContract } = await import(
     "@midnight-ntwrk/midnight-js-contracts"
@@ -570,7 +578,7 @@ export async function run({
     ).sampleSigningKey();
   if (keyPath.created && !keyPath.key) {
     await mkdir(config.runDir, { recursive: true });
-    await writeFile(keyPath.path, JSON.stringify({ key: hex(signingKey) }), {
+    await writeFile(keyPath.path, JSON.stringify({ key: signingKey }), {
       mode: 0o600,
     });
     await chmod(keyPath.path, 0o600);
