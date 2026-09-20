@@ -81,6 +81,19 @@ export function localConfig(env) {
 }
 
 export function publicReceipt(data) {
+  // Our socket/HTTP submitter returns the node's extrinsic hash rather than the SDK's finality
+  // receipt, so a bare hash means "the node accepted the extrinsic; finality is not yet
+  // observed". It is NOT a claim of success: for those paths the real confirmation comes from
+  // observed ledger state (inspectBootstrap, queryContractState), and the receipt records that
+  // separately. Throwing here instead reported a successful maintenance insert as a failure.
+  if (typeof data === "string" && data.startsWith("0x"))
+    return {
+      txId: data,
+      txHash: null,
+      blockHash: null,
+      blockHeight: null,
+      status: "Submitted",
+    };
   if (data.status !== "SucceedEntirely")
     throw new Error("Transaction did not succeed entirely");
   return {

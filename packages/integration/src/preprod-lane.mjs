@@ -1188,7 +1188,12 @@ async function main() {
     // deploys seven keys and installs the remaining seven by signed maintenance
     // update at the same address. See staged-deploy.mjs.
     if (mode === "--deploy") {
-      const { submitTx } = await import(
+      // submitTxAsync, not submitTx. The blocking variant proves, balances, submits and then
+      // WAITS for confirmation over the relay subscription that Preprod closes with 1000
+      // Normal Closure, so the transaction lands on chain while the promise never resolves:
+      // two staged deploys reached block 2636337 and 2636398 and neither run recorded its own
+      // deploy before hanging. The async variant returns once the transaction is submitted.
+      const { submitTxAsync } = await import(
         "@midnight-ntwrk/midnight-js-contracts"
       );
       const {
@@ -1210,7 +1215,7 @@ async function main() {
         coinPublicKey: session.shieldedSecretKeys.coinPublicKey,
         verifierKeys: await zkConfigProvider.getVerifierKeys(proofCircuits),
         signingKey: maintenance.key,
-        submit: (unprovenTx) => submitTx(providers, { unprovenTx }),
+        submit: (unprovenTx) => submitTxAsync(providers, { unprovenTx }),
         observe: (address, blockHash) =>
           blockHash
             ? providers.publicDataProvider.queryContractState(address, {
