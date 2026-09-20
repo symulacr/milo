@@ -7,7 +7,7 @@ import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { proofCircuits } from "./artifacts.mjs";
 import { publicReceipt } from "./config.mjs";
 import { generated, witnesses } from "./order.mjs";
-import { intentExpiry } from "./tx.mjs";
+import { deployTx, intentExpiry, maintenanceTx } from "./tx.mjs";
 
 // Generated readers require Compact's WASM identity, not ledger-v8's.
 const ledgerOf = (state) =>
@@ -165,12 +165,7 @@ export function bootstrapMaintenance({
       );
   let update = new L.MaintenanceUpdate(address, updates, counter);
   update = update.addSignature(0n, L.signData(signingKey, update.dataToSign));
-  return L.Transaction.fromParts(
-    networkId,
-    undefined,
-    undefined,
-    L.Intent.new(ttl).addMaintenanceUpdate(update),
-  );
+  return maintenanceTx(networkId, update, ttl);
 }
 
 export async function runStagedBootstrap({
@@ -218,12 +213,7 @@ export async function runStagedBootstrap({
   };
   let state = await sendAndObserve(
     "MID-T01-staged-deploy",
-    L.Transaction.fromParts(
-      networkId,
-      undefined,
-      undefined,
-      L.Intent.new(ttl()).addDeploy(deployment),
-    ),
+    deployTx(networkId, deployment, ttl()),
   );
   inspectBootstrap(state, plan, plan.initialNames, 0n, false);
   assert.throws(() => requireCompletedLockedBootstrap(state, plan));

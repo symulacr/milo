@@ -11,7 +11,7 @@ import {
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { artifacts, freshOrder, generated } from "./order.mjs";
 import { openBootstrapRecoveryStore } from "./recovery-store.mjs";
-import { intentExpiry } from "./tx.mjs";
+import { deployTx, intentExpiry } from "./tx.mjs";
 
 let serial = 0;
 const requests = new Map();
@@ -88,12 +88,7 @@ async function run({ resume, binding, directory, key, coinPublicKey }) {
       signingKey,
     });
     const deployment = new L.ContractDeploy(plan.initial);
-    const prepared = L.Transaction.fromParts(
-      "undeployed",
-      undefined,
-      undefined,
-      L.Intent.new(intentExpiry()).addDeploy(deployment),
-    );
+    const prepared = deployTx("undeployed", deployment);
     record = {
       ...order,
       signingKey,
