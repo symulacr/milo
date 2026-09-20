@@ -85,6 +85,7 @@ import {
   encodeMerkleRoot,
   seedDustState,
 } from "./dust-seed.mjs";
+import { createHttpSubmitter } from "./http-submit.mjs";
 import { run } from "./preprod-actions.mjs";
 import {
   inspectSdkVersions,
@@ -727,6 +728,9 @@ async function buildSession(config, options = {}) {
     dustSeeded,
     dustSeedOutcome,
     address,
+    // Submissions go over the node's HTTPS JSON-RPC rather than the relay WebSocket, which
+    // Preprod closes mid-submit with 1000 Normal Closure. See http-submit.mjs.
+    submitter: createHttpSubmitter(config),
   };
 }
 
@@ -763,7 +767,7 @@ async function buildProviders(config, session) {
       );
       return session.wallet.finalizeRecipe(recipe);
     },
-    submitTx: (tx) => session.wallet.submitTransaction(tx),
+    submitTx: (tx) => session.submitter.submit(tx),
   };
   return {
     zkConfigProvider,
@@ -958,7 +962,7 @@ async function registerDust(config, session) {
     dustReceiver,
   );
   const finalized = await session.wallet.finalizeRecipe(recipe);
-  const txId = await session.wallet.submitTransaction(finalized);
+  const txId = await session.submitter.submit(finalized);
   await emit(config.runDir, {
     event: "dust-registration-submitted",
     address: session.address,
@@ -1185,6 +1189,7 @@ async function main() {
     await dispatch();
     completed = true;
   } finally {
+    await session.submitter?.close?.().catch(() => {});
     await session.wallet.stop().catch(() => {});
     // Clear the marker only after the mode ran to completion. A thrown error or a killed
     // process leaves it in place, which is the signal the next run reports.
