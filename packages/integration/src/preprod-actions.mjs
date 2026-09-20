@@ -12,7 +12,6 @@ import { witnesses } from "./order.mjs";
 
 const GENERATED = resolve("packages/contract/generated");
 
-const hex = (bytes) => Buffer.from(bytes).toString("hex");
 const bytes32 = () => new Uint8Array(randomBytes(32));
 
 /** A preprod-flavoured order with one private state per actor. */

@@ -1154,10 +1154,7 @@ async function checkBoundedRestore(checks, texts, opts, chain) {
         const attempts = [
           () => value.asString?.(),
           () =>
-            addressFormat.MidnightBech32m.encode(
-              NETWORK_ID,
-              value,
-            )?.toString(),
+            addressFormat.MidnightBech32m.encode(NETWORK_ID, value)?.toString(),
         ];
         for (const attempt of attempts) {
           try {
@@ -1172,8 +1169,7 @@ async function checkBoundedRestore(checks, texts, opts, chain) {
       };
       const derivedText = asBech32(derived);
       const restoredText = asBech32(restoredAddress);
-      const consistent =
-        restoredText === null || restoredText === derivedText;
+      const consistent = restoredText === null || restoredText === derivedText;
       checks.add(
         "dust-address",
         "dust address derived from the snapshot public key is well-formed and consistent",
