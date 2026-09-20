@@ -59,6 +59,13 @@ export function localConfig(env) {
   }
   return {
     networkId: "undeployed",
+    // Load-bearing despite having no in-repo consumer: removing these two
+    // fields makes the real local lane fail deterministically in wallet sync
+    // with a mn_addr_undefined HRP (V5 wave 4 regression, bisected and
+    // reverted). Do not delete them without a real-lane run proving the lane
+    // still passes.
+    walletNetworkId: "undeployed",
+    faucet: undefined,
     node: endpoint("MILO_LOCAL_NODE_HTTP", "http:"),
     nodeWS: endpoint("MILO_LOCAL_NODE_WS", "ws:"),
     indexer: endpoint("MILO_LOCAL_INDEXER_HTTP", "http:"),

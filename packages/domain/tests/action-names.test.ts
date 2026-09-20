@@ -18,7 +18,10 @@ describe("ACTION_NAMES single source", () => {
       new URL("../src/prototype.ts", import.meta.url).pathname,
       "utf8",
     );
-    const occurrences = source.match(/"pending"/g) ?? [];
-    expect(occurrences.length).toBe(1);
+    // Count an ACTION name, not a Scenario literal: a restored duplicate list
+    // makes "ready" appear three times (union, list, ACTION_NAMES).
+    const occurrences = source.match(/"ready"/g) ?? [];
+    expect(occurrences.length).toBe(2);
+    expect(source).toMatch(/export type ActionName = \(typeof ACTION_NAMES\)/);
   });
 });

@@ -99,8 +99,9 @@ scripts/convex-local-*
 # implementations (native-services-health is imported by native-node-smoke).
 scripts/preprod-observe.mjs
 
-# 7. Unreferenced leftovers, untracked after an import-graph and string-reference
-#    sweep across every tracked file. Nothing imports, links, runs or asserts them.
+# 7. Local-lane and leftover files, untracked after an import-graph and
+#    string-reference sweep. Some are referenced by other untracked local-lane
+#    tooling (noted inline); none is needed to build or run the shipped app.
 #    The working copies stay on disk, so local builds and the current deploy are
 #    unaffected. A fresh clone simply will not carry them.
 apps/web/public/_redirects
