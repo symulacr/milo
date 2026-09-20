@@ -17,12 +17,12 @@ describe("sealed bootstrap fields", () => {
   );
 
   test("protocolVersion and configuration are sealed", () => {
-    expect(source).toMatch(/export sealed ledger protocolVersion\s*:/);
-    expect(source).toMatch(/export sealed ledger configuration\s*:/);
+    expect(source).toMatch(/^export sealed ledger protocolVersion\s*:/m);
+    expect(source).toMatch(/^export sealed ledger configuration\s*:/m);
   });
 
   test("no other ledger entry is sealed", () => {
-    const sealed = source.match(/export sealed ledger/g) ?? [];
+    const sealed = source.match(/^export sealed ledger/gm) ?? [];
     expect(sealed.length).toBe(2);
   });
 });
