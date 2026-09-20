@@ -244,7 +244,36 @@ async function balances(session, ledger, timeoutMs = 120_000) {
 
 async function registerDust(config, session) {
   const Rx = await import("rxjs");
-  const state = await session.wallet.waitForSyncedState();
+  // Sync is the long pole on a fresh preprod wallet; report progress so a run
+  // can never fail invisibly.
+  const ticker = setInterval(() => {
+    Rx.firstValueFrom(session.wallet.state())
+      .then((s) =>
+        console.log(
+          JSON.stringify({
+            event: "sync-progress",
+            synced: s.isSynced === true,
+            shieldedConnected: s.shielded.state.progress.isConnected,
+            unshieldedConnected: s.unshielded.state.progress.isConnected,
+            dustConnected: s.dust.state.progress.isConnected,
+          }),
+        ),
+      )
+      .catch((error) =>
+        console.log(
+          JSON.stringify({
+            event: "sync-progress-error",
+            message: String(error?.message ?? error),
+          }),
+        ),
+      );
+  }, 30_000);
+  let state;
+  try {
+    state = await session.wallet.waitForSyncedState();
+  } finally {
+    clearInterval(ticker);
+  }
   const unregistered = state.unshielded.availableCoins.filter(
     (coin) => coin.meta?.registeredForDustGeneration !== true,
   );
