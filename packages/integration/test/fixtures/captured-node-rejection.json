@@ -1,0 +1,19 @@
+{
+ "_provenance": "captured from a real local-lane run at HEAD aee2714 on 2026-09-20 (event maintenance-node-rejection-observed in .hoplite/artifacts/native-node/run-AjoCMn/transactions.jsonl); do not hand-edit the captured fields",
+ "event": "maintenance-node-rejection-observed",
+ "kind": "insert-verifier",
+ "errorNames": [
+  "SubmissionError",
+  "RpcError"
+ ],
+ "rpcCodes": [
+  1010
+ ],
+ "runtimeCustomCodes": [
+  134
+ ],
+ "authorityRejectionVerified": true,
+ "conclusion": "KeyNotInCommittee",
+ "unchanged": true,
+ "stateSha256": "95e7a9446afff3d381bc5abc239932202f61c3345b1231d2e1239c2c1390069c"
+}
