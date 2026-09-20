@@ -78,6 +78,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { resolve } from "node:path";
+import { proofCircuits } from "./artifacts.mjs";
 import {
   DustSeedError,
   DustSeedTimeoutError,
@@ -1180,6 +1181,66 @@ async function main() {
       pureCircuits: generated.pureCircuits,
       Role: generated.Role,
     });
+    // --deploy is intercepted before the generic action dispatch (and therefore
+    // without editing preprod-actions.mjs). The monolithic deploy proves a
+    // single transaction over Preprod's per-extrinsic block limit because all
+    // fourteen verifier keys dominate its bytes_written; the staged path
+    // deploys seven keys and installs the remaining seven by signed maintenance
+    // update at the same address. See staged-deploy.mjs.
+    if (mode === "--deploy") {
+      const { submitTx } = await import(
+        "@midnight-ntwrk/midnight-js-contracts"
+      );
+      const {
+        loadOrCreateMaintenanceKey,
+        preprodConfiguration,
+        runStagedDeploy,
+        STAGED_DEPLOY_RECEIPT_FILE,
+      } = await import("./staged-deploy.mjs");
+      const maintenance = await loadOrCreateMaintenanceKey(config.runDir);
+      await emit(config.runDir, {
+        event: "staged-deploy-mode",
+        address: session.address,
+        network: config.networkId,
+        split: "7+7",
+      });
+      await runStagedDeploy({
+        networkId: config.networkId,
+        configuration: preprodConfiguration(Contract, config.networkId),
+        coinPublicKey: session.shieldedSecretKeys.coinPublicKey,
+        verifierKeys: await zkConfigProvider.getVerifierKeys(proofCircuits),
+        signingKey: maintenance.key,
+        submit: (unprovenTx) => submitTx(providers, { unprovenTx }),
+        observe: (address, blockHash) =>
+          blockHash
+            ? providers.publicDataProvider.queryContractState(address, {
+                type: "blockHash",
+                blockHash,
+              })
+            : providers.publicDataProvider.queryContractState(address),
+        emit: (event, fields = {}) => emit(config.runDir, { event, ...fields }),
+        receiptPath: resolve(config.runDir, STAGED_DEPLOY_RECEIPT_FILE),
+        explorer: config.explorer,
+        // Persist the maintenance signer into the private state provider as soon
+        // as the deploy lands, so the lane's --breaker/--restore/--freeze drills
+        // can still sign against the staged deployment after a partial run.
+        onDeployed: async ({ address }) => {
+          await providers.privateStateProvider.setSigningKey(
+            address,
+            maintenance.key,
+          );
+        },
+      });
+      await emit(config.runDir, {
+        event: "maintenance-authority",
+        note: "staged deployer holds a single-signature authority; key stored in the ignored run dir",
+        keyPath: maintenance.path,
+        created: maintenance.created,
+      });
+      const bytes = await saveWalletState(config, session.wallet);
+      await emit(config.runDir, { event: "wallet-state-saved", bytes });
+      return;
+    }
     await run({
       mode,
       flags,
