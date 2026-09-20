@@ -515,6 +515,10 @@ async function sweep({
 }
 
 function scenarioSteps(label) {
+  // approve(expectedDelivery) must equal what submitDelivery submitted, so ONE delivery value
+  // is created per scenario and shared by both steps. Generating a fresh random value in each
+  // step made every approve fail with "failed assert: delivery mismatch" - observed on Preprod.
+  const delivery = bytes32();
   switch (label) {
     case "happy-path":
       return [
@@ -524,13 +528,13 @@ function scenarioSteps(label) {
           circuit: "submitDelivery",
           actor: "merchant",
           revision: 2n,
-          args: () => [bytes32()],
+          args: () => [delivery],
         },
         {
           circuit: "approve",
           actor: "buyer",
           revision: 3n,
-          args: () => [bytes32()],
+          args: () => [delivery],
         },
       ];
     case "cancel":
