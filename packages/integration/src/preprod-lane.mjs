@@ -8,6 +8,12 @@
 // Modes (exactly one):
 //   --check                   validate env, build providers, report address and balances
 //   --sync                    sync fully, persist the wallet snapshots, report progress
+//   --seed-dust               opt-in fast start: seed the two DUST Merkle trees from the
+//                             chain's collapsed updates, write <runDir>/wallet-state/dust.json
+//                             atomically, then continue into the ordinary flow so the dust
+//                             wallet restores from that snapshot and replays only the tail.
+//                             On any seeder, root-verification or restore failure it emits
+//                             dust-seed-failed and falls back to the ordinary full sync
 //   --register-dust           register NIGHT UTXOs for DUST generation
 //   --deploy                  deploy the compiled contract and record the receipt
 //   --sweep                   drive every proof circuit (positive and negative cases)
@@ -20,11 +26,15 @@
 //                             (explicit operator repair; never automatic during a restore)
 //
 // Sync cost: a fresh Preprod wallet replays full genesis history (Midnight servicedesk
-// #118: the DUST wallet dominates it and a fresh sync can approach three hours). Nothing
-// here can avoid the first sync, so the lane does two things about it: it widens the
-// documented sync knobs, and it persists each sub-wallet's snapshot under
-// <runDir>/wallet-state after every full sync. Later runs restore from those snapshots
-// and resume at the recorded applied index instead of replaying genesis.
+// #118: the DUST wallet dominates it and a fresh sync can approach three hours). The lane
+// attacks this from two sides. It widens the documented sync knobs and persists each
+// sub-wallet's snapshot under <runDir>/wallet-state after every full sync, so later runs
+// restore from those snapshots and resume at the recorded applied index instead of
+// replaying genesis. Separately, the opt-in --seed-dust mode seeds the dust trees directly
+// from the chain's collapsed updates before any wallet is built, so even a first run can
+// skip the event-by-event dust tree replay and sync only the tail. A seed is accepted only
+// after the reconstructed roots equal the roots the chain publishes; any failure falls
+// back to the ordinary full sync.
 //
 // A restore that merely does not throw is not proof of correctness (midnight-wallet #559:
 // a dropped field restored without error and silently lost history; #298: stale pending
@@ -38,10 +48,28 @@
 //   MILO_PREPROD_ALLOW           must equal "disposable-owned-preprod"
 //   MIDNIGHT_PREPROD_PROOF_HTTP  loopback proof server, default http://127.0.0.1:6300
 //   MIDNIGHT_PREPROD_RUN_DIR     optional receipt directory
+//   MIDNIGHT_PREPROD_INDEXER_HTTP / MIDNIGHT_PREPROD_INDEXER_WS / MIDNIGHT_PREPROD_NODE
+//                                indexer and node endpoints, default the public Preprod
+//                                endpoints. Overridable only so an offline dry run can
+//                                point at local stubs without touching the chain.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  DustSeedError,
+  DustSeedTimeoutError,
+  decodeDustSnapshot,
+  encodeMerkleRoot,
+  seedDustState,
+} from "./dust-seed.mjs";
 import { run } from "./preprod-actions.mjs";
 import {
   inspectSdkVersions,
@@ -87,25 +115,50 @@ function preprodConfig(env) {
     "loopback proof server required",
   );
   return {
+    ...PREPROD,
     seed: env.MIDNIGHT_PREPROD_SEED,
     proofServer,
     runDir: env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir(),
     // Derived, never hardcoded: 16+ characters with three character classes.
     privateStatePassword: `Milo1!${hash(env.MIDNIGHT_PREPROD_SEED).slice(0, 20)}`,
-    ...PREPROD,
+    // Default to the public Preprod endpoints. The override exists only for offline dry
+    // runs (local stubs) so the mode can be exercised without touching the chain.
+    indexer: env.MIDNIGHT_PREPROD_INDEXER_HTTP ?? PREPROD.indexer,
+    indexerWS: env.MIDNIGHT_PREPROD_INDEXER_WS ?? PREPROD.indexerWS,
+    node: env.MIDNIGHT_PREPROD_NODE ?? PREPROD.node,
   };
 }
 
-async function emit(runDir, event) {
+/** Append one event to the run trail. Console first, file second: a progress line must be
+ * visible even when the run directory is unusable. */
+async function appendEvent(runDir, event) {
   await mkdir(runDir, { recursive: true });
   await writeFile(
     resolve(runDir, "transactions.jsonl"),
     `${JSON.stringify(event)}\n`,
-    {
-      flag: "a",
-    },
+    { flag: "a" },
   );
+}
+
+async function emit(runDir, event) {
   console.log(JSON.stringify(event));
+  await appendEvent(runDir, event);
+}
+
+/** Emit an event that must be reported even when the run directory cannot be written (a
+ * failure that is itself the reason to fail closed). Never throws. */
+async function emitBestEffort(runDir, event) {
+  console.log(JSON.stringify(event));
+  try {
+    await appendEvent(runDir, event);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "emit-failed",
+        message: String(error?.message ?? error),
+      }),
+    );
+  }
 }
 
 // Sync tuning. These are the documented `DefaultSyncConfiguration` knobs (added in
@@ -226,7 +279,155 @@ async function saveWalletState(config, wallet) {
   return bytes;
 }
 
-async function buildSession(config) {
+// --------------------------------------------------------------------------------------
+// DUST start-late seeding (--seed-dust)
+// --------------------------------------------------------------------------------------
+// The seeder (dust-seed.mjs) is read-only: it fetches the chain's collapsed dust updates,
+// reconstructs both dust trees, verifies the reconstructed roots equal the roots the chain
+// publishes, and only then emits a snapshot. This wrapper owns the run-directory side. It
+// writes the snapshot atomically (temp + rename) so a later run can never restore a
+// half-written file, independently re-decodes the emitted snapshot and matches it against
+// the receipt, and on any failure emits dust-seed-failed and reports the fallback. The
+// snapshot carries no secret material, and this wrapper never logs or returns key bytes.
+
+function seedFailureReason(error) {
+  if (error instanceof DustSeedTimeoutError) return "seed-timeout";
+  if (error instanceof DustSeedError) return "seed-refused";
+  return "seed-error";
+}
+
+/** Forward the seeder's progress events to the console immediately and append them to the
+ * run trail in order. The seeder calls this synchronously; the appends run on a serialized
+ * queue so they never interleave, and a write failure is reported without aborting a seed
+ * that is still making progress. */
+function makeSeedSink(config) {
+  let queue = Promise.resolve();
+  const sink = (event, fields = {}) => {
+    const record = { event, ...fields };
+    console.log(JSON.stringify(record));
+    queue = queue
+      .then(() => appendEvent(config.runDir, record))
+      .catch((error) =>
+        console.error(
+          JSON.stringify({
+            event: "dust-seed-emit-failed",
+            message: String(error?.message ?? error),
+          }),
+        ),
+      );
+    return queue;
+  };
+  sink.flush = () => queue;
+  return sink;
+}
+
+/** Seed dust, verify the emitted snapshot, and write it to <runDir>/wallet-state/dust.json.
+ * Returns { ok: true, snapshot, receipt } on success and { ok: false, reason, error } on
+ * any failure, having emitted dust-seed-failed and left no temp file behind. It never
+ * throws, so the caller can always fall back to the ordinary full-sync path. */
+async function seedDustForRun(config, keys) {
+  const dir = walletStateDir(config.runDir);
+  const target = resolve(dir, WALLET_STATE_FILES.dust);
+  const temp = `${target}.seed-${process.pid}.tmp`;
+  const sink = makeSeedSink(config);
+  let wroteTemp = false;
+  try {
+    const result = await seedDustState({
+      secretKey: keys.dustSecretKey,
+      networkId: config.networkId,
+      indexerHttp: config.indexer,
+      indexerWs: config.indexerWS,
+      emit: sink,
+    });
+    await sink.flush();
+
+    // Independent of the seeder's own round-trip: re-decode the emitted snapshot through
+    // the installed SDK and match it against the receipt the seeder returned.
+    const roundTrip = await decodeDustSnapshot(result.snapshot);
+    if (!roundTrip?.state)
+      throw new DustSeedError(
+        "emitted snapshot did not restore a DustLocalState",
+      );
+    if (roundTrip.publicKey?.publicKey !== keys.dustSecretKey.publicKey)
+      throw new DustSeedError(
+        "emitted snapshot restored the wrong dust public key",
+      );
+    if (
+      BigInt(roundTrip.progress?.appliedIndex ?? -1n) !==
+      BigInt(result.receipt.lastAppliedEventId)
+    )
+      throw new DustSeedError(
+        "emitted snapshot restored the wrong applied index",
+      );
+    if (
+      encodeMerkleRoot(roundTrip.state.commitmentTreeRoot()) !==
+      result.receipt.localCommitmentRoot
+    )
+      throw new DustSeedError(
+        "emitted snapshot restored a different commitment root",
+      );
+    if (
+      encodeMerkleRoot(roundTrip.state.generatingTreeRoot()) !==
+      result.receipt.localGenerationRoot
+    )
+      throw new DustSeedError(
+        "emitted snapshot restored a different generation root",
+      );
+
+    await mkdir(dir, { recursive: true });
+    await writeFile(temp, result.snapshot, { mode: 0o600 });
+    wroteTemp = true;
+    await chmod(temp, 0o600);
+    await rename(temp, target);
+    wroteTemp = false;
+
+    const receipt = result.receipt;
+    await emit(config.runDir, {
+      event: "dust-seeded",
+      network: config.networkId,
+      snapshotPath: target,
+      matchedHeight: receipt.matchedHeight,
+      blockHeight: receipt.blockHeight,
+      lag: receipt.lag,
+      commitmentLag: receipt.commitmentLag,
+      generationLag: receipt.generationLag,
+      chainCommitmentRoot: receipt.chainCommitmentRoot,
+      localCommitmentRoot: receipt.localCommitmentRoot,
+      chainGenerationRoot: receipt.chainGenerationRoot,
+      localGenerationRoot: receipt.localGenerationRoot,
+      commitmentPayloadBytes: receipt.commitmentPayloadBytes,
+      generationPayloadBytes: receipt.generationPayloadBytes,
+      cutoffEventId: receipt.cutoffEventId,
+      cutoffHeight: receipt.cutoffHeight,
+      tailStartEventId: receipt.tailStartEventId,
+      lastAppliedEventId: receipt.lastAppliedEventId,
+      highestPublishedEventId: receipt.highestPublishedEventId,
+      tailEventsApplied: receipt.tailEventsApplied,
+      tailSkippedReason: receipt.tailSkippedReason,
+      snapshotBytes: receipt.snapshotBytes,
+      pinAttempts: receipt.pinAttempts,
+      scannedBlocks: receipt.scannedBlocks,
+      elapsedMs: receipt.elapsedMs,
+    });
+    return { ok: true, snapshot: result.snapshot, receipt };
+  } catch (error) {
+    await sink.flush();
+    if (wroteTemp) await rm(temp, { force: true });
+    const reason = seedFailureReason(error);
+    await emitBestEffort(config.runDir, {
+      event: "dust-seed-failed",
+      reason,
+      name: error?.name ?? "Error",
+      message: String(error?.message ?? error).slice(0, 500),
+      fallback: "ordinary-full-sync",
+    });
+    return { ok: false, reason, error };
+  }
+}
+
+/** Load and configure the wallet SDK once. The network id is process-global, so this runs
+ * before anything constructs a wallet or reads a dust root. */
+async function loadWalletSdk(config) {
   const { WebSocket } = await import("ws");
   globalThis.WebSocket = WebSocket;
   const { setNetworkId } = await import(
@@ -237,18 +438,16 @@ async function buildSession(config) {
   const addressFormat = await import(
     "@midnight-ntwrk/wallet-sdk-address-format"
   );
-  const {
-    HDWallet,
-    Roles,
-    createKeystore,
-    WalletFacade,
-    ShieldedWallet,
-    UnshieldedWallet,
-    DustWallet,
-    PublicKey,
-    NoOpTransactionHistoryStorage,
-  } = await import("@midnight-ntwrk/wallet-sdk");
+  const sdk = await import("@midnight-ntwrk/wallet-sdk");
+  return { ledger, addressFormat, sdk };
+}
 
+/** The one key-derivation path, shared by the DUST seeder and the wallet session, so the
+ * dust secret key the seeder plants into the snapshot is exactly the key the session
+ * restores with. This returns in-memory key material only; nothing here is serialized. */
+async function deriveWalletKeys(config, modules) {
+  const { ledger, addressFormat, sdk } = modules;
+  const { HDWallet, Roles, createKeystore } = sdk;
   const hd = HDWallet.fromSeed(Buffer.from(config.seed, "hex"));
   if (hd.type !== "seedOk") throw new Error("seed rejected");
   const derived = hd.hdWallet
@@ -266,6 +465,41 @@ async function buildSession(config) {
     derived.keys[Roles.NightExternal],
     config.networkId,
   );
+  return {
+    ledger,
+    addressFormat,
+    sdk,
+    shieldedSecretKeys,
+    dustSecretKey,
+    unshieldedKeystore,
+    address: String(unshieldedKeystore.getBech32Address()),
+  };
+}
+
+async function buildSession(config, options = {}) {
+  const keys =
+    options.keys ??
+    (await deriveWalletKeys(
+      config,
+      options.modules ?? (await loadWalletSdk(config)),
+    ));
+  const {
+    ledger,
+    addressFormat,
+    sdk,
+    shieldedSecretKeys,
+    dustSecretKey,
+    unshieldedKeystore,
+    address,
+  } = keys;
+  const {
+    WalletFacade,
+    ShieldedWallet,
+    UnshieldedWallet,
+    DustWallet,
+    PublicKey,
+    NoOpTransactionHistoryStorage,
+  } = sdk;
   const base = {
     networkId: config.networkId,
     indexerClientConnection: {
@@ -278,11 +512,22 @@ async function buildSession(config) {
     provingServerUrl: new URL(config.proofServer),
     relayURL: new URL(config.node.replace(/^https/, "wss")),
   };
+  // A complete, gate-verified snapshot wins outright. Otherwise a seeded dust snapshot
+  // (from --seed-dust) restores just the dust role while shielded and unshielded start
+  // fresh; the seeder proved that snapshot's roots equal the chain's before it was written.
   const restored = await loadWalletState(config);
+  const dustSnapshot = options.dustSnapshot ?? null;
+  const dustSeeded = restored === null && dustSnapshot !== null;
   if (restored)
     await emit(config.runDir, {
       event: "wallet-state-restored",
       roles: Object.keys(restored),
+    });
+  else if (dustSeeded)
+    await emit(config.runDir, {
+      event: "dust-seed-restore",
+      detail:
+        "dust restored from the seeded snapshot; shielded and unshielded start fresh",
     });
   const wallet = await WalletFacade.init({
     configuration: {
@@ -306,10 +551,12 @@ async function buildSession(config) {
     dust: (cfg) =>
       restored
         ? DustWallet(cfg).restore(restored.dust)
-        : DustWallet(cfg).startWithSecretKey(
-            dustSecretKey,
-            ledger.LedgerParameters.initialParameters().dust,
-          ),
+        : dustSnapshot
+          ? DustWallet(cfg).restore(dustSnapshot)
+          : DustWallet(cfg).startWithSecretKey(
+              dustSecretKey,
+              ledger.LedgerParameters.initialParameters().dust,
+            ),
   });
   await wallet.start(shieldedSecretKeys, dustSecretKey);
   return {
@@ -320,7 +567,8 @@ async function buildSession(config) {
     dustSecretKey,
     unshieldedKeystore,
     restored: restored !== null,
-    address: String(unshieldedKeystore.getBech32Address()),
+    dustSeeded,
+    address,
   };
 }
 
@@ -420,6 +668,7 @@ async function awaitSync(config, session) {
           JSON.stringify({
             event: "sync-progress",
             restored: session.restored,
+            dustSeeded: session.dustSeeded,
             synced: s.isSynced === true,
             shieldedConnected: s.shielded.state.progress.isConnected,
             unshieldedConnected: s.unshielded.state.progress.isConnected,
@@ -451,6 +700,7 @@ async function awaitSync(config, session) {
     event: "wallet-state-saved",
     address: session.address,
     restored: session.restored,
+    dustSeeded: session.dustSeeded,
     bytes,
   });
   return state;
@@ -592,7 +842,47 @@ async function main() {
   }
 
   const config = preprodConfig(process.env);
-  const session = await buildSession(config);
+  // --seed-dust must seed before the wallet exists: restoring the dust role needs the
+  // snapshot on disk. The key derivation runs once here and is handed to buildSession so
+  // the seeder and the session share exactly one derivation path. Any failure emits
+  // dust-seed-failed (inside seedDustForRun) and falls through to the ordinary full sync.
+  let prepared;
+  let dustSnapshot = null;
+  if (mode === "--seed-dust") {
+    await emitBestEffort(config.runDir, {
+      event: "dust-seed-mode",
+      network: config.networkId,
+      indexer: config.indexer,
+    });
+    try {
+      const modules = await loadWalletSdk(config);
+      const keys = await deriveWalletKeys(config, modules);
+      prepared = { modules, keys };
+      const seeded = await seedDustForRun(config, keys);
+      if (seeded.ok) {
+        dustSnapshot = seeded.snapshot;
+      } else {
+        await emitBestEffort(config.runDir, {
+          event: "dust-seed-fallback",
+          mode,
+          reason: seeded.reason,
+          fallback: "ordinary-full-sync",
+        });
+      }
+    } catch (error) {
+      await emitBestEffort(config.runDir, {
+        event: "dust-seed-failed",
+        reason: seedFailureReason(error),
+        name: error?.name ?? "Error",
+        message: String(error?.message ?? error).slice(0, 500),
+        fallback: "ordinary-full-sync",
+      });
+    }
+  }
+  const session = await buildSession(config, {
+    ...(prepared ?? {}),
+    dustSnapshot,
+  });
   try {
     if (mode === "--check") {
       await emit(config.runDir, {
@@ -612,6 +902,21 @@ async function main() {
         event: "sync-complete",
         address: session.address,
         restored: session.restored,
+        dustSeeded: session.dustSeeded,
+        dustBalance: state.dust.balance(new Date()).toString(),
+      });
+      return;
+    }
+    if (mode === "--seed-dust") {
+      // Seeding has already happened (or failed and fallen back). The ordinary flow here
+      // restores the seeded dust snapshot when it is present, so the dust wallet replays
+      // only the tail; when seeding failed this is simply the full from-seed sync.
+      const state = await awaitSync(config, session);
+      await emit(config.runDir, {
+        event: "sync-complete",
+        address: session.address,
+        restored: session.restored,
+        dustSeeded: session.dustSeeded,
         dustBalance: state.dust.balance(new Date()).toString(),
       });
       return;
