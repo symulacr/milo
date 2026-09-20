@@ -21,6 +21,7 @@ import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
+import { proofCircuits } from "./artifacts.mjs";
 import { publicReceipt } from "./config.mjs";
 import { witnesses } from "./order.mjs";
 import { intentExpiry, maintenanceTx } from "./tx.mjs";
@@ -146,40 +147,120 @@ async function writeMaintenanceKey(path, record) {
   await chmod(path, 0o600);
 }
 
+/**
+ * One per-scenario deployment, through the staged path.
+ *
+ * midnight-js `deployContract` puts all fourteen verifier keys in one
+ * transaction; Preprod rejects that with 1010 (block limits). The lane's
+ * `--deploy` branch already avoids it by deploying seven keys and installing
+ * the other seven with one signed maintenance update (staged-deploy.mjs), so
+ * every per-scenario deploy reuses that same working path. Each scenario writes
+ * its own receipt (`staged-deploy-<label>.json`), so a re-run resumes the
+ * scenario instead of redeploying it.
+ *
+ * A PER-SCENARIO deployment is never labelled `main`: the maintenance drills
+ * target the run's real main deployment, so the `preprod-deployed` line
+ * staged-deploy.mjs emits internally (hardcoded `main`) is captured and
+ * re-emitted under the scenario's own label once all fourteen circuits are
+ * confirmed. The returned shape keeps the callers' contract:
+ * `deployTxData.public.contractAddress` plus a top-level txId and blockHeight.
+ */
 async function deployOrder({
-  Contract,
   providers,
+  config,
+  zkConfigProvider,
   configuration,
   privateStateFor,
   label,
-  emit,
   // The caller supplies the maintenance signing key; without it in scope the spread below
   // threw ReferenceError and the deploy never reached the network.
   signingKey,
+  emit,
 }) {
-  const { deployContract } = await import(
+  const { submitTxAsync } = await import(
     "@midnight-ntwrk/midnight-js-contracts"
   );
-  const compiled = await compiledContract(Contract);
-  const deployed = await deployContract(providers, {
-    compiledContract: compiled,
-    // The constructor takes the configuration: ContractConstructorOptionsWithArguments
-    // requires `args` whenever the constructor has parameters.
-    args: [configuration],
-    privateStateId: `${label}-buyer`,
-    initialPrivateState: privateStateFor("buyer"),
-    ...(signingKey ? { signingKey } : {}),
+  const { runStagedDeploy } = await import("./staged-deploy.mjs");
+  const receiptPath = resolve(config.runDir, `staged-deploy-${label}.json`);
+  let landed = null;
+  const stagedEmit = async (event, fields = {}) => {
+    if (event === "preprod-deployed") {
+      landed = fields;
+      return;
+    }
+    await emit({ event, ...fields });
+  };
+  const receipt = await runStagedDeploy({
+    // The lane carries networkId on config; the local drill sets it process-wide instead
+    // and only supplies { runDir, explorer }, so fall back to the global.
+    networkId: config.networkId ?? getNetworkId(),
+    configuration,
+    coinPublicKey: providers.walletProvider.getCoinPublicKey(),
+    verifierKeys: await zkConfigProvider.getVerifierKeys(proofCircuits),
+    signingKey,
+    // submitTxAsync, not submitTx: Preprod closes the relay subscription submitTx waits on
+    // with 1000 Normal Closure, so the transaction lands while the promise never resolves.
+    // Confirmation comes from the observed ledger state, not from the submit receipt.
+    //
+    // The Preprod lane's submitter returns a 0x-prefixed extrinsic hash; the local drill's
+    // wallet facade returns the ledger transaction id as bare hex (TransactionId = string,
+    // no 0x). publicReceipt recognises only the 0x form, so normalise the bare form to it.
+    // This is never a finality claim: publicReceipt's string branch records status
+    // "Submitted", and runStagedDeploy confirms by observing the ledger state.
+    submit: async (unprovenTx) => {
+      const txId = await submitTxAsync(providers, { unprovenTx });
+      return typeof txId === "string" && !txId.startsWith("0x")
+        ? `0x${txId}`
+        : txId;
+    },
+    observe: (address, blockHash) =>
+      blockHash
+        ? providers.publicDataProvider.queryContractState(address, {
+            type: "blockHash",
+            blockHash,
+          })
+        : providers.publicDataProvider.queryContractState(address),
+    emit: stagedEmit,
+    receiptPath,
+    explorer: config.explorer,
+    onDeployed: async ({ address }) => {
+      // The driver acts as buyer, merchant and operator and looks each actor up under
+      // `<label>-<actor>` with findDeployedContract. Store the SAME order the constructor
+      // received, or the deployed commitments have no matching private state and every
+      // scenario call fails.
+      providers.privateStateProvider.setContractAddress(address);
+      for (const actor of ["buyer", "merchant", "operator"])
+        await providers.privateStateProvider.set(
+          `${label}-${actor}`,
+          privateStateFor(actor),
+        );
+    },
   });
-  const receipt = {
+  const deploy = receipt.deploy ?? landed ?? {};
+  const txId = deploy.txId ?? null;
+  const blockHeight = deploy.blockHeight ?? null;
+  await emit({
     event: "preprod-deployed",
     label,
-    address: deployed.deployTxData.public.contractAddress,
-    txId: deployed.deployTxData.public.txId,
-    blockHeight: deployed.deployTxData.public.blockHeight,
-    explorer: `${config.explorer}/contract/${deployed.deployTxData.public.contractAddress}`,
+    address: receipt.address,
+    txId,
+    blockHeight,
+    explorer: `${config.explorer}/contract/${receipt.address}`,
+    ...(receipt.split?.initialNames
+      ? {
+          split: `${receipt.split.initialNames.length}+${receipt.split.remainingNames.length}`,
+        }
+      : {}),
+  });
+  return {
+    deployTxData: {
+      public: { contractAddress: receipt.address, txId, blockHeight },
+    },
+    // attempt() reads the top-level fields for its call-finalized receipt.
+    txId,
+    blockHeight,
+    stagedDeploy: receipt,
   };
-  await emit(receipt);
-  return deployed;
 }
 
 /** One call, recorded: a tx id on success, or a rejection with its message. */
@@ -228,7 +309,14 @@ const CIRCUITS = [
  * rejected. Expiry circuits need past deadlines, which is why they get their
  * own deployments.
  */
-async function sweep({ Contract, providers, config, emit }) {
+async function sweep({
+  Contract,
+  providers,
+  config,
+  zkConfigProvider,
+  signingKey,
+  emit,
+}) {
   const order = miloOrder(Contract);
   const scenarios = [
     { label: "happy-path", offsets: {} },
@@ -301,12 +389,13 @@ async function sweep({ Contract, providers, config, emit }) {
       },
       () =>
         deployOrder({
-          Contract,
           providers,
           config,
+          zkConfigProvider,
           configuration: order.configurationFor(scenario.offsets),
           privateStateFor: order.privateState,
           label: scenario.label,
+          signingKey,
           emit,
         }),
     );
@@ -366,7 +455,7 @@ function scenarioSteps(label) {
     case "happy-path":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "submitDelivery",
           actor: "merchant",
@@ -398,7 +487,7 @@ function scenarioSteps(label) {
     case "dispute-buyer":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "disputeBuyer",
           actor: "buyer",
@@ -415,7 +504,7 @@ function scenarioSteps(label) {
     case "dispute-merchant":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "disputeMerchant",
           actor: "merchant",
@@ -451,7 +540,7 @@ function scenarioSteps(label) {
     case "expire-undelivered":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "expireUndelivered",
           actor: "buyer",
@@ -462,7 +551,7 @@ function scenarioSteps(label) {
     case "escalate-unreviewed":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "submitDelivery",
           actor: "merchant",
@@ -479,7 +568,7 @@ function scenarioSteps(label) {
     case "expire-dispute":
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
-        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
         {
           circuit: "disputeBuyer",
           actor: "buyer",
@@ -523,19 +612,27 @@ async function handlesFor({
 }
 
 /** Negative cases: the calls that must be rejected, on a fresh order. */
-async function negatives({ Contract, providers, config, emit }) {
+async function negatives({
+  Contract,
+  providers,
+  config,
+  zkConfigProvider,
+  signingKey,
+  emit,
+}) {
   const order = miloOrder(Contract);
   const deployment = await attempt(
     emit,
     { scenario: "negatives", circuit: "deploy", actor: null, negative: false },
     () =>
       deployOrder({
-        Contract,
         providers,
         config,
+        zkConfigProvider,
         configuration: order.configurationFor({}),
         privateStateFor: order.privateState,
         label: "negatives",
+        signingKey,
         emit,
       }),
   );
@@ -571,7 +668,7 @@ async function negatives({ Contract, providers, config, emit }) {
     },
     {
       circuit: "accept",
-      actor: "buyer",
+      actor: "merchant",
       args: [0n],
       why: "wrong phase (not reserved)",
     },
@@ -783,6 +880,29 @@ async function readDeployments(config) {
   }
 }
 
+/**
+ * The maintenance key every staged scenario deploy signs with, created and persisted on
+ * first use. It is deliberately the run dir's one key (shared with `--deploy`) rather than
+ * a fresh one per sweep: a re-run of a scenario resumes the staged deploy by re-tying its
+ * recorded address to the on-chain maintenance authority, which only matches the key that
+ * authored the original deploy. `loadOrCreateMaintenanceKey` is staged-deploy.mjs's own
+ * reader/writer, so there is one stored shape. A relinquished key (`--freeze empty`) is a
+ * hard failure here, never silently replaced.
+ */
+async function sweepSigningKey(config, emit) {
+  const { loadOrCreateMaintenanceKey } = await import("./staged-deploy.mjs");
+  const { path, key, created } = await loadOrCreateMaintenanceKey(
+    config.runDir,
+  );
+  if (created)
+    await emit({
+      event: "sweep-maintenance-key-created",
+      note: "sweep deployments share one single-signature maintenance key; created here",
+      keyPath: { path },
+    });
+  return key;
+}
+
 export async function run({
   mode,
   flags,
@@ -803,9 +923,9 @@ export async function run({
       await writeMaintenanceKey(keyPath.path, { key: signingKey });
     const order = miloOrder(Contract);
     const deployed = await deployOrder({
-      Contract,
       providers,
       config,
+      zkConfigProvider,
       signingKey,
       configuration: order.configurationFor({}),
       privateStateFor: order.privateState,
@@ -820,11 +940,24 @@ export async function run({
     return deployed.deployTxData.public.contractAddress;
   }
   if (mode === "--sweep") {
-    const summary = await sweep({ Contract, providers, config, emit });
+    // Every scenario deploy is staged and signed, so it needs a maintenance key that is
+    // stable across runs: a resume re-ties the recorded address to the on-chain authority
+    // and a fresh key would not match. Share the run dir's key with the main deployment.
+    const signingKey = await sweepSigningKey(config, emit);
+    const summary = await sweep({
+      Contract,
+      providers,
+      config,
+      zkConfigProvider,
+      signingKey,
+      emit,
+    });
     const negativeResults = await negatives({
       Contract,
       providers,
       config,
+      zkConfigProvider,
+      signingKey,
       emit,
     });
     await emit({
