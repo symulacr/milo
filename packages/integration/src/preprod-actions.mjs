@@ -60,15 +60,20 @@ export function miloOrder(Contract) {
     paymentPolicy: bytes32(),
     salt: bytes32(),
   };
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  // The expiry circuits need a deadline to have passed while the earlier phase
-  // was reached first, so the runner waits on these absolute values.
-  const deadlinesFor = (offsets = {}) => ({
-    acceptance: now + BigInt(offsets.acceptance ?? 3_600),
-    delivery: now + BigInt(offsets.delivery ?? 7_200),
-    review: now + BigInt(offsets.review ?? 10_800),
-    resolution: now + BigInt(offsets.resolution ?? 14_400),
-  });
+  // The expiry circuits need a deadline to have passed while the earlier phase was reached
+  // first, so the runner waits on these absolute values. The anchor is read PER CALL, not once
+  // at construction: scenarios run sequentially and the later ones begin many minutes after the
+  // sweep starts, so a sweep-start anchor left their acceptance deadlines already in the past
+  // and their reserve failed on Preprod with "failed assert: acceptance deadline reached".
+  const deadlinesFor = (offsets = {}) => {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    return {
+      acceptance: now + BigInt(offsets.acceptance ?? 3_600),
+      delivery: now + BigInt(offsets.delivery ?? 7_200),
+      review: now + BigInt(offsets.review ?? 10_800),
+      resolution: now + BigInt(offsets.resolution ?? 14_400),
+    };
+  };
   return {
     terms,
     deadlinesFor,
@@ -583,7 +588,11 @@ function scenarioSteps(label) {
           circuit: "resolve",
           actor: "operator",
           revision: 3n,
-          args: () => [true, bytes32()],
+          // approveOrder=false. disputeMerchant requires phase ACCEPTED, so no delivery can
+          // have been submitted, and resolve(approveOrder=true) asserts a submitted delivery
+          // ("approval requires submitted delivery") - which is exactly how this scenario
+          // failed on Preprod. dispute-buyer, which may run while SUBMITTED, uses false too.
+          args: () => [false, bytes32()],
         },
       ];
     case "expire-bootstrap":
@@ -603,6 +612,7 @@ function scenarioSteps(label) {
           actor: "buyer",
           revision: 1n,
           waitFor: "acceptance",
+          args: () => [],
         },
       ];
     case "expire-undelivered":
@@ -614,6 +624,7 @@ function scenarioSteps(label) {
           actor: "buyer",
           revision: 2n,
           waitFor: "delivery",
+          args: () => [],
         },
       ];
     case "escalate-unreviewed":

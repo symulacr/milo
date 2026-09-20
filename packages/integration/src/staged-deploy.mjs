@@ -309,7 +309,10 @@ export async function runStagedDeploy({
   explorer,
   onDeployed,
   ttl = intentExpiry,
-  observeAttempts = 10,
+  // 30 x 2s = 60s of headroom. At 10 x 2s a scenario deploy failed with "No contract state
+  // observed at <address>" because the indexer had not yet served the new contract, which is
+  // indexer latency rather than a failed deploy.
+  observeAttempts = 30,
   observeRetryMs = 2_000,
 }) {
   assert.equal(typeof networkId, "string");
