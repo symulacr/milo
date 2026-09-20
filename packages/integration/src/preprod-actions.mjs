@@ -22,6 +22,11 @@ import { dirname, resolve } from "node:path";
 import { getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
 import { proofCircuits } from "./artifacts.mjs";
+import {
+  createAwaitWatchdog,
+  resolveAwaitTimeoutMs,
+  watchMethods,
+} from "./await-watchdog.mjs";
 import { publicReceipt } from "./config.mjs";
 import { witnesses } from "./order.mjs";
 import { intentExpiry, maintenanceTx } from "./tx.mjs";
@@ -286,6 +291,42 @@ async function attempt(emit, fields, call) {
   }
 }
 
+// The providers are where midnight-js performs its unnameable awaits: proving, balancing,
+// submission, and the confirmation watch that hangs (submitTx ends in watchForTxData,
+// which the SDK waits on indefinitely). Wrapping the methods names each stage without
+// touching the SDK or the call sites, and the wrapper is reversible and transparent unless
+// a deadline is breached. Marked with a symbol so a re-entrant run cannot double-wrap and
+// report nested shadows of the same stage.
+const INSTRUMENTED = Symbol.for("milo.await-watchdog.instrumented");
+
+/**
+ * Exported so the local stall demonstration can exercise this exact wiring rather than a
+ * copy of it: the sweep's named stages are only as good as the methods wrapped here.
+ *
+ * @returns {() => void} an undo function restoring the original provider methods.
+ */
+export function instrumentProviders(providers, watchdog) {
+  if (providers[INSTRUMENTED]) return () => {};
+  const undo = [
+    watchMethods(providers.proofProvider, { proveTx: "prove" }, watchdog),
+    watchMethods(providers.walletProvider, { balanceTx: "balance" }, watchdog),
+    watchMethods(providers.midnightProvider, { submitTx: "submit" }, watchdog),
+    watchMethods(
+      providers.publicDataProvider,
+      {
+        watchForTxData: "confirm:watchForTxData",
+        queryContractState: "indexer:queryContractState",
+      },
+      watchdog,
+    ),
+  ];
+  providers[INSTRUMENTED] = watchdog;
+  return () => {
+    for (const restore of undo) restore();
+    delete providers[INSTRUMENTED];
+  };
+}
+
 const CIRCUITS = [
   { name: "reserve", args: (rev) => [rev] },
   { name: "accept", args: (rev) => [rev] },
@@ -316,6 +357,7 @@ async function sweep({
   zkConfigProvider,
   signingKey,
   emit,
+  watchdog,
 }) {
   const order = miloOrder(Contract);
   const scenarios = [
@@ -376,6 +418,15 @@ async function sweep({
   const summary = [];
   for (const scenario of scenarios) {
     const deadlines = order.deadlinesFor(scenario.offsets);
+    // Name every awaited stage of this scenario from here on: the deploy, the actor
+    // handles, and the circuit call. A stall event then carries which scenario, circuit
+    // and actor it belongs to, not just the middleware stage.
+    watchdog.setContext({
+      scenario: scenario.label,
+      circuit: "deploy",
+      actor: null,
+      phase: "deploy",
+    });
     // The scenario deploy is the one call that can abort the whole sweep; record it
     // through attempt() too, so a rejected deploy leaves a receipt naming the
     // scenario instead of only stderr.
@@ -388,16 +439,18 @@ async function sweep({
         negative: false,
       },
       () =>
-        deployOrder({
-          providers,
-          config,
-          zkConfigProvider,
-          configuration: order.configurationFor(scenario.offsets),
-          privateStateFor: order.privateState,
-          label: scenario.label,
-          signingKey,
-          emit,
-        }),
+        watchdog.step(`deploy:${scenario.label}`, () =>
+          deployOrder({
+            providers,
+            config,
+            zkConfigProvider,
+            configuration: order.configurationFor(scenario.offsets),
+            privateStateFor: order.privateState,
+            label: scenario.label,
+            signingKey,
+            emit,
+          }),
+        ),
     );
     if (!deployment.ok) {
       summary.push({
@@ -408,12 +461,14 @@ async function sweep({
       continue;
     }
     const deployed = deployment.value;
+    watchdog.setContext({ phase: "handles" });
     const actors = await handlesFor({
       deployed,
       Contract,
       providers,
       privateStateFor: order.privateState,
       label: scenario.label,
+      watchdog,
     });
     for (const step of scenarioSteps(scenario.label)) {
       if (step.waitFor) {
@@ -427,6 +482,11 @@ async function sweep({
         while (Math.floor(Date.now() / 1000) < deadline + 10)
           await new Promise((done) => setTimeout(done, 10_000));
       }
+      watchdog.setContext({
+        circuit: step.circuit,
+        actor: step.actor,
+        phase: "call",
+      });
       await attempt(
         emit,
         {
@@ -436,9 +496,13 @@ async function sweep({
           negative: false,
         },
         () =>
-          actors[step.actor].callTx[step.circuit](
-            step.revision,
-            ...step.args(),
+          watchdog.step(
+            `call:${scenario.label}:${step.circuit}:${step.actor}`,
+            () =>
+              actors[step.actor].callTx[step.circuit](
+                step.revision,
+                ...step.args(),
+              ),
           ),
       );
     }
@@ -593,6 +657,7 @@ async function handlesFor({
   providers,
   privateStateFor,
   label,
+  watchdog,
 }) {
   const { findDeployedContract } = await import(
     "@midnight-ntwrk/midnight-js-contracts"
@@ -601,12 +666,19 @@ async function handlesFor({
   const address = deployed.deployTxData.public.contractAddress;
   const byActor = {};
   for (const actor of ["buyer", "merchant", "operator"]) {
-    byActor[actor] = await findDeployedContract(providers, {
-      contractAddress: address,
-      compiledContract: compiled,
-      privateStateId: `${label}-${actor}`,
-      initialPrivateState: privateStateFor(actor),
-    });
+    // Named because findDeployedContract runs verifyContractState and reads the
+    // private state store before returning a handle: a stall here would otherwise
+    // look identical to a stall in the first circuit call.
+    byActor[actor] = await watchdog.step(
+      `handle:${actor}:findDeployedContract`,
+      () =>
+        findDeployedContract(providers, {
+          contractAddress: address,
+          compiledContract: compiled,
+          privateStateId: `${label}-${actor}`,
+          initialPrivateState: privateStateFor(actor),
+        }),
+    );
   }
   return byActor;
 }
@@ -619,22 +691,31 @@ async function negatives({
   zkConfigProvider,
   signingKey,
   emit,
+  watchdog,
 }) {
   const order = miloOrder(Contract);
+  watchdog.setContext({
+    scenario: "negatives",
+    circuit: "deploy",
+    actor: null,
+    phase: "deploy",
+  });
   const deployment = await attempt(
     emit,
     { scenario: "negatives", circuit: "deploy", actor: null, negative: false },
     () =>
-      deployOrder({
-        providers,
-        config,
-        zkConfigProvider,
-        configuration: order.configurationFor({}),
-        privateStateFor: order.privateState,
-        label: "negatives",
-        signingKey,
-        emit,
-      }),
+      watchdog.step("deploy:negatives", () =>
+        deployOrder({
+          providers,
+          config,
+          zkConfigProvider,
+          configuration: order.configurationFor({}),
+          privateStateFor: order.privateState,
+          label: "negatives",
+          signingKey,
+          emit,
+        }),
+      ),
   );
   if (!deployment.ok) {
     await emit({
@@ -646,12 +727,14 @@ async function negatives({
     return [];
   }
   const deployed = deployment.value;
+  watchdog.setContext({ phase: "handles" });
   const actors = await handlesFor({
     deployed,
     Contract,
     providers,
     privateStateFor: order.privateState,
     label: "negatives",
+    watchdog,
   });
   const cases = [
     {
@@ -699,6 +782,12 @@ async function negatives({
   ];
   const results = [];
   for (const testCase of cases) {
+    watchdog.setContext({
+      scenario: "negatives",
+      circuit: testCase.circuit,
+      actor: testCase.actor,
+      phase: "call",
+    });
     const result = await attempt(
       emit,
       {
@@ -708,7 +797,12 @@ async function negatives({
         negative: true,
         why: testCase.why,
       },
-      () => actors[testCase.actor].callTx[testCase.circuit](...testCase.args),
+      () =>
+        watchdog.step(
+          `call:negatives:${testCase.circuit}:${testCase.actor}`,
+          () =>
+            actors[testCase.actor].callTx[testCase.circuit](...testCase.args),
+        ),
     );
     results.push({ ...testCase, rejected: !result.ok });
   }
@@ -903,7 +997,37 @@ async function sweepSigningKey(config, emit) {
   return key;
 }
 
-export async function run({
+/**
+ * Entry point. Wraps every mode with the await watchdog: the providers are instrumented in
+ * place for the duration of the run (restored in the finally), and the per-step wrappers
+ * inside sweep/negatives take the watchdog so each awaited stage is named. With the default
+ * deadline this is what turns the Preprod sweep's silent hang into an await-stall receipt
+ * naming the step; with nothing stalled it is transparent.
+ */
+export async function run({ mode, flags, config, providers, emit, ...rest }) {
+  const watchdog = createAwaitWatchdog({
+    emit,
+    label: `preprod-actions:${mode}`,
+    timeoutMs: resolveAwaitTimeoutMs(),
+  });
+  const restoreProviders = instrumentProviders(providers, watchdog);
+  try {
+    return await runMode({
+      mode,
+      flags,
+      config,
+      providers,
+      emit,
+      ...rest,
+      watchdog,
+    });
+  } finally {
+    restoreProviders();
+    watchdog.dispose();
+  }
+}
+
+async function runMode({
   mode,
   flags,
   config,
@@ -911,6 +1035,7 @@ export async function run({
   Contract,
   zkConfigProvider,
   emit,
+  watchdog,
 }) {
   if (mode === "--deploy") {
     const keyPath = await maintenanceKey(config);
@@ -951,6 +1076,7 @@ export async function run({
       zkConfigProvider,
       signingKey,
       emit,
+      watchdog,
     });
     const negativeResults = await negatives({
       Contract,
@@ -959,6 +1085,7 @@ export async function run({
       zkConfigProvider,
       signingKey,
       emit,
+      watchdog,
     });
     await emit({
       event: "sweep-complete",
