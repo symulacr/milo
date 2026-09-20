@@ -110,28 +110,45 @@ function walletStateDir(config) {
 // A snapshot is only valid for the SDK that wrote it: restoring state serialized by an
 // older wallet-sdk under a newer one is a known silent hang (servicedesk #104 follow-up),
 // so the resolved version matrix is recorded beside the state and re-checked on restore.
+//
+// These packages are ESM-only: their "exports" maps declare no "require" condition, so
+// require() of either the specifier or its package.json throws
+// ERR_PACKAGE_PATH_NOT_EXPORTED. Neither `require.resolve` nor `createRequire` can read
+// them. Read each manifest by path from the node_modules trees above this module instead.
+// A version that cannot be established is recorded as null, and the caller fails closed
+// on it rather than treating an unresolvable matrix as a match.
+const SDK_PACKAGES = Object.freeze([
+  "wallet-sdk",
+  "wallet-sdk-facade",
+  "wallet-sdk-shielded",
+  "wallet-sdk-unshielded-wallet",
+  "wallet-sdk-dust-wallet",
+  "wallet-sdk-indexer-client",
+]);
+
 async function sdkMatrix() {
-  const { createRequire } = await import("node:module");
-  const require = createRequire(import.meta.url);
-  const packages = [
-    "wallet-sdk",
-    "wallet-sdk-facade",
-    "wallet-sdk-shielded",
-    "wallet-sdk-unshielded-wallet",
-    "wallet-sdk-dust-wallet",
-    "wallet-sdk-indexer-client",
-  ];
-  return Object.fromEntries(
-    packages.flatMap((name) => {
-      try {
-        return [
-          [name, require(`@midnight-ntwrk/${name}/package.json`).version],
-        ];
-      } catch {
-        return [];
-      }
-    }),
+  const bases = ["../", "../../", "../../../"].map(
+    (up) => new URL(`${up}node_modules/@midnight-ntwrk/`, import.meta.url),
   );
+  const matrix = {};
+  for (const name of SDK_PACKAGES) {
+    let version = null;
+    for (const base of bases) {
+      try {
+        const manifest = JSON.parse(
+          await readFile(new URL(`${name}/package.json`, base), "utf8"),
+        );
+        if (manifest.name === `@midnight-ntwrk/${name}`) {
+          version = manifest.version;
+          break;
+        }
+      } catch {
+        // Not installed in this tree; try the next one up.
+      }
+    }
+    matrix[name] = version;
+  }
+  return matrix;
 }
 
 /** Restored snapshots make every run after the first cheap: the wallet resumes at its
@@ -147,6 +164,20 @@ async function loadWalletState(config) {
       await readFile(resolve(dir, "sdk-versions.json"), "utf8"),
     );
     const current = await sdkMatrix();
+    // Fail closed on an unresolvable matrix: comparing two empty records would otherwise
+    // read as "no drift" and let a snapshot be restored under an unknown SDK version,
+    // which is the exact silent-hang failure this gate exists to prevent.
+    const unresolved = Object.keys(current).filter(
+      (name) => current[name] === null,
+    );
+    if (unresolved.length > 0) {
+      await emit(config.runDir, {
+        event: "wallet-state-rejected",
+        reason: "sdk-versions-unresolvable",
+        unresolved,
+      });
+      return null;
+    }
     const drifted = Object.keys(current).filter(
       (name) => recorded[name] !== current[name],
     );
