@@ -7,12 +7,20 @@
 //
 // Modes (exactly one):
 //   --check                   validate env, build providers, report address and balances
+//   --sync                    sync fully, persist the wallet snapshots, report progress
 //   --register-dust           register NIGHT UTXOs for DUST generation
 //   --deploy                  deploy the compiled contract and record the receipt
 //   --sweep                   drive every proof circuit (positive and negative cases)
 //   --breaker <circuit>       removeVerifierKey (disable a circuit on-chain)
 //   --restore <circuit>       insertVerifierKey (restore a circuit)
 //   --freeze <key|empty>      replaceAuthority (hand over or relinquish control)
+//
+// Sync cost: a fresh Preprod wallet replays full genesis history (Midnight servicedesk
+// #118: the DUST wallet dominates it and a fresh sync can approach three hours). Nothing
+// here can avoid the first sync, so the lane does two things about it: it widens the
+// documented sync knobs, and it persists each sub-wallet's snapshot under
+// <runDir>/wallet-state after every full sync. Later runs restore from those snapshots
+// and resume at the recorded applied index instead of replaying genesis.
 //
 // Env (from .env.preprod, allowlist-ignored):
 //   MIDNIGHT_PREPROD_SEED        64 hex characters (required)
@@ -21,7 +29,7 @@
 //   MIDNIGHT_PREPROD_RUN_DIR     optional receipt directory
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { run } from "./preprod-actions.mjs";
 
@@ -78,6 +86,106 @@ async function emit(runDir, event) {
   console.log(JSON.stringify(event));
 }
 
+// Sync tuning. These are the documented `DefaultSyncConfiguration` knobs (added in
+// wallet-sdk-dust-wallet 4.0.0), not private API. Defaults are sized for a wallet at the
+// tip: batches of 10 events, a 4 ms delay injected between batches, and a 10k in-flight
+// cap. A fresh Preprod wallet instead replays full genesis history, where the injected
+// spacing is pure overhead.
+const SYNC_TUNING = Object.freeze({
+  batchUpdates: Object.freeze({ size: 500, timeout: 2, spacing: 0 }),
+  bufferSize: 20_000,
+  resumeThreshold: 200,
+});
+
+const WALLET_STATE_FILES = Object.freeze({
+  shielded: "shielded.json",
+  unshielded: "unshielded.json",
+  dust: "dust.json",
+});
+
+function walletStateDir(config) {
+  return resolve(config.runDir, "wallet-state");
+}
+
+// A snapshot is only valid for the SDK that wrote it: restoring state serialized by an
+// older wallet-sdk under a newer one is a known silent hang (servicedesk #104 follow-up),
+// so the resolved version matrix is recorded beside the state and re-checked on restore.
+async function sdkMatrix() {
+  const { createRequire } = await import("node:module");
+  const require = createRequire(import.meta.url);
+  const packages = [
+    "wallet-sdk",
+    "wallet-sdk-facade",
+    "wallet-sdk-shielded",
+    "wallet-sdk-unshielded-wallet",
+    "wallet-sdk-dust-wallet",
+    "wallet-sdk-indexer-client",
+  ];
+  return Object.fromEntries(
+    packages.flatMap((name) => {
+      try {
+        return [
+          [name, require(`@midnight-ntwrk/${name}/package.json`).version],
+        ];
+      } catch {
+        return [];
+      }
+    }),
+  );
+}
+
+/** Restored snapshots make every run after the first cheap: the wallet resumes at its
+ * recorded applied index instead of replaying genesis. Any missing role, or a version
+ * mismatch, means a fresh from-seed sync rather than a partially restored wallet. */
+async function loadWalletState(config) {
+  const dir = walletStateDir(config);
+  const loaded = {};
+  try {
+    for (const [role, file] of Object.entries(WALLET_STATE_FILES))
+      loaded[role] = await readFile(resolve(dir, file), "utf8");
+    const recorded = JSON.parse(
+      await readFile(resolve(dir, "sdk-versions.json"), "utf8"),
+    );
+    const current = await sdkMatrix();
+    const drifted = Object.keys(current).filter(
+      (name) => recorded[name] !== current[name],
+    );
+    if (drifted.length > 0) {
+      await emit(config.runDir, {
+        event: "wallet-state-rejected",
+        reason: "sdk-version-changed",
+        drifted: drifted.map((name) => ({
+          name,
+          recorded: recorded[name] ?? null,
+          current: current[name],
+        })),
+      });
+      return null;
+    }
+    return loaded;
+  } catch {
+    return null;
+  }
+}
+
+async function saveWalletState(config, wallet) {
+  const dir = walletStateDir(config);
+  await mkdir(dir, { recursive: true });
+  const bytes = {};
+  for (const role of Object.keys(WALLET_STATE_FILES)) {
+    const serialized = await wallet[role].serializeState();
+    const path = resolve(dir, WALLET_STATE_FILES[role]);
+    await writeFile(path, serialized, { mode: 0o600 });
+    await chmod(path, 0o600);
+    bytes[role] = serialized.length;
+  }
+  await writeFile(
+    resolve(dir, "sdk-versions.json"),
+    `${JSON.stringify(await sdkMatrix(), null, 2)}\n`,
+  );
+  return bytes;
+}
+
 async function buildSession(config) {
   const { WebSocket } = await import("ws");
   globalThis.WebSocket = WebSocket;
@@ -123,10 +231,19 @@ async function buildSession(config) {
     indexerClientConnection: {
       indexerHttpUrl: config.indexer,
       indexerWsUrl: config.indexerWS,
+      bufferSize: SYNC_TUNING.bufferSize,
+      resumeThreshold: SYNC_TUNING.resumeThreshold,
     },
+    batchUpdates: { ...SYNC_TUNING.batchUpdates },
     provingServerUrl: new URL(config.proofServer),
     relayURL: new URL(config.node.replace(/^https/, "wss")),
   };
+  const restored = await loadWalletState(config);
+  if (restored)
+    await emit(config.runDir, {
+      event: "wallet-state-restored",
+      roles: Object.keys(restored),
+    });
   const wallet = await WalletFacade.init({
     configuration: {
       ...base,
@@ -137,16 +254,22 @@ async function buildSession(config) {
       },
     },
     shielded: (cfg) =>
-      ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
+      restored
+        ? ShieldedWallet(cfg).restore(restored.shielded)
+        : ShieldedWallet(cfg).startWithSecretKeys(shieldedSecretKeys),
     unshielded: (cfg) =>
-      UnshieldedWallet(cfg).startWithPublicKey(
-        PublicKey.fromKeyStore(unshieldedKeystore),
-      ),
+      restored
+        ? UnshieldedWallet(cfg).restore(restored.unshielded)
+        : UnshieldedWallet(cfg).startWithPublicKey(
+            PublicKey.fromKeyStore(unshieldedKeystore),
+          ),
     dust: (cfg) =>
-      DustWallet(cfg).startWithSecretKey(
-        dustSecretKey,
-        ledger.LedgerParameters.initialParameters().dust,
-      ),
+      restored
+        ? DustWallet(cfg).restore(restored.dust)
+        : DustWallet(cfg).startWithSecretKey(
+            dustSecretKey,
+            ledger.LedgerParameters.initialParameters().dust,
+          ),
   });
   await wallet.start(shieldedSecretKeys, dustSecretKey);
   return {
@@ -156,6 +279,7 @@ async function buildSession(config) {
     shieldedSecretKeys,
     dustSecretKey,
     unshieldedKeystore,
+    restored: restored !== null,
     address: String(unshieldedKeystore.getBech32Address()),
   };
 }
@@ -242,20 +366,28 @@ async function balances(session, ledger, timeoutMs = 120_000) {
   };
 }
 
-async function registerDust(config, session) {
+// Fully synced facade, with progress reported so a long sync is never silent, then the
+// snapshots persisted so the runs after this one restore instead of replaying genesis.
+// A fresh Preprod sync measured 125 minutes on this SDK cohort (servicedesk #104), so the
+// ticker prints the applied index alongside the connected flags: that is the number to
+// compare against, and the only one that shows forward motion.
+async function awaitSync(config, session) {
   const Rx = await import("rxjs");
-  // Sync is the long pole on a fresh preprod wallet; report progress so a run
-  // can never fail invisibly.
   const ticker = setInterval(() => {
     Rx.firstValueFrom(session.wallet.state())
       .then((s) =>
         console.log(
           JSON.stringify({
             event: "sync-progress",
+            restored: session.restored,
             synced: s.isSynced === true,
             shieldedConnected: s.shielded.state.progress.isConnected,
             unshieldedConnected: s.unshielded.state.progress.isConnected,
             dustConnected: s.dust.state.progress.isConnected,
+            dustApplied: String(s.dust.state.progress.appliedIndex ?? 0n),
+            unshieldedApplied: String(
+              s.unshielded.state.progress.appliedId ?? 0n,
+            ),
           }),
         ),
       )
@@ -274,6 +406,19 @@ async function registerDust(config, session) {
   } finally {
     clearInterval(ticker);
   }
+  const bytes = await saveWalletState(config, session.wallet);
+  await emit(config.runDir, {
+    event: "wallet-state-saved",
+    address: session.address,
+    restored: session.restored,
+    bytes,
+  });
+  return state;
+}
+
+async function registerDust(config, session) {
+  const Rx = await import("rxjs");
+  const state = await awaitSync(config, session);
   const unregistered = state.unshielded.availableCoins.filter(
     (coin) => coin.meta?.registeredForDustGeneration !== true,
   );
@@ -295,6 +440,20 @@ async function registerDust(config, session) {
     DustAddress,
     config.networkId,
   );
+  // A registration is rejected with BalanceCheckOverspend when its own fee exceeds the
+  // dust the registration generates, which is the whole budget on a wallet with no dust
+  // yet. 4.2.0 estimates and throws before submission rather than letting the chain
+  // reject, so wait for the projection to cover the estimate first.
+  const estimate = await session.wallet.estimateRegistration(unregistered);
+  await emit(config.runDir, {
+    event: "dust-registration-estimate",
+    address: session.address,
+    fee: estimate.fee.toString(),
+  });
+  if (estimate.fee > 0n)
+    await session.wallet.waitForGeneratedDust(unregistered, estimate.fee, {
+      timeoutMs: 900_000,
+    });
   const recipe = await session.wallet.registerNightUtxosForDustGeneration(
     unregistered,
     session.unshieldedKeystore.getPublicKey(),
@@ -316,7 +475,12 @@ async function registerDust(config, session) {
       Rx.timeout({ first: 600_000 }),
     ),
   );
-  await emit(config.runDir, { event: "dust-observed" });
+  const bytes = await saveWalletState(config, session.wallet);
+  await emit(config.runDir, {
+    event: "dust-observed",
+    address: session.address,
+    bytes,
+  });
 }
 
 async function main() {
@@ -338,10 +502,23 @@ async function main() {
       });
       return;
     }
+    if (mode === "--sync") {
+      const state = await awaitSync(config, session);
+      await emit(config.runDir, {
+        event: "sync-complete",
+        address: session.address,
+        restored: session.restored,
+        dustBalance: state.dust.balance(new Date()).toString(),
+      });
+      return;
+    }
     if (mode === "--register-dust") {
       await registerDust(config, session);
       return;
     }
+    // Deploy, sweep and the maintenance drills all build transactions, so none of them
+    // may start from a partially synced wallet; the same wait persists the snapshot.
+    await awaitSync(config, session);
     const { providers, zkConfigProvider } = await buildProviders(
       config,
       session,
@@ -359,6 +536,8 @@ async function main() {
       Contract: generated.Contract,
       emit: (event) => emit(config.runDir, event),
     });
+    const bytes = await saveWalletState(config, session.wallet);
+    await emit(config.runDir, { event: "wallet-state-saved", bytes });
   } finally {
     await session.wallet.stop().catch(() => {});
   }
