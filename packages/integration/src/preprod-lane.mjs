@@ -14,6 +14,10 @@
 //   --breaker <circuit>       removeVerifierKey (disable a circuit on-chain)
 //   --restore <circuit>       insertVerifierKey (restore a circuit)
 //   --freeze <key|empty>      replaceAuthority (hand over or relinquish control)
+//   --verify-state            verify the snapshot metadata and restore against the chain,
+//                             print the receipt, exit non-zero when the fast path is refused
+//   --repair-state            rewrite sdk-versions.json from the installed versions
+//                             (explicit operator repair; never automatic during a restore)
 //
 // Sync cost: a fresh Preprod wallet replays full genesis history (Midnight servicedesk
 // #118: the DUST wallet dominates it and a fresh sync can approach three hours). Nothing
@@ -21,6 +25,13 @@
 // documented sync knobs, and it persists each sub-wallet's snapshot under
 // <runDir>/wallet-state after every full sync. Later runs restore from those snapshots
 // and resume at the recorded applied index instead of replaying genesis.
+//
+// A restore that merely does not throw is not proof of correctness (midnight-wallet #559:
+// a dropped field restored without error and silently lost history; #298: stale pending
+// state survived serialization; servicedesk #104: an incompatible snapshot hangs with CPU
+// near zero). So before trusting a restore the lane runs the fail-closed gate in
+// wallet-state-verify.mjs and, on any FAIL or unexercised check, discards the snapshot and
+// takes a full from-seed sync instead.
 //
 // Env (from .env.preprod, allowlist-ignored):
 //   MIDNIGHT_PREPROD_SEED        64 hex characters (required)
@@ -32,6 +43,14 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { run } from "./preprod-actions.mjs";
+import {
+  inspectSdkVersions,
+  repairSdkVersions,
+  resolveSdkVersions,
+  verifyWalletState,
+  WALLET_STATE_FILES,
+  walletStateDir,
+} from "./wallet-state-verify.mjs";
 
 const PREPROD = Object.freeze({
   networkId: "preprod",
@@ -44,6 +63,13 @@ const PREPROD = Object.freeze({
 const GENERATED = "packages/contract/generated";
 const HEX64 = /^[a-f0-9]{64}$/;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+
+// Resolved from this module, not the cwd, so receipts always land in the repository's
+// ignored .hoplite tree.
+function defaultRunDir() {
+  return new URL("../../../.hoplite/artifacts/preprod", import.meta.url)
+    .pathname;
+}
 
 function preprodConfig(env) {
   if (env.MILO_PREPROD_ALLOW !== "disposable-owned-preprod")
@@ -63,11 +89,7 @@ function preprodConfig(env) {
   return {
     seed: env.MIDNIGHT_PREPROD_SEED,
     proofServer,
-    // Resolved from this module, not the cwd, so the receipts always land in the
-    // repository's ignored .hoplite tree.
-    runDir:
-      env.MIDNIGHT_PREPROD_RUN_DIR ??
-      new URL("../../../.hoplite/artifacts/preprod", import.meta.url).pathname,
+    runDir: env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir(),
     // Derived, never hardcoded: 16+ characters with three character classes.
     privateStatePassword: `Milo1!${hash(env.MIDNIGHT_PREPROD_SEED).slice(0, 20)}`,
     ...PREPROD,
@@ -97,110 +119,97 @@ const SYNC_TUNING = Object.freeze({
   resumeThreshold: 200,
 });
 
-const WALLET_STATE_FILES = Object.freeze({
-  shielded: "shielded.json",
-  unshielded: "unshielded.json",
-  dust: "dust.json",
-});
-
-function walletStateDir(config) {
-  return resolve(config.runDir, "wallet-state");
-}
-
-// A snapshot is only valid for the SDK that wrote it: restoring state serialized by an
-// older wallet-sdk under a newer one is a known silent hang (servicedesk #104 follow-up),
-// so the resolved version matrix is recorded beside the state and re-checked on restore.
-//
-// These packages are ESM-only: their "exports" maps declare no "require" condition, so
-// require() of either the specifier or its package.json throws
-// ERR_PACKAGE_PATH_NOT_EXPORTED. Neither `require.resolve` nor `createRequire` can read
-// them. Read each manifest by path from the node_modules trees above this module instead.
-// A version that cannot be established is recorded as null, and the caller fails closed
-// on it rather than treating an unresolvable matrix as a match.
-const SDK_PACKAGES = Object.freeze([
-  "wallet-sdk",
-  "wallet-sdk-facade",
-  "wallet-sdk-shielded",
-  "wallet-sdk-unshielded-wallet",
-  "wallet-sdk-dust-wallet",
-  "wallet-sdk-indexer-client",
-]);
-
-async function sdkMatrix() {
-  const bases = ["../", "../../", "../../../"].map(
-    (up) => new URL(`${up}node_modules/@midnight-ntwrk/`, import.meta.url),
-  );
-  const matrix = {};
-  for (const name of SDK_PACKAGES) {
-    let version = null;
-    for (const base of bases) {
-      try {
-        const manifest = JSON.parse(
-          await readFile(new URL(`${name}/package.json`, base), "utf8"),
-        );
-        if (manifest.name === `@midnight-ntwrk/${name}`) {
-          version = manifest.version;
-          break;
-        }
-      } catch {
-        // Not installed in this tree; try the next one up.
-      }
-    }
-    matrix[name] = version;
-  }
-  return matrix;
-}
+// The snapshot role files, the version matrix and the SDK version resolver all live in
+// wallet-state-verify.mjs: the resolver must read each manifest by path because the
+// packages are ESM-only and their "exports" maps do not expose "./package.json", so a
+// require() of the specifier throws ERR_PACKAGE_PATH_NOT_EXPORTED and an empty matrix
+// would silently disable the version gate.
 
 /** Restored snapshots make every run after the first cheap: the wallet resumes at its
- * recorded applied index instead of replaying genesis. Any missing role, or a version
- * mismatch, means a fresh from-seed sync rather than a partially restored wallet. */
+ * recorded applied index instead of replaying genesis. Any missing role, an incomplete or
+ * drifted version recording, or a failed chain verification means a fresh from-seed sync
+ * rather than a partially restored wallet. Every rejection is emitted by name. */
 async function loadWalletState(config) {
-  const dir = walletStateDir(config);
+  const dir = walletStateDir(config.runDir);
   const loaded = {};
   try {
     for (const [role, file] of Object.entries(WALLET_STATE_FILES))
       loaded[role] = await readFile(resolve(dir, file), "utf8");
-    const recorded = JSON.parse(
-      await readFile(resolve(dir, "sdk-versions.json"), "utf8"),
-    );
-    const current = await sdkMatrix();
-    // Fail closed on an unresolvable matrix: comparing two empty records would otherwise
-    // read as "no drift" and let a snapshot be restored under an unknown SDK version,
-    // which is the exact silent-hang failure this gate exists to prevent.
-    const unresolved = Object.keys(current).filter(
-      (name) => current[name] === null,
-    );
-    if (unresolved.length > 0) {
-      await emit(config.runDir, {
-        event: "wallet-state-rejected",
-        reason: "sdk-versions-unresolvable",
-        unresolved,
-      });
-      return null;
-    }
-    const drifted = Object.keys(current).filter(
-      (name) => recorded[name] !== current[name],
-    );
-    if (drifted.length > 0) {
-      await emit(config.runDir, {
-        event: "wallet-state-rejected",
-        reason: "sdk-version-changed",
-        drifted: drifted.map((name) => ({
-          name,
-          recorded: recorded[name] ?? null,
-          current: current[name],
-        })),
-      });
-      return null;
-    }
-    return loaded;
   } catch {
+    // First run, or a partial snapshot: there is no restorable state, so a full sync follows.
     return null;
   }
+
+  const inspection = await inspectSdkVersions(dir);
+  // Fail closed on an unresolvable installed matrix: comparing two empty records would
+  // otherwise read as "no drift" and let a snapshot be restored under an unknown SDK
+  // version, the exact silent-hang failure this gate exists to prevent.
+  if (inspection.unresolved.length > 0) {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: "sdk-versions-unresolvable",
+      unresolved: inspection.unresolved,
+    });
+    return null;
+  }
+  // An empty or key-incomplete recording is never silently accepted and never auto-repaired:
+  // the operator must run --repair-state deliberately.
+  if (!inspection.exists || inspection.parseError !== null) {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: inspection.exists
+        ? "sdk-versions-unreadable"
+        : "sdk-versions-missing",
+      error: inspection.parseError,
+      hint: "operator action required: run --repair-state to rewrite sdk-versions.json from the installed versions",
+    });
+    return null;
+  }
+  if (inspection.empty || inspection.missingKeys.length > 0) {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: "sdk-versions-incomplete",
+      empty: inspection.empty,
+      missingKeys: inspection.missingKeys,
+      hint: "operator action required: run --repair-state to rewrite sdk-versions.json from the installed versions; never auto-repaired during a restore",
+    });
+    return null;
+  }
+  if (inspection.drifted.length > 0) {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: "sdk-version-changed",
+      drifted: inspection.drifted,
+    });
+    return null;
+  }
+
+  // Versions match, but a restore that merely does not throw proves nothing (#559, #298).
+  // Verify the restored state against the chain before the lane trusts it; any FAIL or an
+  // unexercised check refuses the snapshot and forces the full from-seed sync below.
+  const verdict = await verifyWalletState(dir, {
+    receiptPath: resolve(config.runDir, "wallet-state-verification.json"),
+  });
+  if (!verdict.safeForFastPath) {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: "restore-verification-failed",
+      failed: verdict.failedIds,
+      unexercised: verdict.unexercisedIds,
+      receipt: verdict.receiptPath,
+    });
+    return null;
+  }
+  await emit(config.runDir, {
+    event: "wallet-state-verified",
+    checks: verdict.checks.length,
+    receipt: verdict.receiptPath,
+  });
+  return loaded;
 }
 
 async function saveWalletState(config, wallet) {
-  const dir = walletStateDir(config);
+  const dir = walletStateDir(config.runDir);
   await mkdir(dir, { recursive: true });
   const bytes = {};
   for (const role of Object.keys(WALLET_STATE_FILES)) {
@@ -212,7 +221,7 @@ async function saveWalletState(config, wallet) {
   }
   await writeFile(
     resolve(dir, "sdk-versions.json"),
-    `${JSON.stringify(await sdkMatrix(), null, 2)}\n`,
+    `${JSON.stringify(await resolveSdkVersions(), null, 2)}\n`,
   );
   return bytes;
 }
@@ -518,6 +527,70 @@ async function main() {
   const flags = process.argv.slice(2);
   const mode = flags.find((flag) => flag.startsWith("--"));
   assert(mode, "one mode flag is required (see the file header)");
+
+  // Operator-only state modes. They deliberately do not require the seed or the allow
+  // flag: they never build a wallet, and --repair-state must be a deliberate operator
+  // action, never an automatic step inside a restore.
+  if (mode === "--verify-state" || mode === "--repair-state") {
+    const runDir = process.env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir();
+    const dir = walletStateDir(runDir);
+    try {
+      if (mode === "--repair-state") {
+        const result = await repairSdkVersions(dir);
+        if (!result.repaired) {
+          console.log(
+            JSON.stringify({
+              event: "wallet-state-repair-skipped",
+              reason: result.reason,
+              dir,
+            }),
+          );
+          return;
+        }
+        console.log(
+          [
+            "",
+            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+            "!! WALLET-STATE REPAIR: sdk-versions.json REWRITTEN     !!",
+            `!! ${result.path}`,
+            "!! rewritten from the versions installed RIGHT NOW.      !!",
+            "!! This is a deliberate operator action, not automatic.  !!",
+            "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+            "",
+          ].join("\n"),
+        );
+        console.log(
+          JSON.stringify(
+            {
+              event: "wallet-state-repaired",
+              dir,
+              emptyBefore: result.emptyBefore ?? false,
+              missingBefore: result.missingBefore ?? [],
+              parseErrorBefore: result.parseErrorBefore ?? null,
+              after: result.after,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      const verdict = await verifyWalletState(dir, {
+        receiptPath: resolve(runDir, "wallet-state-verification.json"),
+      });
+      console.log(JSON.stringify(verdict.receipt, null, 2));
+      console.error(
+        `wallet-state-verify: ${verdict.receipt.verdict.passed} passed, ${verdict.failedIds.length} failed, ${verdict.unexercisedIds.length} unexercised; safeForFastPath=${verdict.safeForFastPath}; receipt=${verdict.receiptPath}`,
+      );
+      process.exit(verdict.safeForFastPath ? 0 : 1);
+    } catch (error) {
+      console.error(
+        `wallet-state ${mode} failed: ${String(error?.message ?? error)}`,
+      );
+      process.exit(1);
+    }
+  }
+
   const config = preprodConfig(process.env);
   const session = await buildSession(config);
   try {
