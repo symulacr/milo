@@ -7,7 +7,8 @@
 //
 // Modes (exactly one):
 //   --check                   validate env, build providers, report address and balances
-//   --sync                    sync fully, persist the wallet snapshots, report progress
+//   --sync                    sync fully, append durable progress receipts, persist the wallet
+//                             snapshots, report progress
 //   --seed-dust               opt-in fast start: seed the two DUST Merkle trees from the
 //                             chain's collapsed updates, write <runDir>/wallet-state/dust.json
 //                             atomically, then continue into the ordinary flow so the dust
@@ -36,6 +37,18 @@
 // after the reconstructed roots equal the roots the chain publishes; any failure falls
 // back to the ordinary full sync.
 //
+// Durability of a long run. A full sync can outlive a terminal and the host: the record of
+// how far it got must not live only in stdout or /tmp, which a reboot destroys. So while a
+// sync waits, the lane appends a progress receipt to <runDir>/transactions.jsonl on a
+// bounded interval (default once a minute, tunable below), carrying the applied index of
+// all three roles, the connected flags, the elapsed time and whether the run restored or
+// seeded. Separately, a run writes <runDir>/sync-inflight.json at start and removes it on a
+// clean exit, so a later run reports previous-run-interrupted together with the last durable
+// receipt. This is visibility, never recovery: the ledger exposes no partial-sync
+// checkpoint, so a killed sync is not resumed and its state cannot be reconstructed from
+// these files. A later run restores from a snapshot a prior run finished and verified, or
+// replays from its cursor exactly as if the killed run had never started.
+//
 // A restore that merely does not throw is not proof of correctness (midnight-wallet #559:
 // a dropped field restored without error and silently lost history; #298: stale pending
 // state survived serialization; servicedesk #104: an incompatible snapshot hangs with CPU
@@ -48,6 +61,8 @@
 //   MILO_PREPROD_ALLOW           must equal "disposable-owned-preprod"
 //   MIDNIGHT_PREPROD_PROOF_HTTP  loopback proof server, default http://127.0.0.1:6300
 //   MIDNIGHT_PREPROD_RUN_DIR     optional receipt directory
+//   MIDNIGHT_PREPROD_PROGRESS_INTERVAL_MS  durable sync-progress-receipt interval in ms,
+//                                default 60000, bounded 10000..3600000
 //   MIDNIGHT_PREPROD_INDEXER_HTTP / MIDNIGHT_PREPROD_INDEXER_WS / MIDNIGHT_PREPROD_NODE
 //                                indexer and node endpoints, default the public Preprod
 //                                endpoints. Overridable only so an offline dry run can
@@ -119,6 +134,8 @@ function preprodConfig(env) {
     seed: env.MIDNIGHT_PREPROD_SEED,
     proofServer,
     runDir: env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir(),
+    // Durable progress cadence; bounded so a bad value cannot flood the trail or disable it.
+    progressIntervalMs: progressIntervalMs(env),
     // Derived, never hardcoded: 16+ characters with three character classes.
     privateStatePassword: `Milo1!${hash(env.MIDNIGHT_PREPROD_SEED).slice(0, 20)}`,
     // Default to the public Preprod endpoints. The override exists only for offline dry
@@ -161,6 +178,107 @@ async function emitBestEffort(runDir, event) {
   }
 }
 
+/** Read the most recent durable progress receipt from the run trail, so an interrupted
+ * run can be reported as far as it got. Returns null when there is no trail or no receipt
+ * yet. Bounded to the trail's own size; it is an operator receipt file, not a ledger. */
+async function lastProgressReceipt(runDir) {
+  let text;
+  try {
+    text = await readFile(resolve(runDir, "transactions.jsonl"), "utf8");
+  } catch {
+    return null;
+  }
+  const lines = text.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index].trim();
+    if (!line) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (parsed?.event === "sync-progress-receipt") return parsed;
+  }
+  return null;
+}
+
+async function writeRunMarker(config, marker) {
+  await mkdir(config.runDir, { recursive: true });
+  await writeFile(
+    resolve(config.runDir, RUN_MARKER_FILE),
+    `${JSON.stringify(marker)}\n`,
+  );
+}
+
+/** Mark a run in flight and surface a predecessor that died before it could clear the
+ * marker. Visibility only, never recovery: the ledger has no partial-sync checkpoint, so
+ * this reports that a run did not finish and how far its last durable receipt got, not a
+ * resumable position. A new run still restores from a completed snapshot or replays from
+ * its cursor. Never throws, so an unwritable run directory cannot abort the run. */
+async function beginRunMarker(config, mode) {
+  const markerPath = resolve(config.runDir, RUN_MARKER_FILE);
+  try {
+    const previous = JSON.parse(await readFile(markerPath, "utf8"));
+    const last = await lastProgressReceipt(config.runDir);
+    await emitBestEffort(config.runDir, {
+      event: "previous-run-interrupted",
+      detail:
+        "a previous run left its in-flight marker behind, so it did not exit cleanly; " +
+        "the ledger has no partial-sync checkpoint, so a killed sync is not resumed and " +
+        "restarts from its cursor",
+      previous,
+      lastProgress: last
+        ? {
+            at: last.at ?? null,
+            elapsedMs: last.elapsedMs ?? null,
+            shieldedApplied: last.shieldedApplied ?? null,
+            unshieldedApplied: last.unshieldedApplied ?? null,
+            dustApplied: last.dustApplied ?? null,
+            synced: last.synced ?? null,
+          }
+        : null,
+    });
+  } catch (error) {
+    if (error?.code !== "ENOENT")
+      await emitBestEffort(config.runDir, {
+        event: "previous-run-marker-unreadable",
+        message: String(error?.message ?? error).slice(0, 500),
+      });
+  }
+  try {
+    await writeRunMarker(config, {
+      event: "sync-inflight",
+      mode,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "run-marker-write-failed",
+        message: String(error?.message ?? error),
+      }),
+    );
+  }
+}
+
+/** Add detail learned only after the wallet is built (restored/seeded/address) to the
+ * in-flight marker. Best effort: a failure here must not abort a healthy run. */
+async function annotateRunMarker(config, fields) {
+  try {
+    const markerPath = resolve(config.runDir, RUN_MARKER_FILE);
+    const current = JSON.parse(await readFile(markerPath, "utf8"));
+    await writeRunMarker(config, { ...current, ...fields });
+  } catch {
+    // The marker is an indication, not a prerequisite: dropping the annotation is harmless.
+  }
+}
+
+async function clearRunMarker(config) {
+  await rm(resolve(config.runDir, RUN_MARKER_FILE), { force: true });
+}
+
 // Sync tuning. These are the documented `DefaultSyncConfiguration` knobs (added in
 // wallet-sdk-dust-wallet 4.0.0), not private API. Defaults are sized for a wallet at the
 // tip: batches of 10 events, a 4 ms delay injected between batches, and a 10k in-flight
@@ -171,6 +289,31 @@ const SYNC_TUNING = Object.freeze({
   bufferSize: 20_000,
   resumeThreshold: 200,
 });
+
+// Durable progress. A full sync runs for hours, so a progress line that exists only in the
+// stdout stream dies with the process (and a reboot destroys /tmp too). The same numbers are
+// therefore appended to <runDir>/transactions.jsonl on an interval: one line per interval.
+// The 60s default keeps the durable record within a minute of the truth while adding roughly
+// 180 lines to the documented ~3h genesis sync, which neither floods the shared trail nor
+// competes with the 30s stdout ticker that exists for a live operator. It is tunable because
+// a shorter sync may want a tighter bound and a very long one may want fewer lines; the
+// clamp means a typo cannot flood the file (too small) or silence the record entirely.
+const PROGRESS_INTERVAL_DEFAULT_MS = 60_000;
+const PROGRESS_INTERVAL_MIN_MS = 10_000;
+const PROGRESS_INTERVAL_MAX_MS = 3_600_000;
+function progressIntervalMs(env) {
+  const raw = Number(env.MIDNIGHT_PREPROD_PROGRESS_INTERVAL_MS);
+  if (!Number.isFinite(raw)) return PROGRESS_INTERVAL_DEFAULT_MS;
+  return Math.min(
+    PROGRESS_INTERVAL_MAX_MS,
+    Math.max(PROGRESS_INTERVAL_MIN_MS, Math.trunc(raw)),
+  );
+}
+
+// Written at the start of a run and removed only on a clean exit, so its presence in the run
+// directory means a predecessor did not finish. Visibility only: it is not a checkpoint and
+// nothing reads it to resume a sync (see the durability note in the file header).
+const RUN_MARKER_FILE = "sync-inflight.json";
 
 // The snapshot role files, the version matrix and the SDK version resolver all live in
 // wallet-state-verify.mjs: the resolver must read each manifest by path because the
@@ -322,9 +465,10 @@ function makeSeedSink(config) {
 }
 
 /** Seed dust, verify the emitted snapshot, and write it to <runDir>/wallet-state/dust.json.
- * Returns { ok: true, snapshot, receipt } on success and { ok: false, reason, error } on
- * any failure, having emitted dust-seed-failed and left no temp file behind. It never
- * throws, so the caller can always fall back to the ordinary full-sync path. */
+ * Returns { ok: true, snapshot, receipt } on success and
+ * { ok: false, reason, name, message, error } on any failure, having emitted
+ * dust-seed-failed and left no temp file behind. It never throws, so the caller can always
+ * fall back to the ordinary full-sync path. */
 async function seedDustForRun(config, keys) {
   const dir = walletStateDir(config.runDir);
   const target = resolve(dir, WALLET_STATE_FILES.dust);
@@ -414,14 +558,19 @@ async function seedDustForRun(config, keys) {
     await sink.flush();
     if (wroteTemp) await rm(temp, { force: true });
     const reason = seedFailureReason(error);
+    const message = String(error?.message ?? error).slice(0, 500);
+    const name = error?.name ?? "Error";
     await emitBestEffort(config.runDir, {
       event: "dust-seed-failed",
       reason,
-      name: error?.name ?? "Error",
-      message: String(error?.message ?? error).slice(0, 500),
+      name,
+      message,
       fallback: "ordinary-full-sync",
     });
-    return { ok: false, reason, error };
+    // The reason detail travels back to the caller so it can also be recorded on the
+    // fallback receipt: a later reader must see that the fast path was attempted and
+    // refused, with why, rather than inferring it was never tried.
+    return { ok: false, reason, name, message, error };
   }
 }
 
@@ -518,6 +667,11 @@ async function buildSession(config, options = {}) {
   const restored = await loadWalletState(config);
   const dustSnapshot = options.dustSnapshot ?? null;
   const dustSeeded = restored === null && dustSnapshot !== null;
+  // "seeded", "refused" (fast path attempted and fell back) or "not-attempted". Kept on the
+  // session so every progress receipt states whether the fast path failed, not just that the
+  // dust role was not restored from a seed.
+  const dustSeedOutcome =
+    options.dustSeedOutcome ?? (dustSeeded ? "seeded" : "not-attempted");
   if (restored)
     await emit(config.runDir, {
       event: "wallet-state-restored",
@@ -568,6 +722,7 @@ async function buildSession(config, options = {}) {
     unshieldedKeystore,
     restored: restored !== null,
     dustSeeded,
+    dustSeedOutcome,
     address,
   };
 }
@@ -658,25 +813,35 @@ async function balances(session, ledger, timeoutMs = 120_000) {
 // snapshots persisted so the runs after this one restore instead of replaying genesis.
 // A fresh Preprod sync measured 125 minutes on this SDK cohort (servicedesk #104), so the
 // ticker prints the applied index alongside the connected flags: that is the number to
-// compare against, and the only one that shows forward motion.
+// compare against, and the only one that shows forward motion. The same numbers are also
+// appended to the durable run trail (one line per interval) so a reboot that kills an
+// unattended sync leaves a record of how far it got, not just a stale stdout buffer.
+function syncProgressFields(s, session, startedAt) {
+  return {
+    restored: session.restored,
+    dustSeeded: session.dustSeeded,
+    dustSeedOutcome: session.dustSeedOutcome,
+    synced: s.isSynced === true,
+    shieldedConnected: s.shielded.state.progress.isConnected,
+    unshieldedConnected: s.unshielded.state.progress.isConnected,
+    dustConnected: s.dust.state.progress.isConnected,
+    shieldedApplied: String(s.shielded.state.progress.appliedIndex ?? 0n),
+    unshieldedApplied: String(s.unshielded.state.progress.appliedId ?? 0n),
+    dustApplied: String(s.dust.state.progress.appliedIndex ?? 0n),
+    elapsedMs: Date.now() - startedAt,
+  };
+}
+
 async function awaitSync(config, session) {
   const Rx = await import("rxjs");
+  const startedAt = Date.now();
   const ticker = setInterval(() => {
     Rx.firstValueFrom(session.wallet.state())
       .then((s) =>
         console.log(
           JSON.stringify({
             event: "sync-progress",
-            restored: session.restored,
-            dustSeeded: session.dustSeeded,
-            synced: s.isSynced === true,
-            shieldedConnected: s.shielded.state.progress.isConnected,
-            unshieldedConnected: s.unshielded.state.progress.isConnected,
-            dustConnected: s.dust.state.progress.isConnected,
-            dustApplied: String(s.dust.state.progress.appliedIndex ?? 0n),
-            unshieldedApplied: String(
-              s.unshielded.state.progress.appliedId ?? 0n,
-            ),
+            ...syncProgressFields(s, session, startedAt),
           }),
         ),
       )
@@ -689,11 +854,49 @@ async function awaitSync(config, session) {
         ),
       );
   }, 30_000);
+  // The durable receipt is written file-first, on a serialized queue so receipts never
+  // interleave with the events other paths append, and never to /tmp. A receipt write
+  // failure is reported but must not abort a sync that is still making progress.
+  let receiptQueue = Promise.resolve();
+  const writeReceipt = () => {
+    Rx.firstValueFrom(session.wallet.state())
+      .then((s) => {
+        const receipt = {
+          event: "sync-progress-receipt",
+          at: new Date().toISOString(),
+          ...syncProgressFields(s, session, startedAt),
+        };
+        receiptQueue = receiptQueue
+          .then(() => appendEvent(config.runDir, receipt))
+          .catch((error) =>
+            console.error(
+              JSON.stringify({
+                event: "sync-progress-receipt-failed",
+                message: String(error?.message ?? error),
+              }),
+            ),
+          );
+      })
+      .catch((error) =>
+        console.error(
+          JSON.stringify({
+            event: "sync-progress-receipt-error",
+            message: String(error?.message ?? error),
+          }),
+        ),
+      );
+  };
+  // Write one receipt immediately as well as on the interval, so even a sync killed in its
+  // first interval leaves the durable record of where it restarted from.
+  writeReceipt();
+  const receiptTimer = setInterval(writeReceipt, config.progressIntervalMs);
   let state;
   try {
     state = await session.wallet.waitForSyncedState();
   } finally {
     clearInterval(ticker);
+    clearInterval(receiptTimer);
+    await receiptQueue;
   }
   const bytes = await saveWalletState(config, session.wallet);
   await emit(config.runDir, {
@@ -701,6 +904,7 @@ async function awaitSync(config, session) {
     address: session.address,
     restored: session.restored,
     dustSeeded: session.dustSeeded,
+    dustSeedOutcome: session.dustSeedOutcome,
     bytes,
   });
   return state;
@@ -842,12 +1046,17 @@ async function main() {
   }
 
   const config = preprodConfig(process.env);
+  // Mark the run in flight before anything long runs, and report a predecessor whose marker
+  // was left behind. The marker is cleared only on a clean exit below; it is an indication,
+  // not a checkpoint (see the durability note in the file header).
+  await beginRunMarker(config, mode);
   // --seed-dust must seed before the wallet exists: restoring the dust role needs the
   // snapshot on disk. The key derivation runs once here and is handed to buildSession so
   // the seeder and the session share exactly one derivation path. Any failure emits
   // dust-seed-failed (inside seedDustForRun) and falls through to the ordinary full sync.
   let prepared;
   let dustSnapshot = null;
+  let dustSeedOutcome = "not-attempted";
   if (mode === "--seed-dust") {
     await emitBestEffort(config.runDir, {
       event: "dust-seed-mode",
@@ -861,15 +1070,23 @@ async function main() {
       const seeded = await seedDustForRun(config, keys);
       if (seeded.ok) {
         dustSnapshot = seeded.snapshot;
+        dustSeedOutcome = "seeded";
       } else {
+        dustSeedOutcome = "refused";
+        // Carry the refusal reason onto the fallback receipt so the durable trail shows the
+        // fast path was attempted and why it failed, not merely that no seed was used.
         await emitBestEffort(config.runDir, {
           event: "dust-seed-fallback",
           mode,
           reason: seeded.reason,
+          name: seeded.name,
+          message: seeded.message,
           fallback: "ordinary-full-sync",
+          fastPath: "refused",
         });
       }
     } catch (error) {
+      dustSeedOutcome = "refused";
       await emitBestEffort(config.runDir, {
         event: "dust-seed-failed",
         reason: seedFailureReason(error),
@@ -882,8 +1099,19 @@ async function main() {
   const session = await buildSession(config, {
     ...(prepared ?? {}),
     dustSnapshot,
+    dustSeedOutcome,
   });
-  try {
+  await annotateRunMarker(config, {
+    restored: session.restored,
+    dustSeeded: session.dustSeeded,
+    dustSeedOutcome: session.dustSeedOutcome,
+    address: session.address,
+  });
+  let completed = false;
+  // The mode bodies return early, so the run is wrapped in a function and `completed` is set
+  // only once that function returns normally: any return inside it is still a clean exit, and
+  // any throw leaves the marker in place.
+  const dispatch = async () => {
     if (mode === "--check") {
       await emit(config.runDir, {
         event: "preprod-check",
@@ -903,6 +1131,7 @@ async function main() {
         address: session.address,
         restored: session.restored,
         dustSeeded: session.dustSeeded,
+        dustSeedOutcome: session.dustSeedOutcome,
         dustBalance: state.dust.balance(new Date()).toString(),
       });
       return;
@@ -917,6 +1146,7 @@ async function main() {
         address: session.address,
         restored: session.restored,
         dustSeeded: session.dustSeeded,
+        dustSeedOutcome: session.dustSeedOutcome,
         dustBalance: state.dust.balance(new Date()).toString(),
       });
       return;
@@ -947,8 +1177,15 @@ async function main() {
     });
     const bytes = await saveWalletState(config, session.wallet);
     await emit(config.runDir, { event: "wallet-state-saved", bytes });
+  };
+  try {
+    await dispatch();
+    completed = true;
   } finally {
     await session.wallet.stop().catch(() => {});
+    // Clear the marker only after the mode ran to completion. A thrown error or a killed
+    // process leaves it in place, which is the signal the next run reports.
+    if (completed) await clearRunMarker(config).catch(() => {});
   }
 }
 

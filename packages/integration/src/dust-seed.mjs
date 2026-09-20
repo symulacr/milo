@@ -7,14 +7,27 @@
 // the chain publishes, and only then replays the post-seed tail.
 //
 // Safety posture (fail closed):
-//   * the block and both collapsed updates are fetched in a single pinned
-//     indexer request, so the roots compared belong to the same indexer state;
-//   * verification accepts a match at lag 0 or lag 1 (the published root can
-//     trail the collapsed-update endpoint by one state) and aborts on anything
-//     wider;
+//   * the published tip (end indices and dust roots) must be stable across two
+//     consecutive reads before anything is compared, so verification never runs
+//     against a moving target on an actively-growing chain;
+//   * the block, both collapsed updates, the previous `maxLag` collapse states
+//     and a batch of recent blocks' dust events are then fetched in a single
+//     pinned indexer request, so every value compared belongs to one indexer
+//     state and the tail boundary is pinned to the same state as the trees;
+//   * the leaf count of the reconstructed trees is derived from that same
+//     response (the collapsed update end index, cross-checked against the
+//     reconstructed tree's first-free index), so the comparison cannot straddle
+//     two different tree states;
+//   * verification accepts a published root that trails the collapsed-update
+//     endpoint by up to `maxLag` leaves (the live tip field is known to lag on
+//     a busy chain) and aborts on anything wider;
 //   * nothing is emitted unless both roots verify, the tail cursor is anchored
-//     to the pinned block, and the produced snapshot round-trips through the
+//     to the pinned state, and the produced snapshot round-trips through the
 //     shipped SDK's own serialization capability;
+//   * the tail replay is bounded, requires contiguous event ids, and surfaces
+//     the ledger's "values inserted non-linearly into dust generation tree"
+//     error as a `DustSeedError` naming the offset, so a wrong offset fails
+//     visibly instead of hanging a restoring wallet's sync loop;
 //   * the seeder is read-only: it never signs, never submits, and never writes
 //     to the chain. No secret material (no seed, no secret key) is ever
 //     serialized, logged, or returned.
@@ -22,7 +35,7 @@
 // The tail cursor matters: the collapsed trees cover every dust event up to the
 // pinned block, and replaying one of those covered events is not idempotent
 // (the ledger throws "values inserted non-linearly into dust commitment tree").
-// The cursor is therefore derived from the pinned block itself, never guessed.
+// The cursor is therefore derived from the pinned state itself, never guessed.
 
 import * as ledger from "@midnight-ntwrk/ledger-v8";
 import { CoreWallet } from "@midnight-ntwrk/wallet-sdk-dust-wallet/v1";
@@ -46,10 +59,18 @@ export const DUST_SEED_DEFAULTS = Object.freeze({
   deadlineMs: 45_000,
   // Per HTTP request bound.
   requestTimeoutMs: 15_000,
+  // How many consecutive equal reads of the published tip settle it. Two reads
+  // (one repeat) is the documented quiet-window sample.
+  stabiliseReads: 2,
+  // Gap between the quiet-window reads.
+  stabilisePollMs: 500,
+  // Wall clock after which an unsettled tip is refused rather than chased.
+  stabiliseMs: 20_000,
   // How many times to re-pin the tip before giving up on a root match.
-  pinAttempts: 3,
-  // Widest accepted root lag, in collapse states. Wider MUST abort.
-  maxLag: 1,
+  pinAttempts: 4,
+  // Widest accepted published-root lag, in leaves. The live tip field has been
+  // observed lagging three leaves behind the collapsed-update endpoint.
+  maxLag: 4,
   // How far back to look for the most recent dust event anchoring the cursor.
   maxScanBlocks: 512,
   scanBatchSize: 24,
@@ -139,23 +160,67 @@ export function rootMatches(localValue, chainRoot) {
   return encoded === normalizeChainRoot(chainRoot);
 }
 
-function resolveLag(currentRoot, previousRoot, chainRoot, maxLag) {
-  if (rootMatches(currentRoot, chainRoot)) return 0;
-  if (
-    maxLag >= 1 &&
-    typeof previousRoot === "bigint" &&
-    rootMatches(previousRoot, chainRoot)
-  ) {
-    return 1;
+/**
+ * Resolve how many leaves the published root trails the reconstructed tree
+ * endpoint by, searching the candidate roots from depth 0 (the endpoint) out to
+ * `maxLag`. Returns the smallest matching depth, or -1 when nothing matches.
+ * `candidates` may be sparse; holes (a collapse state the indexer did not
+ * return) are skipped rather than treated as a mismatch.
+ */
+function resolveRootLag(candidates, chainRoot, maxLag) {
+  for (let depth = 0; depth <= maxLag; depth++) {
+    if (
+      typeof candidates[depth] === "bigint" &&
+      rootMatches(candidates[depth], chainRoot)
+    ) {
+      return depth;
+    }
   }
   return -1;
 }
 
 /**
+ * Normalize the root candidates for one tree. New callers pass an array indexed
+ * by depth (`localCommitmentRoots[depth]`); older callers pass the endpoint and
+ * one previous state directly.
+ */
+function normalizeRootCandidates(roots, endpoint, previous, maxLag) {
+  const candidates = [];
+  if (Array.isArray(roots)) {
+    for (let depth = 0; depth <= maxLag; depth++) {
+      if (typeof roots[depth] === "bigint") candidates[depth] = roots[depth];
+    }
+    return candidates;
+  }
+  if (typeof endpoint === "bigint") candidates[0] = endpoint;
+  if (typeof previous === "bigint") candidates[1] = previous;
+  return candidates;
+}
+
+/**
+ * Derive the reconstructed trees' expected leaf counts directly from the
+ * deserialized local state (its first-free index is the next leaf to insert).
+ * Returns `null` when the state does not expose them, so callers can fall back
+ * to the indexer's own end index.
+ */
+export function localTreeFirstFree(state) {
+  if (!(state instanceof ledger.DustLocalState)) return null;
+  const text = state.toString();
+  const commitment = text.match(/commitment_tree_first_free:\s*(\d+)/);
+  const generation = text.match(/generating_tree_first_free:\s*(\d+)/);
+  if (!commitment || !generation) return null;
+  return {
+    commitment: BigInt(commitment[1]),
+    generation: BigInt(generation[1]),
+  };
+}
+
+/**
  * Verify the seeded local roots against the roots the chain publishes. Accepts
- * a match at the collapsed-update endpoint (lag 0) or one collapse state behind
- * it (lag 1, when the published field trails), and throws otherwise. A return
- * value means the seed may be trusted; a throw means nothing may be emitted.
+ * a match at the collapsed-update endpoint (lag 0) or up to `maxLag` leaves
+ * behind it (the published field is known to lag a growing chain), and throws
+ * otherwise. A return value means the seed may be trusted; a throw means
+ * nothing may be emitted.
  */
 export function assertSeedRootsMatch({
   chainCommitmentRoot,
@@ -164,17 +229,29 @@ export function assertSeedRootsMatch({
   localGenerationRoot,
   previousCommitmentRoot,
   previousGenerationRoot,
+  localCommitmentRoots,
+  localGenerationRoots,
   maxLag = 1,
 }) {
-  const commitmentLag = resolveLag(
+  const commitmentRoots = normalizeRootCandidates(
+    localCommitmentRoots,
     localCommitmentRoot,
     previousCommitmentRoot,
+    maxLag,
+  );
+  const generationRoots = normalizeRootCandidates(
+    localGenerationRoots,
+    localGenerationRoot,
+    previousGenerationRoot,
+    maxLag,
+  );
+  const commitmentLag = resolveRootLag(
+    commitmentRoots,
     chainCommitmentRoot,
     maxLag,
   );
-  const generationLag = resolveLag(
-    localGenerationRoot,
-    previousGenerationRoot,
+  const generationLag = resolveRootLag(
+    generationRoots,
     chainGenerationRoot,
     maxLag,
   );
@@ -182,7 +259,8 @@ export function assertSeedRootsMatch({
     throw new DustSeedError(
       "DUST root verification failed: the seeded trees do not match the " +
         `published roots (commitmentLag=${commitmentLag} ` +
-        `generationLag=${generationLag}); refusing to emit a snapshot`,
+        `generationLag=${generationLag}, widestSearchedLag=${maxLag}); ` +
+        "refusing to emit a snapshot",
     );
   }
   return {
@@ -314,6 +392,91 @@ export function applyCollapsedUpdates({
   return state;
 }
 
+/**
+ * Bounded linearity guard for the tail that advances a seeded snapshot.
+ *
+ * The SDK's sync loop resumes from `offset - 1` and applies every event with
+ * `id > offset`. That resume is linear only when the events applied to build the
+ * tree are exactly the events with `id <= offset`. This applies the fresh tail
+ * events in one bounded ledger call and:
+ *
+ *   * refuses a non-contiguous tail (a gap would make the offset skip events);
+ *   * surfaces the ledger's own non-linear-insertion error as a `DustSeedError`
+ *     naming the offset, instead of letting a restoring wallet retry forever.
+ *
+ * `events` entries are `{ id, event }` where `event` is a deserialized
+ * `ledger.Event`. Returns `{ state, appliedEvents, lastAppliedEventId }`.
+ */
+export function applyTailEventsLinear({
+  state,
+  publicKey,
+  appliedIndex,
+  events,
+  secretKey,
+  networkId,
+  protocolVersion = 0n,
+  timestamp,
+} = {}) {
+  if (!(state instanceof ledger.DustLocalState)) {
+    throw new DustSeedError("tail replay requires a DustLocalState");
+  }
+  const offset = BigInt(appliedIndex);
+  const entries = (events ?? [])
+    .map((entry) => ({ id: BigInt(entry.id), event: entry.event }))
+    .filter((entry) => entry.id > offset)
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+  let expected = offset + 1n;
+  for (const entry of entries) {
+    if (entry.id !== expected) {
+      throw new DustSeedError(
+        `dust tail is not contiguous at offset ${appliedIndex}: expected ` +
+          `event id ${expected} next but received ${entry.id}; refusing to ` +
+          "emit a snapshot whose offset would skip events",
+      );
+    }
+    expected += 1n;
+  }
+  if (entries.length === 0) {
+    return { state, appliedEvents: 0, lastAppliedEventId: Number(offset) };
+  }
+  let updated;
+  try {
+    const wallet = {
+      state,
+      publicKey: { publicKey },
+      networkId,
+      pendingDust: [],
+      protocolVersion,
+      progress: { appliedIndex: offset },
+    };
+    [updated] = CoreWallet.applyEventsWithChanges(
+      wallet,
+      secretKey,
+      entries.map((entry) => entry.event),
+      timestamp instanceof Date ? timestamp : new Date(timestamp ?? Date.now()),
+    );
+  } catch (error) {
+    const message = String(error?.message ?? error);
+    if (/non-linearly into dust/.test(message)) {
+      throw new DustSeedError(
+        `dust sync offset ${appliedIndex} is inconsistent with the seeded ` +
+          `trees (${message}); refusing to emit a snapshot that would make a ` +
+          "restoring wallet retry forever",
+      );
+    }
+    throw new DustSeedError(
+      `tail events could not be applied at offset ${appliedIndex}: ${message}`,
+    );
+  }
+  return {
+    state: updated.state,
+    appliedEvents: entries.length,
+    lastAppliedEventId: Number(entries[entries.length - 1].id),
+  };
+}
+
 function defaultRequest(config) {
   return async function request(query, timeoutMs = config.requestTimeoutMs) {
     const controller = new AbortController();
@@ -359,76 +522,239 @@ function requireSafeIndex(value, label) {
   return value;
 }
 
+/** The light read used only to observe the published tip while it settles. */
+const TIP_QUERY =
+  "{ block(offset:null){ height dustCommitmentEndIndex dustGenerationEndIndex dustCommitmentMerkleTreeRoot dustGenerationMerkleTreeRoot } }";
+
+/** True when two tip reads describe the same published dust state. */
+function sameDustTip(previous, current) {
+  if (!previous || !current) return false;
+  if (previous.dustCommitmentEndIndex !== current.dustCommitmentEndIndex) {
+    return false;
+  }
+  if (previous.dustGenerationEndIndex !== current.dustGenerationEndIndex) {
+    return false;
+  }
+  for (const field of [
+    "dustCommitmentMerkleTreeRoot",
+    "dustGenerationMerkleTreeRoot",
+  ]) {
+    const before = previous[field];
+    const after = current[field];
+    if (before !== undefined && after !== undefined && before !== after) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function readTip(request) {
+  const data = await request(TIP_QUERY);
+  const block = data?.block;
+  if (!block) throw new DustSeedError("indexer returned no tip block");
+  return block;
+}
+
 /**
- * Pin the tip block and both collapsed updates in one indexer request and
- * verify the seeded roots. Retries the pin while the tip moves or the roots
- * transiently disagree, and aborts after `maxLag` is exceeded.
+ * Wait for the published tip to be stable across `stabiliseReads` consecutive
+ * reads, so verification never compares against a moving target. Returns the
+ * settled tip. A tip that keeps moving past `budgetMs` is refused rather than
+ * chased, with the last observed values and how long it waited.
+ */
+async function stabiliseTip(
+  config,
+  request,
+  ctx,
+  budgetMs = config.stabiliseMs,
+) {
+  const limit = Math.max(0, Math.min(budgetMs, config.stabiliseMs));
+  const started = ctx.now();
+  const required = Math.max(1, config.stabiliseReads);
+  let previous = null;
+  let repeats = 0;
+  let reads = 0;
+  let last = null;
+  while (ctx.now() - started <= limit) {
+    ctx.check("stabilise");
+    const tip = await readTip(request);
+    reads += 1;
+    last = tip;
+    if (previous && sameDustTip(previous, tip)) {
+      repeats += 1;
+      if (repeats >= required - 1) {
+        const waitedMs = ctx.now() - started;
+        ctx.emit("dust-seed-root-stable", {
+          reads,
+          waitedMs,
+          height: tip.height,
+          commitmentEndExclusive: tip.dustCommitmentEndIndex,
+          generationEndExclusive: tip.dustGenerationEndIndex,
+          chainCommitmentRoot: tip.dustCommitmentMerkleTreeRoot,
+          chainGenerationRoot: tip.dustGenerationMerkleTreeRoot,
+        });
+        return { tip, waitedMs, reads };
+      }
+    } else {
+      repeats = 0;
+    }
+    previous = tip;
+    if (ctx.now() - started + config.stabilisePollMs > limit) break;
+    await new Promise((resolve) => setTimeout(resolve, config.stabilisePollMs));
+  }
+  throw new DustSeedError(
+    `DUST published tip did not stabilise within ${limit}ms (${reads} ` +
+      `reads, last height=${last?.height} ` +
+      `commitmentEndExclusive=${last?.dustCommitmentEndIndex} ` +
+      `generationEndExclusive=${last?.dustGenerationEndIndex}, ` +
+      `chainCommitmentRoot=${last?.dustCommitmentMerkleTreeRoot}); ` +
+      "the indexer kept moving the commitment root, so refusing to verify " +
+      "against a moving target",
+  );
+}
+
+/**
+ * Build the single pinned request. It carries the block, the endpoint collapsed
+ * updates, the previous `maxLag` collapse states, and a batch of recent blocks'
+ * dust events. Everything in one request belongs to one indexer state, so the
+ * root comparison and the tail boundary cannot straddle two tree states.
+ */
+function buildPinnedQuery(target, maxLag, batchHeights) {
+  const commitmentEnd = target.dustCommitmentEndIndex - 1;
+  const generationEnd = target.dustGenerationEndIndex - 1;
+  const parts = [
+    `block(offset:null){
+      height
+      dustCommitmentEndIndex
+      dustGenerationEndIndex
+      dustCommitmentMerkleTreeRoot
+      dustGenerationMerkleTreeRoot
+    }`,
+    `c:dustCommitmentMerkleTreeUpdate(startIndex:0,endIndex:${commitmentEnd}){ endIndex update }`,
+    `g:dustGenerationMerkleTreeUpdate(startIndex:0,endIndex:${generationEnd}){ endIndex update }`,
+  ];
+  for (let depth = 1; depth <= maxLag; depth++) {
+    if (commitmentEnd - depth >= 0) {
+      parts.push(
+        `cp${depth}:dustCommitmentMerkleTreeUpdate(startIndex:0,endIndex:${commitmentEnd - depth}){ endIndex update }`,
+      );
+    }
+    if (generationEnd - depth >= 0) {
+      parts.push(
+        `gp${depth}:dustGenerationMerkleTreeUpdate(startIndex:0,endIndex:${generationEnd - depth}){ endIndex update }`,
+      );
+    }
+  }
+  batchHeights.forEach((blockHeight, index) => {
+    parts.push(
+      `b${index}: block(offset:{height:${blockHeight}}){ height transactions { id dustLedgerEvents { id } } }`,
+    );
+  });
+  return `{ ${parts.join("\n")} }`;
+}
+
+/** Highest dust event id carried by the recent-block batch of a pinned read. */
+function cutoffFromPinnedBatch(data, batchHeights) {
+  let maxId = -1;
+  let foundAt = -1;
+  for (let index = 0; index < batchHeights.length; index++) {
+    const entry = data?.[`b${index}`];
+    if (!entry || !Array.isArray(entry.transactions)) continue;
+    for (const transaction of entry.transactions) {
+      for (const event of transaction?.dustLedgerEvents ?? []) {
+        if (Number.isSafeInteger(event?.id) && event.id > maxId) {
+          maxId = event.id;
+          foundAt = requireSafeIndex(entry.height, "block height");
+        }
+      }
+    }
+  }
+  return maxId >= 0
+    ? {
+        cutoffEventId: maxId,
+        cutoffHeight: foundAt,
+        scannedBlocks: batchHeights.length,
+        source: "pinned",
+      }
+    : null;
+}
+
+/**
+ * Stabilise the published tip, then fetch the block, both collapsed updates,
+ * the previous `maxLag` collapse states and a batch of recent dust events in one
+ * request and verify the seeded roots. Re-pins while the tip moves, and aborts
+ * with the observed lag once `maxLag` is exceeded.
  */
 async function pinAndVerify(config, request, ctx) {
-  let lastError;
-  let best;
-  for (let attempt = 1; attempt <= config.pinAttempts; attempt++) {
-    ctx.check("pin");
-    const tip = await request(
-      "{ block(offset:null){ height dustCommitmentEndIndex dustGenerationEndIndex } }",
-    );
-    const block = tip?.block;
-    const height = requireSafeIndex(block?.height, "block height");
-    const commitmentEndExclusive = requireSafeIndex(
-      block?.dustCommitmentEndIndex,
+  let stabiliseUsedMs = 0;
+  let target;
+  let commitmentEndExclusive;
+  let generationEndExclusive;
+  let batchHeights = [];
+  let lastStabilise = null;
+
+  const repin = async () => {
+    const budget = Math.max(0, config.stabiliseMs - stabiliseUsedMs);
+    const stabilised = await stabiliseTip(config, request, ctx, budget);
+    stabiliseUsedMs += stabilised.waitedMs + config.stabilisePollMs;
+    lastStabilise = stabilised;
+    target = stabilised.tip;
+    commitmentEndExclusive = requireSafeIndex(
+      target.dustCommitmentEndIndex,
       "dust commitment end index",
     );
-    const generationEndExclusive = requireSafeIndex(
-      block?.dustGenerationEndIndex,
+    generationEndExclusive = requireSafeIndex(
+      target.dustGenerationEndIndex,
       "dust generation end index",
     );
     if (commitmentEndExclusive < 1 || generationEndExclusive < 1) {
       throw new DustSeedError("dust trees are empty; nothing to seed");
     }
-    // The block end indices are exclusive and the collapsed-update end index is
-    // inclusive, so the range ends one index lower. The exact tip end index is
-    // rejected by the indexer ("attempted update on updated sub-tree").
-    const commitmentEnd = commitmentEndExclusive - 1;
-    const generationEnd = generationEndExclusive - 1;
-    const commitmentPrev = commitmentEnd - 1;
-    const generationPrev = generationEnd - 1;
-
-    const previousCommitment =
-      commitmentPrev >= 0
-        ? `cp:dustCommitmentMerkleTreeUpdate(startIndex:0,endIndex:${commitmentPrev}){ endIndex update }`
-        : "";
-    const previousGeneration =
-      generationPrev >= 0
-        ? `gp:dustGenerationMerkleTreeUpdate(startIndex:0,endIndex:${generationPrev}){ endIndex update }`
-        : "";
-
-    const query = `{
-      block(offset:null){
-        height
-        dustCommitmentEndIndex
-        dustGenerationEndIndex
-        dustCommitmentMerkleTreeRoot
-        dustGenerationMerkleTreeRoot
-      }
-      c:dustCommitmentMerkleTreeUpdate(startIndex:0,endIndex:${commitmentEnd}){ endIndex update }
-      g:dustGenerationMerkleTreeUpdate(startIndex:0,endIndex:${generationEnd}){ endIndex update }
-      ${previousCommitment}
-      ${previousGeneration}
-    }`;
-
-    const data = await request(query);
-    const pinned = data?.block;
-    if (!pinned) {
-      throw new DustSeedError("indexer returned no block");
+    batchHeights = [];
+    for (let index = 0; index < config.scanBatchSize; index++) {
+      const blockHeight = target.height - index;
+      if (blockHeight < 1) break;
+      batchHeights.push(blockHeight);
     }
-    // If the tip advanced between the two reads, retry with the newer state.
+    return stabilised;
+  };
+
+  await repin();
+  let lastError;
+  let best;
+  let attempts = 0;
+  for (let attempt = 1; attempt <= config.pinAttempts; attempt++) {
+    ctx.check("pin");
+    const data = await request(
+      buildPinnedQuery(target, config.maxLag, batchHeights),
+    );
+    const pinned = data?.block;
+    if (!pinned) throw new DustSeedError("indexer returned no block");
+    const pinnedCommitmentEnd = requireSafeIndex(
+      pinned.dustCommitmentEndIndex,
+      "dust commitment end index",
+    );
+    const pinnedGenerationEnd = requireSafeIndex(
+      pinned.dustGenerationEndIndex,
+      "dust generation end index",
+    );
     if (
-      pinned.dustCommitmentEndIndex !== commitmentEndExclusive ||
-      pinned.dustGenerationEndIndex !== generationEndExclusive
+      pinnedCommitmentEnd !== commitmentEndExclusive ||
+      pinnedGenerationEnd !== generationEndExclusive
     ) {
-      ctx.emit("dust-seed-tip-moved", { attempt });
+      ctx.emit("dust-seed-tip-moved", {
+        attempt,
+        commitmentEndExclusive: pinnedCommitmentEnd,
+        generationEndExclusive: pinnedGenerationEnd,
+      });
+      lastError = new DustSeedError(
+        "the indexer tip advanced between the stabilised read and the pinned " +
+          "read; refusing to compare across two tree states",
+      );
+      // The stabilised target moved; settle again (bounded) rather than chase.
+      await repin();
       continue;
     }
+    attempts = attempt;
     const commitmentPayloadHex = normalizeHex(
       data.c?.update,
       "commitment update",
@@ -437,33 +763,51 @@ async function pinAndVerify(config, request, ctx) {
       data.g?.update,
       "generation update",
     );
+    // The collapsed updates and the block end index are from this same response,
+    // so the expected leaf count is derived from one tree state. The block's end
+    // index is exclusive and the collapsed-update end index is inclusive, hence
+    // the requested range ends one index lower.
+    if (
+      Number(data.c?.endIndex) !== commitmentEndExclusive - 1 ||
+      Number(data.g?.endIndex) !== generationEndExclusive - 1
+    ) {
+      throw new DustSeedError(
+        "the collapsed updates do not cover the pinned block's dust end index " +
+          `(update endIndex=${data.c?.endIndex}/${data.g?.endIndex}, block ` +
+          `endIndex=${commitmentEndExclusive - 1}/${generationEndExclusive - 1}); ` +
+          "refusing to compare across two tree states",
+      );
+    }
 
-    let localCommitmentRoot;
-    let localGenerationRoot;
-    let previousCommitmentRoot;
-    let previousGenerationRoot;
+    let current;
+    const localCommitmentRoots = [];
+    const localGenerationRoots = [];
     try {
-      const current = applyCollapsedUpdates({
+      current = applyCollapsedUpdates({
         commitmentUpdate: commitmentPayloadHex,
         generationUpdate: generationPayloadHex,
       });
-      localCommitmentRoot = current.commitmentTreeRoot();
-      localGenerationRoot = current.generatingTreeRoot();
-      if (data.cp?.update && commitmentPrev >= 0) {
-        previousCommitmentRoot = applyCollapsedUpdates({
-          commitmentUpdate: normalizeHex(
-            data.cp.update,
-            "previous commitment update",
-          ),
-        }).commitmentTreeRoot();
-      }
-      if (data.gp?.update && generationPrev >= 0) {
-        previousGenerationRoot = applyCollapsedUpdates({
-          generationUpdate: normalizeHex(
-            data.gp.update,
-            "previous generation update",
-          ),
-        }).generatingTreeRoot();
+      localCommitmentRoots[0] = current.commitmentTreeRoot();
+      localGenerationRoots[0] = current.generatingTreeRoot();
+      for (let depth = 1; depth <= config.maxLag; depth++) {
+        const commitmentDepthHex = data?.[`cp${depth}`]?.update;
+        if (commitmentDepthHex) {
+          localCommitmentRoots[depth] = applyCollapsedUpdates({
+            commitmentUpdate: normalizeHex(
+              commitmentDepthHex,
+              `previous commitment update ${depth}`,
+            ),
+          }).commitmentTreeRoot();
+        }
+        const generationDepthHex = data?.[`gp${depth}`]?.update;
+        if (generationDepthHex) {
+          localGenerationRoots[depth] = applyCollapsedUpdates({
+            generationUpdate: normalizeHex(
+              generationDepthHex,
+              `previous generation update ${depth}`,
+            ),
+          }).generatingTreeRoot();
+        }
       }
     } catch (error) {
       if (error instanceof DustSeedError) throw error;
@@ -472,54 +816,83 @@ async function pinAndVerify(config, request, ctx) {
       );
     }
 
+    // Cross-check the reconstructed trees' own leaf counts against the block's
+    // end index from the same response. This is the "expected leaf count" check
+    // and it catches a payload whose range does not match its block.
+    const firstFree = localTreeFirstFree(current);
+    if (
+      firstFree &&
+      (firstFree.commitment !== BigInt(commitmentEndExclusive) ||
+        firstFree.generation !== BigInt(generationEndExclusive))
+    ) {
+      throw new DustSeedError(
+        `the collapsed updates reconstruct a tree of ` +
+          `${firstFree.commitment}/${firstFree.generation} leaves but the ` +
+          `pinned block publishes ${commitmentEndExclusive}/` +
+          `${generationEndExclusive}; refusing to compare across two tree states`,
+      );
+    }
+
     try {
       const verification = assertSeedRootsMatch({
         chainCommitmentRoot: pinned.dustCommitmentMerkleTreeRoot,
         chainGenerationRoot: pinned.dustGenerationMerkleTreeRoot,
-        localCommitmentRoot,
-        localGenerationRoot,
-        previousCommitmentRoot,
-        previousGenerationRoot,
+        localCommitmentRoots,
+        localGenerationRoots,
         maxLag: config.maxLag,
       });
       const candidate = {
-        height,
+        height: pinned.height,
         commitmentEndExclusive,
         generationEndExclusive,
-        commitmentEnd,
-        generationEnd,
+        commitmentEnd: commitmentEndExclusive - 1,
+        generationEnd: generationEndExclusive - 1,
         chainCommitmentRoot: pinned.dustCommitmentMerkleTreeRoot,
         chainGenerationRoot: pinned.dustGenerationMerkleTreeRoot,
-        localCommitmentRoot,
-        localGenerationRoot,
+        localCommitmentRoot: localCommitmentRoots[0],
+        localGenerationRoot: localGenerationRoots[0],
         commitmentUpdate: commitmentPayloadHex,
         generationUpdate: generationPayloadHex,
         commitmentPayloadBytes: toBytes(commitmentPayloadHex).length,
         generationPayloadBytes: toBytes(generationPayloadHex).length,
         verification,
-        attempts: attempt,
+        attempts,
+        batchHeights,
+        batchCutoff: cutoffFromPinnedBatch(data, batchHeights),
+        stabiliseWaitedMs: lastStabilise?.waitedMs ?? 0,
+        stabiliseReads: lastStabilise?.reads ?? 0,
       };
       // Prefer an exact (lag 0) match. A lagged match is still usable and is
       // recorded, but only if no later attempt pins an exact one.
       if (verification.lag === 0) return candidate;
-      if (!best) best = candidate;
+      if (!best || verification.lag < best.verification.lag) best = candidate;
       ctx.emit("dust-seed-root-lagged", {
         attempt,
-        height,
+        height: pinned.height,
         lag: verification.lag,
         commitmentLag: verification.commitmentLag,
         generationLag: verification.generationLag,
+        maxLag: config.maxLag,
       });
     } catch (error) {
       lastError = error;
       ctx.emit("dust-seed-root-mismatch", {
         attempt,
-        height,
+        height: pinned.height,
         chainCommitmentRoot: pinned.dustCommitmentMerkleTreeRoot,
-        localCommitmentRoot: encodeMerkleRoot(localCommitmentRoot),
+        localCommitmentRoot: encodeMerkleRoot(localCommitmentRoots[0]),
         chainGenerationRoot: pinned.dustGenerationMerkleTreeRoot,
-        localGenerationRoot: encodeMerkleRoot(localGenerationRoot),
+        localGenerationRoot: encodeMerkleRoot(localGenerationRoots[0]),
+        maxLag: config.maxLag,
       });
+    }
+    // A lagged or mismatched published field usually catches up within a few
+    // hundred milliseconds once the chain is quiet. Give it that time before
+    // the next (bounded) attempt instead of re-reading back to back.
+    if (attempt < config.pinAttempts) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, config.stabilisePollMs),
+      );
     }
   }
   if (best) return best;
@@ -529,14 +902,26 @@ async function pinAndVerify(config, request, ctx) {
 }
 
 /**
- * Find the highest dust ledger event id reflected by the pinned block, by
- * scanning blocks downward from the pinned height until one carries dust
+ * Find the highest dust ledger event id reflected by the pinned block. When the
+ * pinned request's own recent-block batch carried dust events, that boundary is
+ * used directly, so the cursor is pinned to the same indexer state as the trees.
+ * Otherwise it scans blocks downward from below the batch until one carries dust
  * events. This anchors the tail cursor to the same state the trees were seeded
  * at, so no covered event is replayed and no uncovered event is skipped.
  */
-async function findCutoffEventId(config, request, ctx, height) {
-  let scanned = 0;
-  let cursor = height;
+async function findCutoffEventId(config, request, ctx, pinned) {
+  if (pinned.batchCutoff) {
+    ctx.emit("dust-seed-cutoff-found", {
+      cutoffEventId: pinned.batchCutoff.cutoffEventId,
+      foundAtHeight: pinned.batchCutoff.cutoffHeight,
+      scannedBlocks: pinned.batchCutoff.scannedBlocks,
+      source: pinned.batchCutoff.source,
+    });
+    return { ...pinned.batchCutoff };
+  }
+  const batchHeight = pinned.height - pinned.batchHeights.length;
+  let scanned = pinned.batchHeights.length;
+  let cursor = batchHeight + 1;
   while (scanned < config.maxScanBlocks) {
     ctx.check("scan");
     const heights = [];
@@ -578,11 +963,13 @@ async function findCutoffEventId(config, request, ctx, height) {
         cutoffEventId: maxId,
         foundAtHeight: foundAt,
         scannedBlocks: scanned + heights.length,
+        source: "scan",
       });
       return {
         cutoffEventId: maxId,
         cutoffHeight: foundAt,
         scannedBlocks: scanned + heights.length,
+        source: "scan",
       };
     }
     scanned += heights.length;
@@ -739,10 +1126,13 @@ export async function seedDustState(options = {}) {
     lag: pinned.verification.lag,
     commitmentLag: pinned.verification.commitmentLag,
     generationLag: pinned.verification.generationLag,
+    maxLag: config.maxLag,
+    stabiliseWaitedMs: pinned.stabiliseWaitedMs,
+    stabiliseReads: pinned.stabiliseReads,
   });
 
   ctx.check("cutoff");
-  const cutoff = await findCutoffEventId(config, request, ctx, pinned.height);
+  const cutoff = await findCutoffEventId(config, request, ctx, pinned);
   const tailStartId = cutoff.cutoffEventId + 1;
 
   let state = applyCollapsedUpdates({
@@ -779,30 +1169,25 @@ export async function seedDustState(options = {}) {
           `tail event could not be deserialized: ${error.message}`,
         );
       }
-      const wallet = {
+      // Bounded, contiguity-checked apply: a wrong offset (a gap, a skip, or an
+      // already-covered event) surfaces the ledger's non-linear-insertion error
+      // here instead of hanging a restoring wallet's sync loop.
+      const tailResult = applyTailEventsLinear({
         state,
-        publicKey: { publicKey },
+        publicKey,
+        appliedIndex: lastAppliedEventId,
+        events: ordered.map((event, index) => ({
+          id: event.id,
+          event: ledgerEvents[index],
+        })),
+        secretKey: config.secretKey,
         networkId: config.networkId,
-        pendingDust: [],
         protocolVersion: config.protocolVersion,
-        progress: { appliedIndex: BigInt(lastAppliedEventId) },
-      };
-      let updated;
-      try {
-        [updated] = CoreWallet.applyEventsWithChanges(
-          wallet,
-          config.secretKey,
-          ledgerEvents,
-          new Date(clock()),
-        );
-      } catch (error) {
-        throw new DustSeedError(
-          `tail events could not be applied: ${error.message}`,
-        );
-      }
-      state = updated.state;
-      lastAppliedEventId = ordered[ordered.length - 1].id;
-      tailEventsApplied = ordered.length;
+        timestamp: new Date(clock()),
+      });
+      state = tailResult.state;
+      lastAppliedEventId = tailResult.lastAppliedEventId;
+      tailEventsApplied = tailResult.appliedEvents;
     }
   }
 
@@ -866,10 +1251,14 @@ export async function seedDustState(options = {}) {
     lag: pinned.verification.lag,
     commitmentLag: pinned.verification.commitmentLag,
     generationLag: pinned.verification.generationLag,
+    maxLag: config.maxLag,
     pinAttempts: pinned.attempts,
+    stabiliseWaitedMs: pinned.stabiliseWaitedMs,
+    stabiliseReads: pinned.stabiliseReads,
     commitmentPayloadBytes: pinned.commitmentPayloadBytes,
     generationPayloadBytes: pinned.generationPayloadBytes,
     scannedBlocks: cutoff.scannedBlocks,
+    cutoffSource: cutoff.source,
     cutoffEventId: cutoff.cutoffEventId,
     cutoffHeight: cutoff.cutoffHeight,
     tailStartEventId: tailStartId,
