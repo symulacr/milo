@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 /**
- * The 14 proof-bearing circuit names are declared in four hand-maintained
+ * The 14 proof-bearing circuit names are declared in three hand-maintained
  * planes (compiler script, integration artifact loader, backend admission
- * entrypoints, lace lifecycle list) plus the generated compiler manifest.
- * A drift in the backend copy is a fail-closed runtime outage; a drift in the
- * others is silent. This tripwire pins all of them to the generated truth.
- * The lace copy is a TEST-ONLY module, but it is the design surface for the
- * browser authority path, so its order (deploy first, then the admission
- * lifecycle) is asserted too.
+ * entrypoints) plus the generated compiler manifest. A drift in the backend
+ * copy is a fail-closed runtime outage; a drift in the others is silent. This
+ * tripwire pins all of them to the generated truth. The former fourth plane
+ * (the unwired lace lifecycle list) was removed with its module; the browser
+ * authority path is product scope whose contract is the circuit list pinned
+ * here.
  */
 const REPO = new URL("../../..", import.meta.url).pathname;
 
@@ -45,19 +45,11 @@ const required = list(
   "packages/backend/src/admission-policy.ts",
   "REQUIRED_ENTRYPOINTS",
 );
-const lifecycle = list(
-  "apps/web/src/lace-transaction-runtime.ts",
-  "lifecycleOperations",
-);
 
 describe("circuit manifest parity", () => {
   test("every hand-maintained plane matches the generated compiler manifest", () => {
     expect(generated.length).toBe(14);
     expect([...artifacts].sort()).toEqual(generated);
     expect([...required].sort()).toEqual(generated);
-  });
-
-  test("lace lifecycle is deploy followed by the admission lifecycle, in order", () => {
-    expect(lifecycle).toEqual(["deploy", ...required]);
   });
 });
