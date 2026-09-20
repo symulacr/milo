@@ -87,7 +87,7 @@ import {
   seedDustState,
 } from "./dust-seed.mjs";
 import { createHttpSubmitter } from "./http-submit.mjs";
-import { run } from "./preprod-actions.mjs";
+import { miloOrder, run } from "./preprod-actions.mjs";
 import {
   inspectSdkVersions,
   repairSdkVersions,
@@ -1198,11 +1198,14 @@ async function main() {
       );
       const {
         loadOrCreateMaintenanceKey,
-        preprodConfiguration,
         runStagedDeploy,
         STAGED_DEPLOY_RECEIPT_FILE,
       } = await import("./staged-deploy.mjs");
       const maintenance = await loadOrCreateMaintenanceKey(config.runDir);
+      // Build the SAME order the drills will drive. The staged deploy used to invent its own
+      // secrets, so the deployed commitments had no matching private state and the drills
+      // could not call the contract at all.
+      const order = miloOrder(Contract);
       await emit(config.runDir, {
         event: "staged-deploy-mode",
         address: session.address,
@@ -1211,7 +1214,7 @@ async function main() {
       });
       await runStagedDeploy({
         networkId: config.networkId,
-        configuration: preprodConfiguration(Contract, config.networkId),
+        configuration: order.configurationFor({}),
         coinPublicKey: session.shieldedSecretKeys.coinPublicKey,
         verifierKeys: await zkConfigProvider.getVerifierKeys(proofCircuits),
         signingKey: maintenance.key,
@@ -1234,6 +1237,15 @@ async function main() {
             address,
             maintenance.key,
           );
+          // The driver acts as buyer, merchant and operator and looks for private state under
+          // `<label>-<actor>`. Store the same order the constructor received, or the deployed
+          // commitments have no matching private state and every drill call fails.
+          providers.privateStateProvider.setContractAddress(address);
+          for (const actor of ["buyer", "merchant", "operator"])
+            await providers.privateStateProvider.set(
+              `main-${actor}`,
+              order.privateState(actor),
+            );
         },
       });
       await emit(config.runDir, {
