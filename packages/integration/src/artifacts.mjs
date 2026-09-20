@@ -5,6 +5,13 @@ import { lstat, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** The pinned toolchain cohort. Consumers assert against these, never literals. */
+export const TOOLCHAIN = Object.freeze({
+  compiler: "0.31.1",
+  runtime: "0.16.0",
+  language: "0.23.0",
+});
+
 export const proofCircuits = [
   "accept",
   "approve",
@@ -71,8 +78,8 @@ export async function validateArtifacts(directory = contractDirectory) {
     receipt.scope,
     "full compiler artifacts; not a transaction proof or chain receipt",
   );
-  assert.equal(receipt.compiler, "0.31.1");
-  assert.equal(receipt.runtime, "0.16.0");
+  assert.equal(receipt.compiler, TOOLCHAIN.compiler);
+  assert.equal(receipt.runtime, TOOLCHAIN.runtime);
   assert.equal(receipt.source, sourcePath);
   assert.deepEqual(receipt.proofCircuits, proofCircuits);
   assert.deepEqual(Object.keys(receipt.artifacts).sort(), artifactPaths);

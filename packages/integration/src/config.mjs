@@ -1,3 +1,8 @@
+/** One loopback guard: an endpoint must be an explicit local address. */
+export function isLoopbackHostname(hostname) {
+  return ["127.0.0.1", "[::1]"].includes(hostname);
+}
+
 export function localConfig(env) {
   if (env.MILO_LOCAL_ALLOW_TRANSACTIONS !== "disposable-owned-local") {
     throw new Error("Explicit disposable local-network authorization required");
@@ -6,7 +11,7 @@ export function localConfig(env) {
     const url = new URL(env[key]);
     if (
       url.protocol !== protocol ||
-      !["127.0.0.1", "[::1]"].includes(url.hostname) ||
+      !isLoopbackHostname(url.hostname) ||
       url.username ||
       url.password ||
       url.search ||

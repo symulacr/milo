@@ -8,7 +8,7 @@ import {
   reconstructPublicConstructor,
   validPublicConstructor,
 } from "../../backend/src/public-constructor.mjs";
-import { proofCircuits } from "./artifacts.mjs";
+import { proofCircuits, TOOLCHAIN } from "./artifacts.mjs";
 import {
   prepareBootstrap,
   requireCompletedLockedBootstrap,
@@ -76,9 +76,9 @@ export function prepareAdmissionObserver({
     network,
     "Quote network differs from local ledger network",
   );
-  assert.equal(artifactReceipt.compiler, "0.31.1");
-  assert.equal(artifactReceipt.runtime, "0.16.0");
-  assert.equal(artifactReceipt.language, "0.23.0");
+  assert.equal(artifactReceipt.compiler, TOOLCHAIN.compiler);
+  assert.equal(artifactReceipt.runtime, TOOLCHAIN.runtime);
+  assert.equal(artifactReceipt.language, TOOLCHAIN.language);
   assert.equal(
     artifactReceipt.artifactSetSha256,
     sha256(JSON.stringify(artifactReceipt.artifacts)),
