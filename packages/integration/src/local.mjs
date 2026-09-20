@@ -352,6 +352,17 @@ async function main() {
           type: "blockHash",
           blockHash,
         });
+      // One as-of finalized snapshot reader shared by recovery and both
+      // maintenance lanes; an absent afterHeight falls back to the default -1.
+      const snapshotAt = (address, afterHeight) =>
+        observeFinalizedContract({
+          rpc,
+          indexer: env.indexer,
+          observe: (address) => publicDataProvider.queryContractState(address),
+          address,
+          afterHeight,
+          deadline: Math.min(expiresAt, Date.now() + 60_000),
+        });
       const result = env.recoveryAudit
         ? await (await import("./recovery-process.mjs")).runProcessRecovery({
             home: process.env.HOME,
@@ -363,15 +374,7 @@ async function main() {
             observe,
             reconcile: (identifiers) =>
               publicDataProvider.watchForTxData(identifiers.at(-1)),
-            snapshot: (address) =>
-              observeFinalizedContract({
-                rpc,
-                indexer: env.indexer,
-                observe: (address) =>
-                  publicDataProvider.queryContractState(address),
-                address,
-                deadline: Math.min(expiresAt, Date.now() + 60_000),
-              }),
+            snapshot: snapshotAt,
             submit: async (unprovenTx, fence) => {
               assert.equal(submissionFence, undefined);
               submissionFence = fence;
@@ -406,16 +409,7 @@ async function main() {
                     observe,
                     submit: (unprovenTx) => submitTx(providers, { unprovenTx }),
                     context: () => ({ boundary }),
-                    snapshot: (address, afterHeight) =>
-                      observeFinalizedContract({
-                        rpc,
-                        indexer: env.indexer,
-                        observe: (address) =>
-                          publicDataProvider.queryContractState(address),
-                        address,
-                        afterHeight,
-                        deadline: Math.min(expiresAt, Date.now() + 60_000),
-                      }),
+                    snapshot: snapshotAt,
                   })
               : undefined,
             auditMaintenance: env.maintenanceAudit
@@ -426,16 +420,7 @@ async function main() {
                     step,
                     submit: (unprovenTx) => submitTx(providers, { unprovenTx }),
                     context: () => ({ boundary }),
-                    snapshot: (address, afterHeight) =>
-                      observeFinalizedContract({
-                        rpc,
-                        indexer: env.indexer,
-                        observe: (address) =>
-                          publicDataProvider.queryContractState(address),
-                        address,
-                        afterHeight,
-                        deadline: Math.min(expiresAt, Date.now() + 60_000),
-                      }),
+                    snapshot: snapshotAt,
                   })
               : undefined,
           });

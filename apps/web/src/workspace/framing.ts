@@ -106,8 +106,6 @@ export function paymentLine(payment: Payment): string {
       return "captured separately from approval";
     case "expired":
       return "hold expired; payment unresolved";
-    case "failed":
-      return "payment failed; approval unchanged";
     case "voided":
       return "hold released";
     case "none":
