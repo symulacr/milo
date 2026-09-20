@@ -94,8 +94,9 @@ packages/integration/node_modules/
 scripts/check-plan.ts
 scripts/convex-local-*
 !scripts/convex-local-lifecycle-check.py
-scripts/native-node-smoke.ts
-scripts/native-services-health.ts
+# re-included 2026-09-20: the documented test:native-node / test:native-network
+# commands were missing from package.json, and these two files are their
+# implementations (native-services-health is imported by native-node-smoke).
 scripts/preprod-observe.mjs
 
 # 7. Unreferenced leftovers, untracked after an import-graph and string-reference

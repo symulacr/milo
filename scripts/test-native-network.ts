@@ -42,13 +42,16 @@ if (!existsSync(".tools/native-midnight")) {
   assert.equal(services.status, 0, "native service provisioning failed");
 }
 
+// The supervisor (native-node-smoke) starts its own disposable node,
+// observes the genesis hash and supplies the loopback endpoints; the
+// dependency provisioning above is what it assumes exists.
 const flags = process.argv.slice(2);
 const lane = flags.length
   ? flags
   : ["--with-services", "--transactions", "--staged-bootstrap"];
 const run = spawnSync(
-  integrationNode,
-  ["packages/integration/src/local.mjs", ...lane],
+  "sh",
+  ["scripts/with-bun.sh", "scripts/native-node-smoke.ts", ...lane],
   { stdio: "inherit" },
 );
 process.exit(run.status ?? 1);
