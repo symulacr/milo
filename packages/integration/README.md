@@ -132,6 +132,19 @@ For each actual proved deployment, maintenance or call transaction, wallet balan
 
 `immutableOrderAdmission` and `r1Complete` remain **false**. This slice does not verify adversarial maintenance-operation rejection, malicious bootstrap deployment, canonical quote/address binding, independent actor lifecycle, replay/recovery or the remaining MID operations. Positive policy observation alone must not close admission. Preserve deployment/maintenance identifiers as partial local evidence, not completed MID rows. The source canary preventing SDK circuit-call entrypoints is a regression guard, not an admission implementation or network proof.
 
+## Real local lane (the only path that proves and submits)
+
+`bun run test:native-node -- --with-services --transactions --staged-bootstrap`
+runs the real path end to end: `scripts/test-native-network.ts` provisions the
+pinned Node runtime and this package's lockfile, then execs
+`scripts/native-node-smoke.ts`, which starts the disposable loopback node
+(native-services-health.ts verifies the services), observes the genesis hash,
+and drives `src/local.mjs` through real proof generation, wallet balancing and
+submission. `bun run test:native-network` adds the native binary provisioning
+first. Receipts land in ignored `.hoplite/artifacts/native-node/run-*/`
+(transactions.jsonl, service logs, receipts); the automated test lane in
+`test/` uses stub submits by design and never exercises this path.
+
 ## Exact source and dependency receipt
 
 `package-lock.json` pins the isolated resolved graph and npm tarball integrity. Direct SDK/testkit packages are **4.1.1**, `compact-runtime` **0.16.0**, `onchain-runtime-v3` **3.1.1**, `ledger-v8` **8.1.2**, dashed `wallet-sdk` **1.2.0**, and RxJS **7.8.2**. Testkit retains its own exact **1.1.0** barrel; both resolve the same concrete facade **4.1.0**, address codec **3.1.2**, and ledger **8.1.2** - npm `overrides` pin `ledger-v8` and `onchain-runtime-v3` to this package's own exact versions, closing the deserialization-hardening patch pair across the nested `midnight-js-protocol` graph (18 September 2026). Tests verify those module identities. The resolved graph changed, so historical native receipts do not verify this updated graph. A scoped Node module hook resolves the untouched generated module's Compact runtime import into this package, avoiding duplicate WASM object identities with the root Bun dependency graph.
