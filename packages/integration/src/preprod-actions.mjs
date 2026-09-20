@@ -419,9 +419,34 @@ async function sweep({
         `${d.acceptance} ${d.delivery} ${d.review} ${d.resolution}`,
     );
   }
+  // Callable-args assertion: the runner invokes step.args(...), so a step written without an
+  // args field dies at call time with "step.args is not a function". Four steps were written
+  // that way and each one only surfaced on Preprod, so the whole class is checked here instead.
+  for (const scenario of scenarios) {
+    for (const step of scenarioSteps(scenario.label)) {
+      assert(
+        typeof step.circuit === "string" && step.circuit.length > 0,
+        `scenario ${scenario.label} has a step without a circuit`,
+      );
+      assert(
+        typeof step.args === "function",
+        `scenario ${scenario.label} step ${step.circuit} has no callable args`,
+      );
+    }
+  }
+  // Optional single-scenario run, so a scenario that failed on one step can be re-run without
+  // paying the other scenarios' expiry waits again: MILO_SWEEP_ONLY=<label>.
+  const only = process.env.MILO_SWEEP_ONLY;
+  const selected = only
+    ? scenarios.filter((scenario) => scenario.label === only)
+    : scenarios;
+  assert(
+    !only || selected.length > 0,
+    `MILO_SWEEP_ONLY=${only} matches no scenario`,
+  );
 
   const summary = [];
-  for (const scenario of scenarios) {
+  for (const scenario of selected) {
     const deadlines = order.deadlinesFor(scenario.offsets);
     // Name every awaited stage of this scenario from here on: the deploy, the actor
     // handles, and the circuit call. A stall event then carries which scenario, circuit
@@ -642,6 +667,7 @@ function scenarioSteps(label) {
           actor: "buyer",
           revision: 3n,
           waitFor: "review",
+          args: () => [],
         },
       ];
     case "expire-dispute":
@@ -659,6 +685,7 @@ function scenarioSteps(label) {
           actor: "buyer",
           revision: 3n,
           waitFor: "resolution",
+          args: () => [],
         },
       ];
     default:
