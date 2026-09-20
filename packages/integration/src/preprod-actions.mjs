@@ -4,11 +4,26 @@
 // negative cases. Secrets: the sampled maintenance key is written to the run
 // directory (ignored, 0600) so the breaker drill can reuse it; the wallet seed
 // never leaves the environment.
+//
+// Maintenance modes (--breaker/--restore/--freeze) deliberately do NOT go through
+// findDeployedContract: it unconditionally runs verifyContractState, which throws
+// while any circuit's verifier key is missing - the exact state --restore repairs -
+// and it stores the supplied initialPrivateState, overwriting the deployment's
+// recorded `main-buyer` state. Instead the handles are built straight from the
+// contract address with createCircuitMaintenanceTxInterfaces /
+// createContractMaintenanceTxInterface (no verification, no private state). An
+// empty maintenance authority cannot be expressed through replaceAuthority (an
+// omitted key samples a random one), so --freeze empty uses the same lower-level
+// ledger MaintenanceUpdate route bootstrap.mjs uses.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
+import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
+import { publicReceipt } from "./config.mjs";
 import { witnesses } from "./order.mjs";
+import { intentExpiry, maintenanceTx } from "./tx.mjs";
 
 const GENERATED = resolve("packages/contract/generated");
 
@@ -109,11 +124,24 @@ async function maintenanceKey(config) {
     // 32..=35 (platform-js SigningKey.js: ConstrainedPlainHex({ byteLength: '32..=35' })), so
     // sampleSigningKey()'s 64-character hex value is already the right shape. Hex-encoding it
     // on write doubled it to 128 characters and deployContract failed with InvalidData at
-    // keys.signing.
-    return { path, key: stored.key, created: false };
+    // keys.signing. `key: null` is the truthful record left by `--freeze empty` (control
+    // relinquished), so it reads back as "no key" rather than a usable one.
+    return { path, key: stored.key ?? undefined, created: false };
   } catch {
     return { path, key: undefined, created: true };
   }
+}
+
+/**
+ * Persist the operator signing key the driver last used, 0600. Called after a
+ * successful `--freeze`, so the recorded key follows the on-chain authority
+ * instead of going stale, and with `{ key: null, relinquished: true }` after a
+ * `--freeze empty`.
+ */
+async function writeMaintenanceKey(path, record) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(record), { mode: 0o600 });
+  await chmod(path, 0o600);
 }
 
 async function deployOrder({
@@ -156,13 +184,14 @@ async function deployOrder({
 async function attempt(emit, fields, call) {
   try {
     const result = await call();
-    await emit({
-      event: "call-finalized",
-      ...fields,
-      txId: result?.public?.txId,
-      blockHeight: result?.public?.blockHeight,
-    });
-    return { ok: true, txId: result?.public?.txId };
+    // deployContract returns FinalizedTxData nested under `.public`; the maintenance
+    // interfaces and the ledger-route submitTx return FinalizedTxData at the top
+    // level. Read both so every maintenance receipt carries the real txId and block
+    // height instead of recording none.
+    const txId = result?.public?.txId ?? result?.txId;
+    const blockHeight = result?.public?.blockHeight ?? result?.blockHeight;
+    await emit({ event: "call-finalized", ...fields, txId, blockHeight });
+    return { ok: true, txId, blockHeight, value: result };
   } catch (error) {
     await emit({
       event: "call-rejected",
@@ -207,21 +236,27 @@ async function sweep({ Contract, providers, config, emit }) {
     { label: "dispute-merchant", offsets: {} },
     { label: "expire-bootstrap", offsets: { acceptance: -60 } },
     { label: "expire-reserved", offsets: { acceptance: 300 } },
+    // The deadline fields must ascend: the constructor asserts
+    // acceptance < delivery < review < resolution (order.compact:77). These three scenarios
+    // previously assigned their values to the wrong fields, inverting the order, so they
+    // failed with "unordered deadlines" before reaching the circuit they exist to exercise.
+    // Each scenario's values are unchanged, only placed in ascending order, and the largest
+    // value is the deadline that scenario waits for.
     {
       label: "expire-undelivered",
-      offsets: { acceptance: 900, delivery: 420 },
+      offsets: { acceptance: 420, delivery: 900 },
     },
     {
       label: "escalate-unreviewed",
-      offsets: { acceptance: 1200, delivery: 600, review: 660 },
+      offsets: { acceptance: 600, delivery: 660, review: 1200 },
     },
     {
       label: "expire-dispute",
       offsets: {
-        acceptance: 1500,
-        delivery: 700,
-        review: 900,
-        resolution: 960,
+        acceptance: 700,
+        delivery: 900,
+        review: 960,
+        resolution: 1500,
       },
     },
   ];
@@ -233,19 +268,55 @@ async function sweep({ Contract, providers, config, emit }) {
   );
   for (const circuit of CIRCUITS.map((entry) => entry.name))
     assert(planned.has(circuit), `sweep does not cover ${circuit}`);
+  // Deadline ordering assertion: the constructor asserts
+  // acceptance < delivery < review < resolution, so a scenario whose offsets invert them
+  // dies with "unordered deadlines" before reaching the circuit it exists to exercise.
+  // Three scenarios did exactly that until the offsets were reordered.
+  for (const scenario of scenarios) {
+    const d = order.deadlinesFor(scenario.offsets);
+    assert(
+      d.acceptance < d.delivery &&
+        d.delivery < d.review &&
+        d.review < d.resolution,
+      `scenario ${scenario.label} has unordered deadlines: ` +
+        `${d.acceptance} ${d.delivery} ${d.review} ${d.resolution}`,
+    );
+  }
 
   const summary = [];
   for (const scenario of scenarios) {
     const deadlines = order.deadlinesFor(scenario.offsets);
-    const deployed = await deployOrder({
-      Contract,
-      providers,
-      config,
-      configuration: order.configurationFor(scenario.offsets),
-      privateStateFor: order.privateState,
-      label: scenario.label,
+    // The scenario deploy is the one call that can abort the whole sweep; record it
+    // through attempt() too, so a rejected deploy leaves a receipt naming the
+    // scenario instead of only stderr.
+    const deployment = await attempt(
       emit,
-    });
+      {
+        scenario: scenario.label,
+        circuit: "deploy",
+        actor: null,
+        negative: false,
+      },
+      () =>
+        deployOrder({
+          Contract,
+          providers,
+          config,
+          configuration: order.configurationFor(scenario.offsets),
+          privateStateFor: order.privateState,
+          label: scenario.label,
+          emit,
+        }),
+    );
+    if (!deployment.ok) {
+      summary.push({
+        scenario: scenario.label,
+        deployed: false,
+        error: deployment.message,
+      });
+      continue;
+    }
+    const deployed = deployment.value;
     const actors = await handlesFor({
       deployed,
       Contract,
@@ -452,15 +523,30 @@ async function handlesFor({
 /** Negative cases: the calls that must be rejected, on a fresh order. */
 async function negatives({ Contract, providers, config, emit }) {
   const order = miloOrder(Contract);
-  const deployed = await deployOrder({
-    Contract,
-    providers,
-    config,
-    configuration: order.configurationFor({}),
-    privateStateFor: order.privateState,
-    label: "negatives",
+  const deployment = await attempt(
     emit,
-  });
+    { scenario: "negatives", circuit: "deploy", actor: null, negative: false },
+    () =>
+      deployOrder({
+        Contract,
+        providers,
+        config,
+        configuration: order.configurationFor({}),
+        privateStateFor: order.privateState,
+        label: "negatives",
+        emit,
+      }),
+  );
+  if (!deployment.ok) {
+    await emit({
+      event: "negatives-summary",
+      results: [],
+      deployFailed: true,
+      error: deployment.message,
+    });
+    return [];
+  }
+  const deployed = deployment.value;
   const actors = await handlesFor({
     deployed,
     Contract,
@@ -531,33 +617,168 @@ async function negatives({ Contract, providers, config, emit }) {
   return results;
 }
 
+/**
+ * Maintenance handles built from the contract address alone.
+ *
+ * findDeployedContract is deliberately avoided. It runs verifyContractState
+ * unconditionally, so it throws ContractTypeError while any circuit's verifier key is
+ * missing - exactly the state --restore exists to repair - and it stores the private
+ * state passed to it, overwriting the deployment's recorded state. These two
+ * factories take only (providers, compiledContract, address): they verify no circuit
+ * set and touch no private state, reading the signing key the private state provider
+ * stored under the address at deploy time. bootstrap.mjs uses the same lower-level
+ * ledger MaintenanceUpdate route, kept here for the one update midnight-js cannot
+ * express (an empty authority).
+ */
+async function maintenanceHandles(providers, compiled, address) {
+  const {
+    createCircuitMaintenanceTxInterfaces,
+    createContractMaintenanceTxInterface,
+  } = await import("@midnight-ntwrk/midnight-js-contracts");
+  return {
+    circuitMaintenanceTx: createCircuitMaintenanceTxInterfaces(
+      providers,
+      compiled,
+      address,
+    ),
+    contractMaintenanceTx: createContractMaintenanceTxInterface(
+      providers,
+      compiled,
+      address,
+    ),
+  };
+}
+
 /** The circuit breaker: the deployer's maintenance authority, exercised. */
-async function breaker({ deployed, circuit, emit }) {
-  const handle = deployed.circuitMaintenanceTx[circuit];
+async function breaker({ circuitMaintenanceTx, circuit, emit }) {
+  const handle = circuitMaintenanceTx[circuit];
   assert(handle, `no maintenance interface for ${circuit}`);
-  await attempt(emit, { breaker: "removeVerifierKey", circuit }, () =>
-    handle.removeVerifierKey(),
+  const result = await attempt(
+    emit,
+    { breaker: "removeVerifierKey", circuit },
+    () => handle.removeVerifierKey(),
   );
-  return { circuit };
+  return { circuit, ...result };
 }
 
-async function restore({ deployed, circuit, zkConfigProvider, emit }) {
+async function restore({
+  circuitMaintenanceTx,
+  circuit,
+  zkConfigProvider,
+  emit,
+}) {
+  const handle = circuitMaintenanceTx[circuit];
+  assert(handle, `no maintenance interface for ${circuit}`);
   const verifierKey = await zkConfigProvider.getVerifierKey(circuit);
-  await attempt(emit, { breaker: "insertVerifierKey", circuit }, () =>
-    deployed.circuitMaintenanceTx[circuit].insertVerifierKey(verifierKey),
+  const result = await attempt(
+    emit,
+    { breaker: "insertVerifierKey", circuit },
+    () => handle.insertVerifierKey(verifierKey),
   );
-  return { circuit };
+  return { circuit, ...result };
 }
 
-async function freeze({ deployed, key, emit }) {
-  const { sampleSigningKey } = await import(
-    "@midnight-ntwrk/midnight-js-protocol/compact-runtime"
+/**
+ * Hand over (`<key>`) or relinquish (`empty`) maintenance control.
+ *
+ * `empty` cannot go through midnight-js replaceAuthority: an omitted key samples a
+ * random one, which is the defect this replaces. It builds the ledger's empty
+ * authority directly - no committee members and threshold 1, which no signature set
+ * can satisfy (the same shape bootstrapMaintenance's lock uses) - signs the update
+ * with the current authority and submits the staged transaction.
+ */
+async function freeze({
+  providers,
+  contractMaintenanceTx,
+  address,
+  key,
+  keyPath,
+  networkId,
+  emit,
+}) {
+  if (key === undefined) {
+    const message = "--freeze requires a signing key hex or 'empty'";
+    await emit({
+      event: "call-rejected",
+      breaker: "replaceAuthority",
+      to: null,
+      errorNames: ["Error"],
+      message,
+    });
+    throw new Error(message);
+  }
+  if (key === "empty") {
+    const state =
+      await providers.publicDataProvider.queryContractState(address);
+    assert(state, `no contract state on chain for ${address}`);
+    const currentKey =
+      await providers.privateStateProvider.getSigningKey(address);
+    assert(currentKey, `no signing key stored for contract ${address}`);
+    const counter = state.maintenanceAuthority.counter;
+    const { submitTx } = await import("@midnight-ntwrk/midnight-js-contracts");
+    const result = await attempt(
+      emit,
+      {
+        breaker: "replaceAuthority",
+        to: "empty",
+        relinquished: true,
+        committeeSize: 0,
+        threshold: 1,
+        counter: String(counter),
+      },
+      async () => {
+        let update = new L.MaintenanceUpdate(
+          address,
+          [
+            new L.ReplaceAuthority(
+              new L.ContractMaintenanceAuthority([], 1, counter + 1n),
+            ),
+          ],
+          counter,
+        );
+        update = update.addSignature(
+          0n,
+          L.signData(currentKey, update.dataToSign),
+        );
+        return publicReceipt(
+          await submitTx(providers, {
+            unprovenTx: maintenanceTx(networkId, update, intentExpiry()),
+          }),
+        );
+      },
+    );
+    if (result.ok)
+      await writeMaintenanceKey(keyPath.path, {
+        key: null,
+        relinquished: true,
+      });
+    return { to: "empty", relinquished: true, ...result };
+  }
+  const result = await attempt(
+    emit,
+    { breaker: "replaceAuthority", to: key },
+    () => contractMaintenanceTx.replaceAuthority(key),
   );
-  const next = key === "empty" ? sampleSigningKey() : key;
-  await attempt(emit, { breaker: "replaceAuthority", to: key }, () =>
-    deployed.contractMaintenanceTx.replaceAuthority(next),
-  );
-  return { to: key };
+  // midnight-js stores the new key in the private state provider; mirror it in the
+  // run-dir record so the recorded operator key does not go stale.
+  if (result.ok) await writeMaintenanceKey(keyPath.path, { key });
+  return { to: key, ...result };
+}
+
+async function readDeployments(config) {
+  try {
+    const text = await readFile(
+      resolve(config.runDir, "transactions.jsonl"),
+      "utf8",
+    );
+    return text
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.event === "preprod-deployed");
+  } catch {
+    return [];
+  }
 }
 
 export async function run({
@@ -569,21 +790,16 @@ export async function run({
   zkConfigProvider,
   emit,
 }) {
-  const keyPath = await maintenanceKey(config);
-  const signingKey =
-    keyPath.key ??
-    (
-      await import("@midnight-ntwrk/midnight-js-protocol/compact-runtime")
-    ).sampleSigningKey();
-  if (keyPath.created && !keyPath.key) {
-    await mkdir(config.runDir, { recursive: true });
-    await writeFile(keyPath.path, JSON.stringify({ key: signingKey }), {
-      mode: 0o600,
-    });
-    await chmod(keyPath.path, 0o600);
-  }
-  const order = miloOrder(Contract);
   if (mode === "--deploy") {
+    const keyPath = await maintenanceKey(config);
+    const signingKey =
+      keyPath.key ??
+      (
+        await import("@midnight-ntwrk/midnight-js-protocol/compact-runtime")
+      ).sampleSigningKey();
+    if (!keyPath.key)
+      await writeMaintenanceKey(keyPath.path, { key: signingKey });
+    const order = miloOrder(Contract);
     const deployed = await deployOrder({
       Contract,
       providers,
@@ -597,7 +813,7 @@ export async function run({
     await emit({
       event: "maintenance-authority",
       note: "deployer holds a single-signature authority; key stored in the ignored run dir",
-      keyPath,
+      keyPath: { path: keyPath.path },
     });
     return deployed.deployTxData.public.contractAddress;
   }
@@ -616,19 +832,8 @@ export async function run({
     });
     return summary;
   }
-  // breaker modes operate on an existing deployment recorded in the run dir
-  const deployments = await readFile(
-    resolve(config.runDir, "transactions.jsonl"),
-    "utf8",
-  )
-    .then((text) =>
-      text
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line))
-        .filter((entry) => entry.event === "preprod-deployed"),
-    )
-    .catch(() => []);
+  // Maintenance modes operate on an existing deployment recorded in the run dir.
+  const deployments = await readDeployments(config);
   assert(
     deployments.length > 0,
     "deploy first: no preprod-deployed receipt in the run dir",
@@ -638,19 +843,35 @@ export async function run({
     deployments.filter((entry) => entry.label === "main").at(-1) ??
     deployments.at(-1);
   const address = main.address;
-  const { findDeployedContract } = await import(
-    "@midnight-ntwrk/midnight-js-contracts"
-  );
-  const deployed = await findDeployedContract(providers, {
-    contractAddress: address,
-    compiledContract: await compiledContract(Contract),
-    privateStateId: "main-buyer",
-    initialPrivateState: order.privateState("buyer"),
-  });
+  const keyPath = await maintenanceKey(config);
+  const compiled = await compiledContract(Contract);
+  const { circuitMaintenanceTx, contractMaintenanceTx } =
+    await maintenanceHandles(providers, compiled, address);
+
+  // No private state is regenerated here: the maintenance route above never reads or
+  // writes a private state ID, so the `main-buyer` state recorded by --deploy stays
+  // intact and callable. The signing key is seeded from the run-dir record only when
+  // the provider has none, so a later mode signs with the recorded operator key.
+  const storedKey = await providers.privateStateProvider
+    .getSigningKey(address)
+    .catch(() => undefined);
+  if (!storedKey && keyPath.key)
+    await providers.privateStateProvider.setSigningKey(address, keyPath.key);
+
   const circuit = flags[flags.indexOf(mode) + 1];
-  if (mode === "--breaker") return breaker({ deployed, circuit, emit });
+  if (mode === "--breaker")
+    return breaker({ circuitMaintenanceTx, circuit, emit });
   if (mode === "--restore")
-    return restore({ deployed, circuit, zkConfigProvider, emit });
-  if (mode === "--freeze") return freeze({ deployed, key: circuit, emit });
+    return restore({ circuitMaintenanceTx, circuit, zkConfigProvider, emit });
+  if (mode === "--freeze")
+    return freeze({
+      providers,
+      contractMaintenanceTx,
+      address,
+      key: circuit,
+      keyPath,
+      networkId: config.networkId ?? getNetworkId(),
+      emit,
+    });
   throw new Error(`unknown mode ${mode}`);
 }
