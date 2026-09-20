@@ -1,24 +1,102 @@
-// Transaction submission over the node's HTTP JSON-RPC.
+// Transaction submission to the Midnight node.
 //
-// The wallet SDK submits through polkadot-js `tx.send()` on the relay WebSocket. On Preprod
-// that socket is closed with 1000 Normal Closure during submitAndWatchExtrinsic, so a
-// registration is built, proven and then lost at the last step: two attempts produced
-//   SubmissionError: Transaction submission failed
-//     cause: disconnected from wss://rpc.preprod.midnight.network/: 1000:: Normal Closure
-// and the chain confirmed nothing landed (the NIGHT UTXO stayed unspent).
+// Two transports failed before this one, for two different reasons, and both are recorded
+// here because the workaround depends on the distinction:
 //
-// The node also exposes author_submitExtrinsic over plain HTTPS. Verified live: an
-// extrinsic built as api.tx.midnight.sendMnTransaction(hex) is parsed and routed into the
-// Midnight runtime there, answering a deliberately invalid payload with
-// {"code":1010,"message":"Invalid Transaction"} rather than a method-not-found. So the relay
-// is needed for metadata only, and submission itself goes over HTTPS.
+//  1. The wallet SDK submits through polkadot-js `tx.send()`, which calls
+//     author_submitAndWatchExtrinsic - a SUBSCRIPTION. Preprod's relay closes subscriptions
+//     with 1000 Normal Closure, so a registration was built, proven and lost at the last
+//     step.
+//  2. author_submitExtrinsic over HTTPS works, and carried the registration to chain (block
+//     2634013), but the endpoint sits behind an AWS load balancer (server: awselb/2.0) that
+//     rejects large request bodies with HTTP 403. A proven deploy transaction is far larger
+//     than a registration, so it was refused: 40 bytes returned 200, 100 KB returned 403.
 //
-// The call is unsigned by design: this matches what PolkadotNodeClient does
-// (api.tx.midnight.sendMnTransaction(...).send(...) with no signer), because the Midnight
+// A plain (non-subscription) author_submitExtrinsic request sent over the node's WebSocket
+// has neither problem: it is a single request/response, and a WebSocket frame stream is not
+// subject to the load balancer's body limit. Verified live: the same 100 KB payload that
+// returned HTTP 403 returned a normal JSON-RPC decode error over the socket, so the node
+// received it in full.
+//
+// The call is unsigned on purpose, matching PolkadotNodeClient
+// (api.tx.midnight.sendMnTransaction(...).send(...) with no signer): the Midnight
 // transaction carries its own signatures and the pallet validates it.
 import { resolve } from "node:path";
 
-/** Build the hex extrinsic and POST it. Kept transport-only so it can be unit tested. */
+/** Submit over the node's WebSocket as a plain request. Any payload size. */
+export async function submitExtrinsicOverSocket(
+  config,
+  extrinsicHex,
+  { WebSocketImpl, timeoutMs = 120_000 } = {},
+) {
+  const Ctor = WebSocketImpl ?? (await import("ws")).WebSocket;
+  const url = config.node.replace(/^https/, "wss");
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const ws = new Ctor(url);
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        // The socket may already be gone; the outcome is decided either way.
+      }
+      fn(value);
+    };
+    const timer = setTimeout(
+      () =>
+        finish(
+          reject,
+          new Error("timed out submitting over the node WebSocket"),
+        ),
+      timeoutMs,
+    );
+    ws.on("open", () =>
+      ws.send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "author_submitExtrinsic",
+          params: [extrinsicHex],
+        }),
+      ),
+    );
+    ws.on("message", (raw) => {
+      let message;
+      try {
+        message = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      if (message.id !== 1) return;
+      if (message.error) {
+        const data = message.error.data ? ` (${message.error.data})` : "";
+        finish(
+          reject,
+          new Error(
+            `node rejected the submission: ${message.error.code} ${message.error.message}${data}`,
+          ),
+        );
+      } else if (typeof message.result === "string") {
+        finish(resolve, message.result);
+      } else {
+        finish(
+          reject,
+          new Error(
+            `node returned no extrinsic hash: ${JSON.stringify(message)}`,
+          ),
+        );
+      }
+    });
+    ws.on("error", (error) =>
+      finish(reject, new Error(`node WebSocket error: ${error.message}`)),
+    );
+  });
+}
+
+/** HTTPS fallback. Works for small payloads only; the load balancer 403s large ones. */
 export async function submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl) {
   const response = await fetchImpl(config.node, {
     method: "POST",
@@ -46,10 +124,12 @@ export async function submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl) {
 
 /**
  * Submitter bound to one run. The relay WebSocket is opened lazily and only to read the
- * runtime metadata needed to encode the extrinsic; every submission is an HTTPS POST.
+ * runtime metadata needed to encode the extrinsic; submission itself is a plain
+ * request/response over its own socket, with the HTTPS path kept as a fallback.
  */
 export function createHttpSubmitter(config, deps = {}) {
   const fetchImpl = deps.fetch ?? fetch;
+  const WebSocketImpl = deps.WebSocket;
   let apiPromise = null;
 
   async function metadataApi() {
@@ -74,7 +154,19 @@ export function createHttpSubmitter(config, deps = {}) {
       const extrinsicHex = api.tx.midnight
         .sendMnTransaction(`0x${Buffer.from(bytes).toString("hex")}`)
         .toHex();
-      return submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl);
+      try {
+        return await submitExtrinsicOverSocket(config, extrinsicHex, {
+          WebSocketImpl,
+        });
+      } catch (socketError) {
+        try {
+          return await submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl);
+        } catch (httpError) {
+          throw new Error(
+            `submission failed on both transports: socket: ${socketError.message}; https: ${httpError.message}`,
+          );
+        }
+      }
     },
     async close() {
       if (!apiPromise) return;

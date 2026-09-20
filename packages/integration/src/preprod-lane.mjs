@@ -1172,6 +1172,14 @@ async function main() {
     const generated = await import(
       resolve(process.cwd(), `${GENERATED}/contract/index.js`)
     );
+    // The generated contract module exports `pureCircuits` and `Role` at MODULE level, not as
+    // statics on the Contract class, so miloOrder's `const { pureCircuits, Role } = Contract`
+    // destructured to undefined and the deploy died on hashTerms. Attach them once here so
+    // every downstream call site keeps treating the contract as a single object.
+    const Contract = Object.assign(generated.Contract, {
+      pureCircuits: generated.pureCircuits,
+      Role: generated.Role,
+    });
     await run({
       mode,
       flags,
@@ -1179,7 +1187,7 @@ async function main() {
       session,
       providers,
       zkConfigProvider,
-      Contract: generated.Contract,
+      Contract,
       emit: (event) => emit(config.runDir, event),
     });
     const bytes = await saveWalletState(config, session.wallet);
