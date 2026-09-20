@@ -39,35 +39,47 @@ function miloOrder(Contract) {
     salt: bytes32(),
   };
   const now = BigInt(Math.floor(Date.now() / 1000));
+  // The expiry circuits need a deadline to have passed while the earlier phase
+  // was reached first, so the runner waits on these absolute values.
+  const deadlinesFor = (offsets = {}) => ({
+    acceptance: now + BigInt(offsets.acceptance ?? 3_600),
+    delivery: now + BigInt(offsets.delivery ?? 7_200),
+    review: now + BigInt(offsets.review ?? 10_800),
+    resolution: now + BigInt(offsets.resolution ?? 14_400),
+  });
   return {
     terms,
-    configurationFor: (offsets = {}) => ({
-      network,
-      orderNonce: nonce,
-      termsCommitment: pureCircuits.hashTerms(network, nonce, terms),
-      buyerCommitment: pureCircuits.hashCapability(
+    deadlinesFor,
+    configurationFor: (offsets = {}) => {
+      const d = deadlinesFor(offsets);
+      return {
         network,
-        nonce,
-        Role.BUYER,
-        secrets.buyer,
-      ),
-      merchantCommitment: pureCircuits.hashCapability(
-        network,
-        nonce,
-        Role.MERCHANT,
-        secrets.merchant,
-      ),
-      operatorCommitment: pureCircuits.hashCapability(
-        network,
-        nonce,
-        Role.OPERATOR,
-        secrets.operator,
-      ),
-      acceptanceDeadline: now + BigInt(offsets.acceptance ?? 3_600),
-      deliveryDeadline: now + BigInt(offsets.delivery ?? 7_200),
-      reviewDeadline: now + BigInt(offsets.review ?? 10_800),
-      resolutionDeadline: now + BigInt(offsets.resolution ?? 14_400),
-    }),
+        orderNonce: nonce,
+        termsCommitment: pureCircuits.hashTerms(network, nonce, terms),
+        buyerCommitment: pureCircuits.hashCapability(
+          network,
+          nonce,
+          Role.BUYER,
+          secrets.buyer,
+        ),
+        merchantCommitment: pureCircuits.hashCapability(
+          network,
+          nonce,
+          Role.MERCHANT,
+          secrets.merchant,
+        ),
+        operatorCommitment: pureCircuits.hashCapability(
+          network,
+          nonce,
+          Role.OPERATOR,
+          secrets.operator,
+        ),
+        acceptanceDeadline: d.acceptance,
+        deliveryDeadline: d.delivery,
+        reviewDeadline: d.review,
+        resolutionDeadline: d.resolution,
+      };
+    },
     privateState: (actor) => ({
       actor,
       secret: secrets[actor],
@@ -117,7 +129,7 @@ async function deployOrder({
   const deployed = await deployContract(providers, {
     compiledContract: compiled,
     privateStateId: `${label}-buyer`,
-    initialPrivateState: privateStateFor("buyer"),
+    initialPrivateState: order.privateState("buyer"),
     ...(signingKey ? { signingKey } : {}),
   });
   const receipt = {
@@ -179,22 +191,44 @@ const CIRCUITS = [
  */
 async function sweep({ Contract, providers, config, emit }) {
   const order = miloOrder(Contract);
-  const expiryOffsets = {
-    acceptance: -60,
-    delivery: -30,
-    review: -20,
-    resolution: -10,
-  };
   const scenarios = [
     { label: "happy-path", offsets: {} },
     { label: "cancel", offsets: {} },
     { label: "decline", offsets: {} },
     { label: "dispute-buyer", offsets: {} },
     { label: "dispute-merchant", offsets: {} },
-    { label: "expiries", offsets: expiryOffsets },
+    { label: "expire-bootstrap", offsets: { acceptance: -60 } },
+    { label: "expire-reserved", offsets: { acceptance: 300 } },
+    {
+      label: "expire-undelivered",
+      offsets: { acceptance: 900, delivery: 420 },
+    },
+    {
+      label: "escalate-unreviewed",
+      offsets: { acceptance: 1200, delivery: 600, review: 660 },
+    },
+    {
+      label: "expire-dispute",
+      offsets: {
+        acceptance: 1500,
+        delivery: 700,
+        review: 900,
+        resolution: 960,
+      },
+    },
   ];
+  // Coverage assertion: every proof circuit must appear in a positive scenario.
+  const planned = new Set(
+    scenarios.flatMap((scenario) =>
+      scenarioSteps(scenario.label).map((step) => step.circuit),
+    ),
+  );
+  for (const circuit of CIRCUITS.map((entry) => entry.name))
+    assert(planned.has(circuit), `sweep does not cover ${circuit}`);
+
   const summary = [];
   for (const scenario of scenarios) {
+    const deadlines = order.deadlinesFor(scenario.offsets);
     const deployed = await deployOrder({
       Contract,
       providers,
@@ -212,6 +246,17 @@ async function sweep({ Contract, providers, config, emit }) {
       label: scenario.label,
     });
     for (const step of scenarioSteps(scenario.label)) {
+      if (step.waitFor) {
+        const deadline = Number(deadlines[step.waitFor]);
+        await emit({
+          event: "waiting-for-deadline",
+          scenario: scenario.label,
+          circuit: step.circuit,
+          deadline,
+        });
+        while (Math.floor(Date.now() / 1000) < deadline + 10)
+          await new Promise((done) => setTimeout(done, 10_000));
+      }
       await attempt(
         emit,
         {
@@ -303,13 +348,68 @@ function scenarioSteps(label) {
           args: () => [true, bytes32()],
         },
       ];
-    case "expiries":
+    case "expire-bootstrap":
       return [
         {
           circuit: "expireBootstrap",
           actor: "buyer",
           revision: 0n,
           args: () => [],
+        },
+      ];
+    case "expire-reserved":
+      return [
+        { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
+        {
+          circuit: "expireReserved",
+          actor: "buyer",
+          revision: 1n,
+          waitFor: "acceptance",
+        },
+      ];
+    case "expire-undelivered":
+      return [
+        { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
+        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        {
+          circuit: "expireUndelivered",
+          actor: "buyer",
+          revision: 2n,
+          waitFor: "delivery",
+        },
+      ];
+    case "escalate-unreviewed":
+      return [
+        { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
+        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        {
+          circuit: "submitDelivery",
+          actor: "merchant",
+          revision: 2n,
+          args: () => [bytes32()],
+        },
+        {
+          circuit: "escalateUnreviewed",
+          actor: "buyer",
+          revision: 3n,
+          waitFor: "review",
+        },
+      ];
+    case "expire-dispute":
+      return [
+        { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
+        { circuit: "accept", actor: "buyer", revision: 1n, args: () => [] },
+        {
+          circuit: "disputeBuyer",
+          actor: "buyer",
+          revision: 2n,
+          args: () => [bytes32()],
+        },
+        {
+          circuit: "expireDispute",
+          actor: "buyer",
+          revision: 3n,
+          waitFor: "resolution",
         },
       ];
     default:
@@ -525,7 +625,11 @@ export async function run({
     deployments.length > 0,
     "deploy first: no preprod-deployed receipt in the run dir",
   );
-  const address = deployments.at(-1).address;
+  // The breaker targets the main deployment, never a sweep order.
+  const main =
+    deployments.filter((entry) => entry.label === "main").at(-1) ??
+    deployments.at(-1);
+  const address = main.address;
   const { findDeployedContract } = await import(
     "@midnight-ntwrk/midnight-js-contracts"
   );
@@ -533,7 +637,7 @@ export async function run({
     contractAddress: address,
     compiledContract: await compiledContract(Contract),
     privateStateId: "main-buyer",
-    initialPrivateState: privateStateFor("buyer"),
+    initialPrivateState: order.privateState("buyer"),
   });
   const circuit = flags[flags.indexOf(mode) + 1];
   if (mode === "--breaker")
