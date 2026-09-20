@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { verifiedAuthorityRejection } from "../src/maintenance-audit.mjs";
 
 /**
  * Hand-built error fixtures can drift from what the node actually emits. This
- * asserts the repo's rejection predicate against a payload captured from a real
- * local-lane run at HEAD, so the shape the audit relies on is checked against
- * reality rather than against another literal. Defect class precluded: the
- * audit's verified-rejection path silently diverging from the real node
- * payload after a dependency or node bump.
+ * asserts the audit's OWN predicate - imported, not re-implemented - against a
+ * payload captured from a real local-lane run, so the shape the audit relies on
+ * is checked against reality rather than against another literal. Defect class
+ * precluded: the audit's verified-rejection gate silently diverging from the
+ * real node payload after a dependency or node bump.
  */
 const captured = JSON.parse(
   readFileSync(
@@ -17,16 +18,9 @@ const captured = JSON.parse(
   ),
 );
 
-/** Mirrors maintenance-audit.mjs's verified-rejection predicate. */
-const isVerifiedRejection = (diagnostic, boundary) =>
-  boundary === "midnightProvider.submitTx" &&
-  diagnostic.rpcCodes?.length === 1 &&
-  diagnostic.rpcCodes[0] === 1010 &&
-  diagnostic.errorNames.includes("RpcError");
-
 test("the audit predicate accepts the captured real rejection payload", () => {
   assert.equal(
-    isVerifiedRejection(captured, "midnightProvider.submitTx"),
+    verifiedAuthorityRejection(captured, "midnightProvider.submitTx"),
     true,
   );
 });
@@ -40,22 +34,27 @@ test("the captured payload carries the exact fields the audit reads", () => {
 });
 
 test("the predicate rejects near-miss variants of the captured payload", () => {
+  const boundary = "midnightProvider.submitTx";
   assert.equal(
-    isVerifiedRejection(
-      { ...captured, rpcCodes: [1011] },
-      "midnightProvider.submitTx",
-    ),
+    verifiedAuthorityRejection({ ...captured, rpcCodes: [1011] }, boundary),
     false,
   );
   assert.equal(
-    isVerifiedRejection(
+    verifiedAuthorityRejection(
       { ...captured, errorNames: ["SubmissionError"] },
-      "midnightProvider.submitTx",
+      boundary,
     ),
     false,
   );
   assert.equal(
-    isVerifiedRejection(captured, "walletProvider.balanceTx"),
+    verifiedAuthorityRejection(
+      { ...captured, runtimeCustomCodes: [108] },
+      boundary,
+    ),
+    false,
+  );
+  assert.equal(
+    verifiedAuthorityRejection(captured, "walletProvider.balanceTx"),
     false,
   );
 });

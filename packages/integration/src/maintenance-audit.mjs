@@ -170,6 +170,24 @@ export function auditCaseTx({
       });
 }
 
+/**
+ * The audit's verified-authority-rejection predicate, exported so a test can
+ * assert it against a payload captured from a real node run instead of a
+ * private copy. Two legs: the submission boundary rejected with exactly one
+ * rpcCode 1010 and an RpcError, and the node's custom runtime code is the one
+ * that means KeyNotInCommittee (134).
+ */
+export function verifiedAuthorityRejection(diagnostic, boundary) {
+  return (
+    boundary === "midnightProvider.submitTx" &&
+    diagnostic.rpcCodes?.length === 1 &&
+    diagnostic.rpcCodes[0] === 1010 &&
+    diagnostic.errorNames.includes("RpcError") &&
+    diagnostic.runtimeCustomCodes?.length === 1 &&
+    diagnostic.runtimeCustomCodes[0] === 134
+  );
+}
+
 export async function runRetainedKeyAudit({
   address,
   state,
@@ -259,9 +277,10 @@ export async function runRetainedKeyAudit({
     requireCompletedLockedBootstrap(after.state, plan);
     assert.equal(hash(after.state.serialize()), expectedStateHash);
     // node-1.0.0 ledger/types: Malformed(KeyNotInCommittee) -> Custom(134).
-    const authorityRejected =
-      diagnostic.runtimeCustomCodes?.length === 1 &&
-      diagnostic.runtimeCustomCodes[0] === 134;
+    const authorityRejected = verifiedAuthorityRejection(
+      diagnostic,
+      failureBoundary,
+    );
     const result = {
       kind,
       beforeBlockHash: before.blockHash,

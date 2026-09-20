@@ -12,39 +12,40 @@ import { isInsufficientDust } from "../src/dust.mjs";
  */
 const NODE_MODULES = "packages/integration/node_modules/@midnight-ntwrk";
 
-async function distFiles() {
-  const files = [];
-  for (const entry of await readdir(NODE_MODULES, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith("wallet-sdk")) continue;
-    const dist = join(NODE_MODULES, entry.name, "dist");
-    let names = [];
-    try {
-      names = await readdir(dist, { recursive: true });
-    } catch {
-      continue;
-    }
-    for (const name of names) {
-      if (
-        typeof name === "string" &&
-        (name.endsWith(".js") || name.endsWith(".d.ts"))
-      )
-        files.push(join(dist, name));
-    }
+/** The package the DUST retry path actually depends on. */
+const DUST_PACKAGE = "wallet-sdk-dust-wallet";
+
+async function distFiles(packageName) {
+  const dist = join(NODE_MODULES, packageName, "dist");
+  let names = [];
+  try {
+    names = await readdir(dist, { recursive: true });
+  } catch {
+    return [];
   }
-  return files;
+  return names
+    .filter(
+      (name) =>
+        typeof name === "string" &&
+        (name.endsWith(".js") || name.endsWith(".d.ts")),
+    )
+    .map((name) => join(dist, name));
 }
 
-test("the installed wallet-sdk still declares the insufficiency tag", async () => {
-  const files = await distFiles();
-  assert.ok(files.length > 0, "no wallet-sdk dist files found");
+test("the installed dust package still declares the insufficiency tag verbatim", async () => {
+  const files = await distFiles(DUST_PACKAGE);
+  assert.ok(files.length > 0, `no dist files found for ${DUST_PACKAGE}`);
+  // Exact-tag match: a renamed variant such as Wallet.InsufficientFundsV2 must
+  // not satisfy this, because the predicate matches the tag exactly.
+  const exact = /"Wallet\.InsufficientFunds"/;
   let hits = 0;
   for (const file of files) {
     const source = await readFile(file, "utf8");
-    if (source.includes("Wallet.InsufficientFunds")) hits += 1;
+    if (exact.test(source)) hits += 1;
   }
   assert.ok(
     hits > 0,
-    "Wallet.InsufficientFunds is absent from the installed wallet-sdk dist",
+    `"Wallet.InsufficientFunds" is absent from the installed ${DUST_PACKAGE} dist`,
   );
 });
 
