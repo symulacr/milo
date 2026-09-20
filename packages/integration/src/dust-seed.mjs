@@ -1248,6 +1248,13 @@ export async function seedDustState(options = {}) {
     localCommitmentRoot: encodeMerkleRoot(pinned.localCommitmentRoot),
     chainGenerationRoot: pinned.chainGenerationRoot,
     localGenerationRoot: encodeMerkleRoot(pinned.localGenerationRoot),
+    // The roots the EMITTED snapshot actually contains. The tail replay above runs after
+    // the verification point and may insert leaves, so a consumer that compares a restored
+    // snapshot against localCommitmentRoot/localGenerationRoot would compare two different
+    // tree states and refuse a valid snapshot. Those two stay the verification evidence;
+    // these two are the post-tail values a round-trip check must match.
+    finalCommitmentRoot: encodeMerkleRoot(state.commitmentTreeRoot()),
+    finalGenerationRoot: encodeMerkleRoot(state.generatingTreeRoot()),
     lag: pinned.verification.lag,
     commitmentLag: pinned.verification.commitmentLag,
     generationLag: pinned.verification.generationLag,
