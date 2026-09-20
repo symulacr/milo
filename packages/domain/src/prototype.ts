@@ -9,13 +9,7 @@ export type Phase =
   | "DISPUTED"
   | "APPROVED"
   | "CANCELLED";
-export type Payment =
-  | "none"
-  | "authorized"
-  | "captured"
-  | "voided"
-  | "expired"
-  | "failed";
+export type Payment = "none" | "authorized" | "captured" | "voided" | "expired";
 export type Scenario =
   | "fresh"
   | "review"
@@ -24,29 +18,33 @@ export type Scenario =
   | "pending"
   | "lost-capability";
 
-export type ActionName =
-  | "ready"
-  | "verify-recovery"
-  | "authorize"
-  | "deploy"
-  | "reserve"
-  | "accept"
-  | "submit"
-  | "verify"
-  | "approve"
-  | "dispute"
-  | "resolve-approve"
-  | "resolve-cancel"
-  | "cancel"
-  | "decline"
-  | "advance-deadline"
-  | "capture"
-  | "void"
-  | "expire-hold"
-  | "reconcile"
-  | "restore"
-  | "lose-capability"
-  | "mark-unknown";
+/** Single source for the synthetic action vocabulary, in stable order. */
+export const ACTION_NAMES = [
+  "ready",
+  "verify-recovery",
+  "authorize",
+  "deploy",
+  "reserve",
+  "accept",
+  "submit",
+  "verify",
+  "approve",
+  "dispute",
+  "resolve-approve",
+  "resolve-cancel",
+  "cancel",
+  "decline",
+  "advance-deadline",
+  "capture",
+  "void",
+  "expire-hold",
+  "reconcile",
+  "restore",
+  "lose-capability",
+  "mark-unknown",
+] as const;
+
+export type ActionName = (typeof ACTION_NAMES)[number];
 
 export type Action = ActionName;
 export interface ActionPayload {
@@ -228,30 +226,7 @@ export function invalidateFileVerification(state: SimState): SimState {
 }
 
 export function availableActions(state: SimState): Action[] {
-  const candidates: Action[] = [
-    "ready",
-    "verify-recovery",
-    "authorize",
-    "deploy",
-    "reserve",
-    "accept",
-    "submit",
-    "verify",
-    "approve",
-    "dispute",
-    "resolve-approve",
-    "resolve-cancel",
-    "cancel",
-    "decline",
-    "advance-deadline",
-    "capture",
-    "void",
-    "expire-hold",
-    "reconcile",
-    "restore",
-    "lose-capability",
-    "mark-unknown",
-  ];
+  const candidates: Action[] = [...ACTION_NAMES];
   return candidates.filter((action) => {
     try {
       transition(

@@ -174,16 +174,8 @@ export function PaymentPanel() {
         <span>USD</span>
       </div>
       {/* No single green "Success": capture is an independent observation,
-          and a failed payment is danger, not warning (04 §7.3, 05 §5.3). */}
-      <Badge
-        tone={
-          state.payment === "failed"
-            ? "danger"
-            : state.payment === "expired"
-              ? "warning"
-              : "neutral"
-        }
-      >
+          and an expired hold is warning, not neutral (04 §7.3, 05 §5.3). */}
+      <Badge tone={state.payment === "expired" ? "warning" : "neutral"}>
         {state.payment === "none" ? "No payment attempt" : state.payment}
       </Badge>
       <p>
@@ -193,9 +185,7 @@ export function PaymentPanel() {
             ? "Captured separately from approval."
             : state.payment === "expired"
               ? "Payment hold expired; payment unresolved."
-              : state.payment === "failed"
-                ? "Payment failed; the approval is unchanged."
-                : "No hold yet — readiness comes first."}
+              : "No hold yet — readiness comes first."}
       </p>
       {can("capture") && (
         <button

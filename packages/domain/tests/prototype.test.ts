@@ -96,12 +96,7 @@ describe("synthetic prototype simulator", () => {
     const ready = act(act(createScenario("fresh"), "ready"), "verify-recovery");
     const authorized = act(ready, "authorize");
     expect(() => act(authorized, "authorize")).toThrow("payment hold already");
-    for (const payment of [
-      "captured",
-      "expired",
-      "voided",
-      "failed",
-    ] as const) {
+    for (const payment of ["captured", "expired", "voided"] as const) {
       expect(() => act({ ...ready, payment }, "authorize")).toThrow(
         "payment hold already",
       );
