@@ -35,8 +35,14 @@ describe("single transaction-construction point", () => {
         /L\s*\.\s*Transaction\s*\.\s*fromParts|L\s*\.\s*Intent\s*\.\s*new/g,
       );
       const name = path.split("/").pop() ?? "";
-      if (raw && !path.endsWith("/tx.mjs") && !EXCEPTIONS.has(name))
+      if (!raw || path.endsWith("/tx.mjs")) continue;
+      if (EXCEPTIONS.has(name)) {
+        // The exemption is exact: the guard-bite test builds the invalid form
+        // once. A second raw construction there is a violation.
+        if (raw.length !== 1) offenders.push(`${name}(${raw.length})`);
+      } else {
         offenders.push(`${name}(${raw.length})`);
+      }
     }
     expect(offenders).toEqual([]);
   });

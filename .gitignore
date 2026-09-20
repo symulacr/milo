@@ -105,4 +105,5 @@ scripts/preprod-observe.mjs
 #    unaffected. A fresh clone simply will not carry them.
 apps/web/public/_redirects
 apps/web/public/watch.html
+# referenced by scripts/convex-local-verify.mjs:614 (local lane); kept untracked
 packages/integration/src/verify-persisted-constructor.mjs
