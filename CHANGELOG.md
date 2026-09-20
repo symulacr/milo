@@ -1,5 +1,91 @@
 # Changelog
 
+## v0.0.3 - 2026-09-20
+
+the fast-sync wave: a start-late DUST seeder that skips the genesis replay, the fail-closed
+restore gate it is verified by, and the decision that closes the upstream fast-sync route.
+every claim below is backed by the code under `packages/integration/src/` and by the
+prototype evidence under `hardening/v6/`.
+
+### implemented and proven
+
+- **the DUST genesis replay is skipped by seeding the trees instead of replaying them.**
+  `packages/integration/src/dust-seed.mjs` seeds both dust Merkle trees from indexer collapsed
+  updates and replays only the post-seed tail. the recipe is verified rather than assumed: the
+  block end index is exclusive while the collapsed update end index is inclusive, so the range
+  ends at `E - 1`; the chain publishes `0x73 || byteReverse(local)` where the local bigint root
+  is the byte-reversed 32-byte hash; and `Block.*MerkleTreeRoot` are mutable tip values that can
+  lag one state. one pinned indexer request fetches the block and both updates so the roots
+  compared belong to the same indexer state. the seeder emits nothing unless both roots verify
+  inside a one-state lag window, the tail cursor is anchored to the pinned block, and the
+  snapshot round-trips through the SDK's own serialization. the live branch of
+  `packages/integration/test/dust-seed.test.mjs` confirmed a lag-0 match at two distinct
+  heights, 2633377 and 2633379, on this round's run.
+- **the restore gate exists, and no restore is trusted without it.**
+  `packages/integration/src/wallet-state-verify.mjs` is the gate: G1 to G10, ported from the
+  `prototype/restore-verify/verify.mjs` definition. it cross-checks restored content against the
+  chain rather than against itself (version pin, all three snapshots present and preprod, no
+  stale pending state, a bounded restore per role with a hung-versus-slow CPU classification,
+  the chain-reconstructed unshielded UTXO set, applied id against the indexer, dust and shielded
+  indices inside their high-water marks, tip sanity, dust address consistency, and a bounded
+  restored start with zero pending). its receipt holds the SHA-256 and byte size of every
+  snapshot file and never their contents. the lane authorises the fast path only when every
+  check passes and none is unexercised.
+- **the lane wires the gate before any restore, with two operator modes.**
+  `preprod-lane.mjs` runs the gate ahead of restoring snapshots, with `--verify-state` (verify,
+  print the receipt, exit non-zero when the fast path is refused) and `--repair-state` (rewrite
+  `sdk-versions.json` from the installed versions, deliberately, never automatically during a
+  restore). a restore that fails any check is discarded and the run takes a full from-seed sync.
+- **a real defect in the version gate is fixed.** the gate added in `ac7ccd0` was a no-op:
+  every Midnight package is ESM-only and its `exports` map does not expose `./package.json`, so
+  `require()` of the specifier or its `package.json` throws `ERR_PACKAGE_PATH_NOT_EXPORTED` for
+  all six packages. the throw was caught and an empty matrix recorded, so two empty records
+  compared as no drift and the gate would have restored under any SDK version. the manifests are
+  now read by path, and a version that cannot be resolved is recorded as null and the restore is
+  refused as `sdk-versions-unresolvable`.
+
+### refuted or refused
+
+- **upstream projections-based fast sync: rejected (decided).** dust-wallet 5.0.0-beta.3 /
+  wallet-sdk 2.0.0-beta.3 ship a projections path that skips event replay, but it exists only in
+  the `./v2` ledger-v9 variant; the `./v1` ledger-v8 line keeps event replay permanently by an
+  upstream decision dated 2026-08-19. even on ledger-v9, a fresh wallet on a chain that forked
+  over history still replays the ledger-v8 dust events before crossing, which is exactly a fresh
+  Preprod wallet. independently, the deployed Preprod indexer rejects the beta's subscription
+  shape (unknown arguments `blockHash` and `dtimeCutoffHeight`), and adopting it would force a
+  roughly fourteen-package cohort swap plus a second contract artifact. see
+  `hardening/v6/prototype/upstream-fast-sync/RESULTS.md`.
+- **ledger WASM replay ceiling: measured, and the target is unreachable by replaying.** the
+  apply loop runs at 564 to 667 dust events per second and is CPU-saturated on one core. the
+  five minute target needs about 5,130 events per second, roughly 8x to 9x the measured replay
+  rate, so minutes can only come from skipping the replay - which is what the seeder does.
+- **rejected levers, recorded so they are not retried.** gzip or permessage-deflate (the indexer
+  negotiates no compression extension; upstream request midnight-indexer #1251 is open);
+  transaction priority or fees (syncing submits no transaction); replacing the ledger WASM
+  (consensus-critical).
+
+### numbers
+
+fresh-sync baseline 125 to 150 minutes to traverse about 1.3M to 1.54M dust events; the seeder
+replaces the tree reconstruction with two full-range collapses of a few hundred bytes each plus
+a bounded tail. measured apply rate 564 to 667 events/s against a 5,130 events/s five-minute
+target. new modules `dust-seed.mjs` (896 lines) and `wallet-state-verify.mjs` (1,452 lines),
+plus `dust-seed.test.mjs` (402 lines); `preprod-lane.mjs` (650 lines) gained the gate wiring
+and the version-gate fix. this round added, removed or changed no dependency.
+
+### known limits
+
+the seeder's own live test verified two heights with lag 0. the gate's shielded content has no
+independent chain query and is its largest residual gap, and the dust and shielded forward sync
+after restore needs keys the gate will not handle, so those checks stay unexercised until a real
+snapshot exists. no snapshot existed at the time of writing: a full sync was killed by a host
+reboot at about 1,037,418 of 1,540,000 dust events (roughly 75 percent) with no snapshot
+written. the fast path is wired and gated but has not yet restored a real Preprod snapshot end
+to end.
+
+Changes are grouped by verified scope. “Added” does not mean a live service or a passed
+integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+
 ## v0.0.2 - 2026-09-20
 
 six hardening programs (v1 to v6) on top of the v0.0.1 surface. every claim below is backed by evidence under `hardening/` (local, unpublished) and by the test suite: 361 unit tests, 114 integration tests, 27 contract tests, 25 verifier checks, all green.
