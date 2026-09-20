@@ -219,7 +219,7 @@ try {
     `${JSON.stringify(
       {
         scope:
-          "isolated native node block-1 observation; no transaction proof or R1",
+          "isolated native node block-1 observation; transaction diagnostics recorded in transactions.jsonl when requested; no order admission or R1 claim",
         node: "1.0.0",
         archiveSha256:
           "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
