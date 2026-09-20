@@ -295,7 +295,8 @@ export async function runStagedBootstrap({
     counter: plan.lockCounter.toString(),
     maintenanceLockObserved: true,
     immutableOrderAdmission: false,
-    adversarialMaintenanceRejectionVerified: false,
+    adversarialMaintenanceRejectionVerified:
+      maintenanceAudit?.authorityRejectionVerified === true,
     ...(maintenanceAudit ? { maintenanceAudit } : {}),
     ...(maintenanceControls ? { maintenanceControls } : {}),
     canonicalQuoteBinding: false,

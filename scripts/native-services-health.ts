@@ -176,7 +176,6 @@ export async function verifyNativeServices(
       indexerReady: true,
       proverReady: true,
       indexedBlockOneMatchesNode: true,
-      transactionProven: false,
     };
   } finally {
     for (const process of processes.reverse()) {
