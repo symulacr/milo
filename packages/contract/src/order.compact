@@ -32,8 +32,11 @@ export struct Configuration {
   resolutionDeadline: Uint<64>
 }
 
-export ledger protocolVersion: Uint<16>;
-export ledger configuration: Configuration;
+// Constructor-only bootstrap fields: sealed so no context reachable from an
+// exported circuit can ever rewrite them (compile-time guarantee; the runtime
+// re-assertions at 118/122 stay as they are).
+export sealed ledger protocolVersion: Uint<16>;
+export sealed ledger configuration: Configuration;
 export ledger phase: Phase;
 export ledger revision: Uint<64>;
 export ledger deliveryCommitment: Bytes<32>;
