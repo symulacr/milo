@@ -45,7 +45,6 @@ packages/contract/generated/
 06-backend-design.md
 07-video-design.md
 08-midnight-core-audit.md
-CHANGELOG.md
 EXECUTION_MANIFEST.md
 PROGRESS_MANIFEST.md
 PROTOCOL_VERIFICATION.md
@@ -56,6 +55,7 @@ VERIFICATION.md
 !/.gitignore
 !/LICENSE
 !/README.md
+!/CHANGELOG.md
 !/THIRD_PARTY_NOTICES.md
 !/package.json
 !/tsconfig.json
