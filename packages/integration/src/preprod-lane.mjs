@@ -503,16 +503,19 @@ async function seedDustForRun(config, keys) {
       throw new DustSeedError(
         "emitted snapshot restored the wrong applied index",
       );
+    // Compare against the POST-tail roots. The snapshot is encoded after the tail replay,
+    // which may have inserted leaves, so the pre-tail localCommitmentRoot describes a
+    // different tree state and matching against it refuses valid snapshots.
     if (
       encodeMerkleRoot(roundTrip.state.commitmentTreeRoot()) !==
-      result.receipt.localCommitmentRoot
+      result.receipt.finalCommitmentRoot
     )
       throw new DustSeedError(
         "emitted snapshot restored a different commitment root",
       );
     if (
       encodeMerkleRoot(roundTrip.state.generatingTreeRoot()) !==
-      result.receipt.localGenerationRoot
+      result.receipt.finalGenerationRoot
     )
       throw new DustSeedError(
         "emitted snapshot restored a different generation root",

@@ -1141,17 +1141,46 @@ async function checkBoundedRestore(checks, texts, opts, chain) {
         const r = await withTimeout("dust-getAddress", 15_000, () =>
           out.instances.dust.getAddress(),
         );
-        if (r.status === "ok") restoredAddress = String(r.value);
+        if (r.status === "ok") restoredAddress = r.value;
       }
+      // Normalise both sides to a bech32 string before comparing. encodePublicKey returns a
+      // value that stringifies to bech32, while getAddress() returns an address OBJECT whose
+      // String() is "[object Object]" - comparing them raw produced a false FAIL that refused
+      // a valid snapshot and forced a full sync.
+      const asBech32 = (value) => {
+        if (value === null || value === undefined) return null;
+        const direct = String(value);
+        if (direct.startsWith("mn_dust_")) return direct;
+        const attempts = [
+          () => value.asString?.(),
+          () =>
+            addressFormat.MidnightBech32m.encode(
+              NETWORK_ID,
+              value,
+            )?.toString(),
+        ];
+        for (const attempt of attempts) {
+          try {
+            const text = attempt();
+            if (typeof text === "string" && text.startsWith("mn_dust_"))
+              return text;
+          } catch {
+            // Try the next encoder.
+          }
+        }
+        return direct;
+      };
+      const derivedText = asBech32(derived);
+      const restoredText = asBech32(restoredAddress);
       const consistent =
-        restoredAddress === null || restoredAddress === derived;
+        restoredText === null || restoredText === derivedText;
       checks.add(
         "dust-address",
         "dust address derived from the snapshot public key is well-formed and consistent",
         consistent ? "PASS" : "FAIL",
         {
           expected: "derived dust address == restored dust wallet address",
-          observed: `derived=${derived} restored=${restoredAddress ?? "not readable without start"}`,
+          observed: `derived=${derivedText} restored=${restoredText ?? "not readable without start"}`,
           detail:
             "The indexer exposes no query for a Midnight dust address, so this is a consistency check, not an independent chain check.",
           remedy:
