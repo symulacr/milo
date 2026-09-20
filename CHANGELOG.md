@@ -19,8 +19,11 @@ prototype evidence under `hardening/v6/`.
   compared belong to the same indexer state. the seeder emits nothing unless both roots verify
   inside a one-state lag window, the tail cursor is anchored to the pinned block, and the
   snapshot round-trips through the SDK's own serialization. the live branch of
-  `packages/integration/test/dust-seed.test.mjs` confirmed a lag-0 match at two distinct
-  heights, 2633377 and 2633379, on this round's run.
+  `packages/integration/test/dust-seed.test.mjs` confirmed a lag-0 match at two distinct live
+  heights on this round's run. that test asserts the two heights differ and are safe integers,
+  but it does not write their numeric values to any durable artifact, so no specific heights are
+  cited here. the only durably recorded height is the offline fixture's `GOLDEN.height` = 2633333
+  (`packages/integration/test/dust-seed.test.mjs` line 31).
 - **the restore gate exists, and no restore is trusted without it.**
   `packages/integration/src/wallet-state-verify.mjs` is the gate: G1 to G10, ported from the
   `prototype/restore-verify/verify.mjs` definition. it cross-checks restored content against the
@@ -69,13 +72,15 @@ prototype evidence under `hardening/v6/`.
 fresh-sync baseline 125 to 150 minutes to traverse about 1.3M to 1.54M dust events; the seeder
 replaces the tree reconstruction with two full-range collapses of a few hundred bytes each plus
 a bounded tail. measured apply rate 564 to 667 events/s against a 5,130 events/s five-minute
-target. new modules `dust-seed.mjs` (896 lines) and `wallet-state-verify.mjs` (1,452 lines),
-plus `dust-seed.test.mjs` (402 lines); `preprod-lane.mjs` (650 lines) gained the gate wiring
-and the version-gate fix. this round added, removed or changed no dependency.
+target. new modules `dust-seed.mjs` and `wallet-state-verify.mjs`, plus `dust-seed.test.mjs`;
+`preprod-lane.mjs` gained the gate wiring and the version-gate fix. line counts are deliberately
+not recorded here: they drift on every edit, and an earlier draft of this entry carried counts
+that were already wrong. this round added, removed or changed no dependency.
 
 ### known limits
 
-the seeder's own live test verified two heights with lag 0. the gate's shielded content has no
+the seeder's own live test verified two distinct live heights with lag 0, but records no numeric
+heights. the gate's shielded content has no
 independent chain query and is its largest residual gap, and the dust and shielded forward sync
 after restore needs keys the gate will not handle, so those checks stay unexercised until a real
 snapshot exists. no snapshot existed at the time of writing: a full sync was killed by a host
