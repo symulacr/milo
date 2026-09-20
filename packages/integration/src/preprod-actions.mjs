@@ -29,8 +29,10 @@ const GENERATED = resolve("packages/contract/generated");
 
 const bytes32 = () => new Uint8Array(randomBytes(32));
 
-/** A preprod-flavoured order with one private state per actor. */
-function miloOrder(Contract) {
+/** A preprod-flavoured order with one private state per actor. Exported so the staged deploy
+ * can build the SAME order the drills will drive: if the constructor gets one order and the
+ * driver another, the commitments have no matching private state and every call fails. */
+export function miloOrder(Contract) {
   const { pureCircuits, Role } = Contract;
   const network = new Uint8Array(32);
   network.set(new TextEncoder().encode("preprod"));

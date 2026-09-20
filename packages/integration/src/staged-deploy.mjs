@@ -286,6 +286,16 @@ async function readPriorReceipt(path) {
  * `ContractState` at that block, or the latest state when no block is given.
  * Both are injected so this module can be exercised without a network.
  */
+/** Whether a contract already exists at the recorded address. Used only by the resume guard:
+ * an observation failure means "assume not landed", never "assume landed". */
+async function contractExists(observe, address) {
+  try {
+    return Boolean(await observe(address, undefined));
+  } catch {
+    return false;
+  }
+}
+
 export async function runStagedDeploy({
   networkId,
   configuration,
@@ -333,7 +343,14 @@ export async function runStagedDeploy({
   // resume therefore trusts the recorded address and re-ties it to this plan
   // through the observed ledger data and maintenance signer (inspectBootstrap),
   // never by comparing a freshly generated address.
-  const deployLanded = Boolean(prior?.deploy) && Boolean(prior?.address);
+  // A recorded address whose contract already exists on chain means the deploy landed even if
+  // the receipt never recorded it: a run that dies after submitting leaves `deploy` null, and
+  // treating that as "not landed" redeployed the contract, which is how a stray second
+  // contract appeared at 394bc7f2. One observation settles it; a failed observation is
+  // treated as not landed.
+  const deployLanded = prior?.address
+    ? Boolean(prior?.deploy) || (await contractExists(observe, prior.address))
+    : false;
   const deployment = deployLanded ? null : new L.ContractDeploy(plan.initial);
   const address = deployLanded ? prior.address : deployment.address;
 
@@ -507,7 +524,22 @@ export async function runStagedDeploy({
         counter: counter.toString(),
       });
       lastBlockHash = insert.blockHash;
-      state = await observeState(address, insert.blockHash);
+      // The insert may not be reflected the instant the node accepts it: observing right away
+      // can return the PRE-insert operation set, which made a landed insert look like a
+      // failure ("did not expose exactly the proof circuits" with the seven missing). Poll
+      // until the inserted circuits appear, bounded like the deploy's own observation.
+      for (let attempt = 1; ; attempt += 1) {
+        state = await observeState(address, insert.blockHash);
+        const seen = operationNames(state);
+        if (
+          [...missing].every((name) => seen.includes(name)) ||
+          attempt >= observeAttempts
+        )
+          break;
+        await new Promise((resolveWait) =>
+          setTimeout(resolveWait, observeRetryMs),
+        );
+      }
     }
 
     // Confirmation, not assumption: the observed operation set must be exactly
