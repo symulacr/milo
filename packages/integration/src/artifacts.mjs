@@ -110,9 +110,9 @@ export async function validateArtifacts(directory = contractDirectory) {
   const metadata = JSON.parse(
     await readFile(join(generated, "compiler/contract-info.json")),
   );
-  assert.equal(metadata["compiler-version"], "0.31.1");
-  assert.equal(metadata["language-version"], "0.23.0");
-  assert.equal(metadata["runtime-version"], "0.16.0");
+  assert.equal(metadata["compiler-version"], TOOLCHAIN.compiler);
+  assert.equal(metadata["language-version"], TOOLCHAIN.language);
+  assert.equal(metadata["runtime-version"], TOOLCHAIN.runtime);
   assert.deepEqual(
     metadata.circuits
       .filter((circuit) => circuit.proof)
@@ -124,7 +124,7 @@ export async function validateArtifacts(directory = contractDirectory) {
     source: sourcePath,
     sourceSha256,
     compiler: receipt.compiler,
-    language: "0.23.0",
+    language: TOOLCHAIN.language,
     runtime: receipt.runtime,
     compileReceiptSha256: sha256(receiptBytes),
     artifactCount: artifactPaths.length,
@@ -153,7 +153,7 @@ export async function validateCohort() {
     ...Object.fromEntries(
       sdkPackages.map((name) => [`@midnight-ntwrk/${name}`, "4.1.1"]),
     ),
-    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/compact-runtime": TOOLCHAIN.runtime,
     "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
     "@midnight-ntwrk/ledger-v8": "8.1.2",
     "@midnight-ntwrk/wallet-sdk": "1.2.0",
