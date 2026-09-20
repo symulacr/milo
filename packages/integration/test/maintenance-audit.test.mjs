@@ -12,6 +12,7 @@ import {
   runRetainedKeyAudit,
 } from "../src/maintenance-audit.mjs";
 import { artifacts, freshOrder } from "../src/order.mjs";
+import { deployTx, maintenanceTx, staged } from "../src/tx.mjs";
 
 const verifierKeys = await new NodeZkConfigProvider(artifacts).getVerifierKeys(
   proofCircuits,
@@ -355,4 +356,34 @@ test("audit-case construction wraps the replay update in exactly one intent (dou
   assert.equal(intents[0].actions.length, 1);
   assert(intents[0].actions[0] instanceof L.MaintenanceUpdate);
   assert.equal(intents[0].actions[0].address, f.address);
+});
+
+test("staged() rejects the nested-Transaction double-wrap and accepts real intents", () => {
+  const f = fixture();
+  const proposal = retainedKeyProposal({ ...f, kind: "replace-verifier" });
+  const signedUpdate = [...proposal.intents.values()][0].actions[0];
+
+  // Legitimate shapes pass.
+  const maintenance = maintenanceTx(f.networkId, signedUpdate);
+  assert.equal([...maintenance.intents.values()].length, 1);
+  const deployment = deployTx(
+    f.networkId,
+    new L.ContractDeploy(new L.ContractState()),
+  );
+  assert.equal([...deployment.intents.values()].length, 1);
+
+  // The double-wrap: the regression passed a whole Transaction where an
+  // Intent belongs. Raw fromParts accepts it silently (intents undefined);
+  // staged must throw.
+  const doubleWrapped = L.Transaction.fromParts(
+    f.networkId,
+    undefined,
+    undefined,
+    maintenance,
+  );
+  assert.equal(doubleWrapped.intents, undefined, "raw fromParts stays silent");
+  assert.throws(
+    () => staged(f.networkId, doubleWrapped),
+    /expected a single Intent/,
+  );
 });

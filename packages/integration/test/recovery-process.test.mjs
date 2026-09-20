@@ -12,6 +12,7 @@ import {
   runProcessRecovery,
   verifyRecoveryReceipt,
 } from "../src/recovery-process.mjs";
+import { deployTx } from "../src/tx.mjs";
 
 test("MID-T01 actor worker fixture: actual process loss restores encrypted state, reconciles IDs and never redeploys", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "milo-worker-test-"));
@@ -108,12 +109,7 @@ test("MID-T01 actor worker fixture: actual process loss restores encrypted state
 test("MID-T01 recovery receipt guard rejects unrelated IDs, addresses, operations and partial success", () => {
   const deploy = new L.ContractDeploy(new L.ContractState());
   const id = `00${"ab".repeat(32)}`;
-  const tx = L.Transaction.fromParts(
-    "undeployed",
-    undefined,
-    undefined,
-    L.Intent.new(new Date()).addDeploy(deploy),
-  );
+  const tx = deployTx("undeployed", deploy, new Date());
   const data = {
     status: "SucceedEntirely",
     txId: id,
