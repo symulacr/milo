@@ -21,7 +21,18 @@
 // The call is unsigned on purpose, matching PolkadotNodeClient
 // (api.tx.midnight.sendMnTransaction(...).send(...) with no signer): the Midnight
 // transaction carries its own signatures and the pallet validates it.
+//
+// THE PROVIDER RETURN VALUE. `providers.midnightProvider.submitTx` must return a
+// TransactionId, and midnight-js resolves that value as the LEDGER transaction
+// identifier: the blocking `submitTx` feeds it to `publicDataProvider.watchForTxData`
+// (midnight-js-contracts/dist/index.mjs:69-72), which queries the indexer by
+// `{ identifier }`. The node's `author_submitExtrinsic` result is the substrate
+// extrinsic hash (32 bytes), a different value in a different space from the ledger
+// identifier (33 bytes), so returning it makes the confirmation watch poll forever -
+// the circuit-call and maintenance hangs. `submit` below returns the ledger identifier
+// and keeps the extrinsic hash as acceptance evidence only. See submit-tracking.mjs.
 import { resolve } from "node:path";
+import { ledgerTransactionId } from "./submit-tracking.mjs";
 
 /** Submit over the node's WebSocket as a plain request. Any payload size. */
 export async function submitExtrinsicOverSocket(
@@ -143,30 +154,50 @@ export function createHttpSubmitter(config, deps = {}) {
   }
 
   return {
-    /** @param {{ serialize: () => Uint8Array }} finalized */
+    /**
+     * Submit a finalized transaction and return its LEDGER identifier.
+     *
+     * The return value is what midnight-js's `midnightProvider.submitTx` contract
+     * requires and what the facade's own path returns (`tx.identifiers().at(-1)`,
+     * wallet-sdk-facade/dist/index.js:322). The extrinsic hash is acceptance evidence,
+     * not the transaction identity; it is reported through `deps.onAccepted` so the
+     * lane can log it without ever handing it to a confirmation watch.
+     *
+     * @param {{ serialize: () => Uint8Array, identifiers: () => string[] }} finalized
+     * @returns {Promise<string>} bare 66-hex ledger transaction identifier
+     */
     async submit(finalized) {
       if (typeof finalized?.serialize !== "function")
         throw new Error(
           "submit expects a finalized transaction with serialize()",
         );
+      // Fail before opening a socket if the transaction has no usable ledger id.
+      const txId = ledgerTransactionId(finalized);
       const bytes = finalized.serialize();
       const api = await metadataApi();
       const extrinsicHex = api.tx.midnight
         .sendMnTransaction(`0x${Buffer.from(bytes).toString("hex")}`)
         .toHex();
+      let extrinsicHash;
       try {
-        return await submitExtrinsicOverSocket(config, extrinsicHex, {
+        extrinsicHash = await submitExtrinsicOverSocket(config, extrinsicHex, {
           WebSocketImpl,
         });
       } catch (socketError) {
         try {
-          return await submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl);
+          extrinsicHash = await submitExtrinsicOverHttp(
+            config,
+            extrinsicHex,
+            fetchImpl,
+          );
         } catch (httpError) {
           throw new Error(
             `submission failed on both transports: socket: ${socketError.message}; https: ${httpError.message}`,
           );
         }
       }
+      deps.onAccepted?.({ txId, extrinsicHash });
+      return txId;
     },
     async close() {
       if (!apiPromise) return;
