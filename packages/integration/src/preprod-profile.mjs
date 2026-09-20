@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { validateArtifacts, validateCohort } from "./artifacts.mjs";
+import { TOOLCHAIN, validateArtifacts, validateCohort } from "./artifacts.mjs";
+import { isLoopbackHostname } from "./config.mjs";
 import {
   observePreprod,
   PREPROD_INDEXER,
@@ -93,7 +94,7 @@ export function preprodConfig(env) {
     const url = new URL(env.MILO_PREPROD_PROOF_HTTP);
     assert(
       url.protocol === "http:" &&
-        ["127.0.0.1", "[::1]"].includes(url.hostname) &&
+        isLoopbackHostname(url.hostname) &&
         !url.username &&
         !url.password &&
         !url.search &&
@@ -119,9 +120,9 @@ export function preprodConfig(env) {
 
 export function assertPreprodArtifactExpectations(config, artifacts) {
   assert.equal(config.mode, "deployment-preflight");
-  assert.equal(artifacts.compiler, "0.31.1");
-  assert.equal(artifacts.language, "0.23.0");
-  assert.equal(artifacts.runtime, "0.16.0");
+  assert.equal(artifacts.compiler, TOOLCHAIN.compiler);
+  assert.equal(artifacts.language, TOOLCHAIN.language);
+  assert.equal(artifacts.runtime, TOOLCHAIN.runtime);
   assert.equal(artifacts.artifactCount, 60);
   assert.equal(
     artifacts.artifactSetSha256,
