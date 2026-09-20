@@ -131,14 +131,12 @@ const report = {
       { ...v, circuits: [...new Set(v.circuits)] },
     ]),
   ),
-  last_events: events
-    .slice(-4)
-    .map((e) => ({
-      event: e.event,
-      circuit: e.circuit,
-      scenario: e.scenario,
-      txId: e.txId,
-    })),
+  last_events: events.slice(-4).map((e) => ({
+    event: e.event,
+    circuit: e.circuit,
+    scenario: e.scenario,
+    txId: e.txId,
+  })),
   chain: await chainState(events).catch((error) => ({ error: error.message })),
   wallet_state:
     "requires a wallet sync; run preprod-lane.mjs --check for balances",
