@@ -8,7 +8,6 @@ import { errorDiagnostics } from "./diagnostics.mjs";
 import { maintenanceTx } from "./tx.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
-const wrap = (update, networkId) => maintenanceTx(networkId, update);
 
 export function controlUpdate({
   address,
@@ -80,7 +79,7 @@ export async function runMaintenanceControls({
     let boundary;
     let finalized;
     try {
-      finalized = await submit(wrap(update, networkId));
+      finalized = await submit(maintenanceTx(networkId, update));
     } catch (error) {
       failure = errorDiagnostics(error);
       boundary = context().boundary;
@@ -164,7 +163,9 @@ export async function runMaintenanceControls({
   );
   const positive = controlUpdate({ ...inputs, counter: 1n, positive: true });
   step("MID-T01-control-positive-batch");
-  const receipt = publicReceipt(await submit(wrap(positive, networkId)));
+  const receipt = publicReceipt(
+    await submit(maintenanceTx(networkId, positive)),
+  );
   const result = await observe(address, receipt.blockHash);
   inspectBootstrap(result, plan, proofCircuits, 2n, false);
   emit("maintenance-positive-control-finalized", {

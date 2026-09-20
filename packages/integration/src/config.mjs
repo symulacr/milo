@@ -54,8 +54,6 @@ export function localConfig(env) {
   }
   return {
     networkId: "undeployed",
-    walletNetworkId: "undeployed",
-    faucet: undefined,
     node: endpoint("MILO_LOCAL_NODE_HTTP", "http:"),
     nodeWS: endpoint("MILO_LOCAL_NODE_WS", "ws:"),
     indexer: endpoint("MILO_LOCAL_INDEXER_HTTP", "http:"),

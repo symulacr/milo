@@ -199,7 +199,6 @@ export async function runStagedBootstrap({
     reservationEntrypointInitiallyAvailable: false,
     immutableOrderAdmission: false,
   });
-  const ttl = intentExpiry;
   const sendAndObserve = async (name, unprovenTx) => {
     step(name);
     const receipt = publicReceipt(await submit(unprovenTx));
@@ -213,7 +212,7 @@ export async function runStagedBootstrap({
   };
   let state = await sendAndObserve(
     "MID-T01-staged-deploy",
-    deployTx(networkId, deployment, ttl()),
+    deployTx(networkId, deployment, intentExpiry()),
   );
   inspectBootstrap(state, plan, plan.initialNames, 0n, false);
   assert.throws(() => requireCompletedLockedBootstrap(state, plan));
@@ -232,7 +231,7 @@ export async function runStagedBootstrap({
       plan,
       signingKey,
       networkId,
-      ttl: ttl(),
+      ttl: intentExpiry(),
       lock: false,
     }),
   );
@@ -268,7 +267,7 @@ export async function runStagedBootstrap({
       plan,
       signingKey,
       networkId,
-      ttl: ttl(),
+      ttl: intentExpiry(),
       lock: true,
     }),
   );
