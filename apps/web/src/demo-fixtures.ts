@@ -74,7 +74,7 @@ export const demoContexts: DemoContext[] = [
     merchant: "Unison Objects",
     pack: "Three-image render study",
     scope:
-      "Renders of an unreleased container design: overall form, a join detail and the colorway set. Each image states that it is a render, not photography of a finished product.",
+      "Sample stills of an unreleased container design: overall form, a join detail and the colorway set. Each image is sample product photography, not a claim about a finished product.",
     rights: "Internal review and one approved announcement · sample terms",
     deadline: "Review due 12 Sep 2026, 09:30 UTC · sample clock",
     amount: "$420 USD",

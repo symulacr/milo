@@ -65,13 +65,10 @@ export function WorkspaceShell() {
             className="account-nav-link"
             aria-label={`Account — ${roleNames[state.role]}`}
           >
-            <span className="avatar" aria-hidden="true">
-              {state.role === "buyer"
-                ? "AS"
-                : state.role === "merchant"
-                  ? "NS"
-                  : "OP"}
-            </span>
+            <span
+              className={`avatar avatar-${state.role}`}
+              aria-hidden="true"
+            ></span>
           </NavLink>
         </nav>
         <div className="sidebar-bottom">
@@ -79,13 +76,7 @@ export function WorkspaceShell() {
             How Milo works ↗
           </a>
           <NavLink to="/account" className="account-link">
-            <span className="avatar">
-              {state.role === "buyer"
-                ? "AS"
-                : state.role === "merchant"
-                  ? "NS"
-                  : "OP"}
-            </span>
+            <span className={`avatar avatar-${state.role}`}></span>
             <span className="nav-text">
               <strong>{roleNames[state.role]}</strong>
               <small>Sample {state.role}</small>
