@@ -113,7 +113,7 @@ export function OrderView() {
                       <div className="image-wrap">
                         <img
                           src={file.src}
-                          alt={`Synthetic Still vessel illustration — ${file.title.toLowerCase()}`}
+                          alt={`Sample product photography — ${file.title.toLowerCase()}`}
                           width="600"
                           height="720"
                         />

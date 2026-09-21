@@ -43,7 +43,7 @@ export function PublicShell() {
           <a href="/terms">Terms</a>
           <a href="/pilot">Pilot status</a>
         </nav>
-        <span className="micro muted">Original synthetic artwork · 2026</span>
+        <span className="micro muted">Sample product photography · 2026</span>
       </footer>
     </div>
   );

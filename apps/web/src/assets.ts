@@ -5,7 +5,7 @@ export const sampleFiles = [
     title: "The hero",
     note: "Product portrait · studio composition",
     src: "/images/hero.png",
-    hash: "21ec4110eedb37597293d858609f2c22d558fd3e6963bcd87e744b3a60dcce6a",
+    hash: "a05e51ca6ec13e5c880cb363d275d2ca5fface6fcaa735a8ca1449d63e903519",
   },
   {
     id: "02",
@@ -13,7 +13,7 @@ export const sampleFiles = [
     title: "The details",
     note: "Material study · close composition",
     src: "/images/detail.png",
-    hash: "58221194d35709f6c489244ee5af248b316bded9b8296b68d03e59c70bc231a5",
+    hash: "3dbf9f923e11a17c9640e50cea8d9b152244f93a8637058dff8d97b9b38c7b20",
   },
   {
     id: "03",
@@ -21,7 +21,7 @@ export const sampleFiles = [
     title: "The collection",
     note: "Campaign composition · family portrait",
     src: "/images/collection.png",
-    hash: "435f3d70cd82a623cd1ab65d174f57f47f7b5d1e59f55b60fbc9dd59a1f4a588",
+    hash: "cf4bebec832e7af624ee329bf0caf3efb4f87b7ac9c564564349557ae93d8baf",
   },
 ] as const;
 

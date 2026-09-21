@@ -78,7 +78,7 @@ export function OrderDialog() {
               <img
                 className="lightbox-image"
                 src={sampleFiles[image.index]?.src}
-                alt={`Synthetic product illustration — ${sampleFiles[image.index]?.title}`}
+                alt={`Sample product photography — ${sampleFiles[image.index]?.title}`}
                 width="600"
                 height="720"
               />
