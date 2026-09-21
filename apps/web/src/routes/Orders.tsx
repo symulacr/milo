@@ -22,7 +22,7 @@ export function Orders({ merchant = false }: { merchant?: boolean }) {
       <Link to="/orders/sample-001" className="order-list-card">
         <img
           src={sampleFiles[0].src}
-          alt="Still sample product illustration"
+          alt="Sample Still Studio photography"
           width="104"
           height="120"
         />

@@ -135,9 +135,19 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--art-deep);
+  background: var(--art-deep) center / cover no-repeat;
+  color: transparent;
   font-size: var(--text-micro);
   flex-shrink: 0;
+}
+.avatar-buyer {
+  background-image: url("/images/avatar-buyer.png");
+}
+.avatar-merchant {
+  background-image: url("/images/avatar-merchant.png");
+}
+.avatar-operator {
+  background-image: url("/images/avatar-operator.png");
 }
 .account-link strong {
   display: block;
@@ -739,6 +749,14 @@ dd {
 .reading-panel h3 {
   font-size: 17px;
   margin-bottom: 10px;
+}
+.studio-cover {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--art-line);
 }
 .reading-panel p {
   font-size: 14px;

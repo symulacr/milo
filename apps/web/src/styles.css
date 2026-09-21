@@ -850,7 +850,9 @@ h2 {
   max-width: var(--measure);
 }
 .closing-cta {
-  background: var(--ink);
+  background:
+    linear-gradient(rgba(32, 32, 31, 0.72), rgba(32, 32, 31, 0.72)),
+    url("/images/closing-cta.png") center / cover no-repeat;
   color: var(--paper);
   padding-block: var(--space-8);
   text-align: center;
