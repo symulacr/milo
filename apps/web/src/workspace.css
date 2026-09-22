@@ -140,15 +140,6 @@
   font-size: var(--text-micro);
   flex-shrink: 0;
 }
-.avatar-buyer {
-  background-image: url("/images/avatar-buyer.png");
-}
-.avatar-merchant {
-  background-image: url("/images/avatar-merchant.png");
-}
-.avatar-operator {
-  background-image: url("/images/avatar-operator.png");
-}
 .account-link strong {
   display: block;
   font-size: var(--text-micro);
