@@ -850,12 +850,15 @@ h2 {
   max-width: var(--measure);
 }
 .closing-cta {
-  background:
-    linear-gradient(rgba(32, 32, 31, 0.72), rgba(32, 32, 31, 0.72)),
-    url("/images/closing-cta.png") center / cover no-repeat;
+  background: var(--ink);
   color: var(--paper);
   padding-block: var(--space-8);
   text-align: center;
+}
+.closing-cta.has-photo {
+  background:
+    linear-gradient(rgba(32, 32, 31, 0.72), rgba(32, 32, 31, 0.72)),
+    var(--cta-photo) center / cover no-repeat;
 }
 .closing-cta h2 {
   font-family: var(--font-display);

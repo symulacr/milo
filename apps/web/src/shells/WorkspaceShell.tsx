@@ -66,8 +66,11 @@ export function WorkspaceShell() {
             aria-label={`Account — ${roleNames[state.role]}`}
           >
             <span
-              className={`avatar avatar-${state.role}`}
+              className="avatar"
               aria-hidden="true"
+              style={{
+                backgroundImage: `url(/images/avatar-${state.role}.png)`,
+              }}
             ></span>
           </NavLink>
         </nav>
@@ -76,7 +79,12 @@ export function WorkspaceShell() {
             How Milo works ↗
           </a>
           <NavLink to="/account" className="account-link">
-            <span className={`avatar avatar-${state.role}`}></span>
+            <span
+              className="avatar"
+              style={{
+                backgroundImage: `url(/images/avatar-${state.role}.png)`,
+              }}
+            ></span>
             <span className="nav-text">
               <strong>{roleNames[state.role]}</strong>
               <small>Sample {state.role}</small>
