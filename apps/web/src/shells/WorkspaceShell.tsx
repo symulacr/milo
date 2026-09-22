@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import type { Role, Scenario } from "../../../../packages/domain/src/prototype";
 import { OrderDialog } from "../components/OrderDialog";
@@ -17,7 +17,15 @@ export function WorkspaceShell() {
       <a className="skip-link" href="#workspace">
         Skip to workspace
       </a>
-      <aside className="sidebar" aria-label="Workspace navigation">
+      <aside
+        className="sidebar"
+        aria-label="Workspace navigation"
+        style={
+          {
+            "--avatar-photo": `url(/images/avatar-${state.role}.png)`,
+          } as CSSProperties
+        }
+      >
         <div className="sidebar-top">
           <a className="wordmark" href="/">
             milo
@@ -65,13 +73,7 @@ export function WorkspaceShell() {
             className="account-nav-link"
             aria-label={`Account — ${roleNames[state.role]}`}
           >
-            <span
-              className="avatar"
-              aria-hidden="true"
-              style={{
-                backgroundImage: `url(/images/avatar-${state.role}.png)`,
-              }}
-            ></span>
+            <span className="avatar" aria-hidden="true" />
           </NavLink>
         </nav>
         <div className="sidebar-bottom">
@@ -79,12 +81,7 @@ export function WorkspaceShell() {
             How Milo works ↗
           </a>
           <NavLink to="/account" className="account-link">
-            <span
-              className="avatar"
-              style={{
-                backgroundImage: `url(/images/avatar-${state.role}.png)`,
-              }}
-            ></span>
+            <span className="avatar" />
             <span className="nav-text">
               <strong>{roleNames[state.role]}</strong>
               <small>Sample {state.role}</small>

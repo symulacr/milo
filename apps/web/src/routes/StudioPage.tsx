@@ -5,7 +5,7 @@ export function StudioPage() {
   return (
     <>
       <PublicPageTitle title="North Studio" />
-      <Panel className="reading-panel studio-page">
+      <Panel className="reading-panel">
         <img
           className="studio-cover"
           src="/images/studio-cover.png"

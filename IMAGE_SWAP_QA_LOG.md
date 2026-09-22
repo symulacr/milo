@@ -148,6 +148,29 @@ Clean on all four routes. Only Bun HMR + React DevTools info. No image 404s, no 
 
 ---
 
+## Build / lint sweep (bun + npm)
+
+| Check | Result |
+|---|---|
+| `bun scripts/build.ts` | OK (3 bundles) |
+| `tsc --noEmit` | OK |
+| `biome check .` | OK — 0 errors / 0 warnings (JSON reporter) |
+| `test apps/web` + packages | 361 pass / 0 fail |
+| `npm --version` / `npx` | **Warning fixed** |
+
+### Errors & warnings found
+
+| ID | Source | Status |
+|---|---|---|
+| W1 | `npm warn Unknown user config "allow-scripts"` (`~/.npmrc`) | **Fixed** — key removed from `~/.npmrc`; allowlist saved to `~/.npmrc.allow-scripts.backup` |
+| N1 | `dist/index-*.js` is **0 bytes** | **Not an error** — static landing `index.html` has CSS only, no JS entry |
+| N2 | Biome `--verbose` “34 warnings” | **False positive** — JSON reporter: `errors:0, warnings:0` |
+| N3 | `bun install --dry-run` via `with-bun.sh` fails | **Misuse** — wrapper is for `bun build`, not `bun install` |
+
+### Final state
+
+Build, typecheck, lint, and unit tests are clean with no user-facing npm warnings.
+
 ## Tooling notes
 
 - Dev: `sh scripts/with-bun.sh --hot scripts/dev.ts` → `:3000`
