@@ -857,8 +857,8 @@ h2 {
 }
 .closing-cta.has-photo {
   background:
-    linear-gradient(rgba(32, 32, 31, 0.72), rgba(32, 32, 31, 0.72)),
-    var(--cta-photo) center / cover no-repeat;
+    linear-gradient(rgb(32 32 31 / 72%), rgb(32 32 31 / 72%)),
+    var(--cta-photo) center / cover;
 }
 .closing-cta h2 {
   font-family: var(--font-display);

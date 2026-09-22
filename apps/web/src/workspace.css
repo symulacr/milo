@@ -135,7 +135,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--art-deep) center / cover no-repeat;
+  background: var(--art-deep) var(--avatar-photo) center / cover no-repeat;
   color: transparent;
   font-size: var(--text-micro);
   flex-shrink: 0;
@@ -745,9 +745,10 @@ dd {
   display: block;
   width: 100%;
   height: auto;
+  object-position: center bottom;
+  border: 1px solid var(--art-line);
   border-radius: 10px;
   margin-bottom: var(--space-4);
-  border: 1px solid var(--art-line);
 }
 .reading-panel p {
   font-size: 14px;
