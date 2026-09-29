@@ -9,7 +9,7 @@
 - [x] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
 - [x] D1a | Deploy convex to dev | | function-spec list | demo
 - [x] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
-- [ ] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
+- [x] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
 - [ ] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
 - [ ] D2a | Local Midnight happy path | | tx hashes | demo
 - [ ] D2b | SPEND-LEDGER + faucet | | balance script | demo
