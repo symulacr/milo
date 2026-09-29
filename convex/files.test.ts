@@ -111,8 +111,7 @@ function databaseDouble(options?: {
             };
             range(chain);
             return filter(
-              (row) =>
-                captured.every(([field, value]) => row[field] === value),
+              (row) => captured.every(([field, value]) => row[field] === value),
               index,
             );
           },

@@ -49,9 +49,9 @@ export {
 } from "./wallet";
 export {
   MidnightWalletSdkConnector,
+  type WalletSdkSession,
+  type WalletSdkStatusAPI,
   walletSdkConnectedApi,
   walletSdkInitialApi,
   walletSdkStatusApi,
-  type WalletSdkSession,
-  type WalletSdkStatusAPI,
 } from "./wallet-sdk-connector";

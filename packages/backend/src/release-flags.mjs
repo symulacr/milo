@@ -26,9 +26,10 @@ export const RELEASE_FLAG_DEFAULTS = Object.freeze({
  */
 function isCanonicalBindingReceipt(value) {
   if (!value || typeof value !== "object") return false;
-  const receipt = /** @type {{ source?: unknown, verdict?: unknown, binding?: unknown }} */ (
-    value
-  );
+  const receipt =
+    /** @type {{ source?: unknown, verdict?: unknown, binding?: unknown }} */ (
+      value
+    );
   if (receipt.source !== "canonicalBindings" || receipt.verdict !== "bound") {
     return false;
   }
@@ -60,9 +61,10 @@ function isCanonicalBindingReceipt(value) {
  */
 function isChainReservationReceipt(value) {
   if (!value || typeof value !== "object") return false;
-  const receipt = /** @type {{ source?: unknown, kind?: unknown, orderId?: unknown, address?: unknown, observedAt?: unknown }} */ (
-    value
-  );
+  const receipt =
+    /** @type {{ source?: unknown, kind?: unknown, orderId?: unknown, address?: unknown, observedAt?: unknown }} */ (
+      value
+    );
   if (receipt.source !== "chain-observer" || receipt.kind !== "reserved") {
     return false;
   }
@@ -87,7 +89,8 @@ export function releaseFlagsFromEvidence(evidence) {
     evidence?.canonicalBinding,
   );
   const r1Complete =
-    immutableOrderAdmission && isChainReservationReceipt(evidence?.chainReservation);
+    immutableOrderAdmission &&
+    isChainReservationReceipt(evidence?.chainReservation);
   return Object.freeze({ immutableOrderAdmission, r1Complete });
 }
 

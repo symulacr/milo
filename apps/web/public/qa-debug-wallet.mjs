@@ -8,7 +8,9 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage();
 page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
-page.on("console", (m) => console.log("CONSOLE", m.type(), m.text().slice(0, 200)));
+page.on("console", (m) =>
+  console.log("CONSOLE", m.type(), m.text().slice(0, 200)),
+);
 
 await page.goto("http://127.0.0.1:3000/qa-reserve-ui.html", {
   waitUntil: "networkidle",
@@ -19,18 +21,25 @@ const buttons = await page.locator("button").all();
 for (const b of buttons) {
   const text = (await b.innerText()).replace(/\n/g, " ");
   const dis = await b.isDisabled();
-  console.log("BUTTON", JSON.stringify(text), "disabled=" + dis);
+  console.log("BUTTON", JSON.stringify(text), `disabled=${dis}`);
 }
 
 // Click first Connect*
 const connect = page.locator("button", { hasText: /Connect/i }).first();
-console.log("CLICKING", await connect.innerText(), "disabled=", await connect.isDisabled());
+console.log(
+  "CLICKING",
+  await connect.innerText(),
+  "disabled=",
+  await connect.isDisabled(),
+);
 await connect.click({ force: true });
 await page.waitForTimeout(1500);
 
 const statuses = await page.locator('[role="status"]').allInnerTexts();
 console.log("STATUS NODES:");
-statuses.forEach((s, i) => console.log(i, JSON.stringify(s.slice(0, 200))));
+statuses.forEach((s, i) => {
+  console.log(i, JSON.stringify(s.slice(0, 200)));
+});
 
 // Set reject mode and remount
 await page.getByTestId("wallet-reject").click();
@@ -40,7 +49,12 @@ const buttons2 = await page.locator("button").all();
 for (const b of buttons2) {
   const text = (await b.innerText()).replace(/\n/g, " ");
   if (/Connect|Forget|Prepare/i.test(text))
-    console.log("BUTTON", JSON.stringify(text), "disabled=", await b.isDisabled());
+    console.log(
+      "BUTTON",
+      JSON.stringify(text),
+      "disabled=",
+      await b.isDisabled(),
+    );
 }
 const connect2 = page.locator("button", { hasText: /Connect/i }).first();
 console.log("CLICKING2", await connect2.innerText());
@@ -48,7 +62,9 @@ await connect2.click({ force: true });
 await page.waitForTimeout(1500);
 const statuses2 = await page.locator('[role="status"]').allInnerTexts();
 console.log("STATUS2:");
-statuses2.forEach((s, i) => console.log(i, JSON.stringify(s.slice(0, 220))));
+statuses2.forEach((s, i) => {
+  console.log(i, JSON.stringify(s.slice(0, 220)));
+});
 
 // Try evaluate discoverWallets state
 const midnight = await page.evaluate(() => {

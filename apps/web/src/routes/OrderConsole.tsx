@@ -28,7 +28,12 @@ export function OrderConsole() {
         recovery context this browser stores for one order. Phase and checkpoint
         address appear only when that projection holds a backing record. No
         order action is simulated, and no browser input is treated as
-        authorisation. SUPERSEDED (P3 A0-2): the earlier claim Your private terms never leave this device was stronger than 01-blueprint 2.2/2.4 (commitments and timing still reveal residual metadata on the public ledger; Convex and the payment processor are explicit data recipients). Private terms are kept off the public ledger as plaintext; residual metadata and authorized recipients still apply.
+        authorisation. SUPERSEDED (P3 A0-2): the earlier claim Your private
+        terms never leave this device was stronger than 01-blueprint 2.2/2.4
+        (commitments and timing still reveal residual metadata on the public
+        ledger; Convex and the payment processor are explicit data recipients).
+        Private terms are kept off the public ledger as plaintext; residual
+        metadata and authorized recipients still apply.
       </p>
 
       <Panel className="reading-panel">
@@ -64,8 +69,12 @@ export function OrderConsole() {
       </PublicConfigGate>
 
       <p className="soft-note">
-        SUPERSEDED (P3 A0-2 tree loss): Convex sources and packages (backend, contract, domain, integration, midnight-client) are gone from this tree. Remaining honest surfaces in this build: wallet connection status, local recovery context, and explicit unavailable states. Authenticated Convex projection and payment observation are not buildable until sources and a hosted/local Convex URL are restored. Full
-        diagnostics live on the{" "}
+        SUPERSEDED (P3 A0-2 tree loss): Convex sources and packages (backend,
+        contract, domain, integration, midnight-client) are gone from this tree.
+        Remaining honest surfaces in this build: wallet connection status, local
+        recovery context, and explicit unavailable states. Authenticated Convex
+        projection and payment observation are not buildable until sources and a
+        hosted/local Convex URL are restored. Full diagnostics live on the{" "}
         <Link className="text-link" to="/connections">
           connection diagnostics
         </Link>{" "}

@@ -32,10 +32,6 @@ export function useLogin(): { login: (opts?: unknown) => void } {
   return { login: () => {} };
 }
 
-export function PrivyProvider({
-  children,
-}: {
-  children?: unknown;
-}): unknown {
+export function PrivyProvider({ children }: { children?: unknown }): unknown {
   return children;
 }

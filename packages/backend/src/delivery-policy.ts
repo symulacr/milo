@@ -98,34 +98,38 @@ export function freezeDelivery(
     const now = tx.serverNow();
     if (!Number.isSafeInteger(now) || now < 0)
       throw new Error("invalid server clock");
-    const files = request.files.map((claimed: z.infer<typeof file>): FrozenDeliveryFile => {
-      const grant = tx.getUploadGrant(claimed.grantId);
-      if (
-        !grant ||
-        grant.id !== claimed.grantId ||
-        grant.orderId !== order.id ||
-        grant.uploaderId !== account.id ||
-        grant.consumed ||
-        !Number.isSafeInteger(grant.expiresAt) ||
-        now >= grant.expiresAt ||
-        !id.safeParse(grant.storageId).success ||
-        tx.storageAttached(grant.storageId)
-      )
-        throw new Error("upload grant is unavailable");
-      const actual = grant.inspected;
-      if (
-        !actual ||
-        actual.storageId !== grant.storageId ||
-        actual.sha256 !== claimed.sha256 ||
-        actual.contentType !== claimed.contentType ||
-        actual.byteLength !== claimed.byteLength
-      )
-        throw new Error("stored bytes do not match the proposed manifest");
-      return { ...claimed, storageId: grant.storageId };
-    });
+    const files = request.files.map(
+      (claimed: z.infer<typeof file>): FrozenDeliveryFile => {
+        const grant = tx.getUploadGrant(claimed.grantId);
+        if (
+          !grant ||
+          grant.id !== claimed.grantId ||
+          grant.orderId !== order.id ||
+          grant.uploaderId !== account.id ||
+          grant.consumed ||
+          !Number.isSafeInteger(grant.expiresAt) ||
+          now >= grant.expiresAt ||
+          !id.safeParse(grant.storageId).success ||
+          tx.storageAttached(grant.storageId)
+        )
+          throw new Error("upload grant is unavailable");
+        const actual = grant.inspected;
+        if (
+          !actual ||
+          actual.storageId !== grant.storageId ||
+          actual.sha256 !== claimed.sha256 ||
+          actual.contentType !== claimed.contentType ||
+          actual.byteLength !== claimed.byteLength
+        )
+          throw new Error("stored bytes do not match the proposed manifest");
+        return { ...claimed, storageId: grant.storageId };
+      },
+    );
     if (
-      new Set(files.map((entry: FrozenDeliveryFile) => entry.grantId)).size !== 3 ||
-      new Set(files.map((entry: FrozenDeliveryFile) => entry.storageId)).size !== 3
+      new Set(files.map((entry: FrozenDeliveryFile) => entry.grantId)).size !==
+        3 ||
+      new Set(files.map((entry: FrozenDeliveryFile) => entry.storageId))
+        .size !== 3
     )
       throw new Error(
         "delivery files require distinct grants and storage objects",
@@ -215,7 +219,9 @@ export interface InspectedBytes {
   byteLength: number;
 }
 
-const PNG_MAGIC = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_MAGIC = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
 const JPEG_MAGIC = Uint8Array.from([0xff, 0xd8, 0xff]);
 const RIFF_MAGIC = Uint8Array.from([0x52, 0x49, 0x46, 0x46]);
 const WEBP_MAGIC = Uint8Array.from([0x57, 0x45, 0x42, 0x50]);

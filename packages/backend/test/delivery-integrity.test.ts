@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { deliveryCommitment as deliveryCommitmentNode } from "../src/delivery-commitment.mjs";
 import {
   deliveryCommitment,
   GRANT_GRACE_MS,
@@ -7,15 +8,17 @@ import {
   inspectBytes,
   verifyRetrievedBytes,
 } from "../src/delivery-policy";
-import { deliveryCommitment as deliveryCommitmentNode } from "../src/delivery-commitment.mjs";
-
-function hexDigest(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
 
 function pngBytes(extra: Uint8Array = new Uint8Array([1, 2, 3])): Uint8Array {
   return Uint8Array.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
     ...extra,
   ]);
 }
@@ -26,8 +29,8 @@ function jpegBytes(): Uint8Array {
 
 function webpBytes(): Uint8Array {
   return Uint8Array.from([
-    0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00,
-    0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+    0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+    0x56, 0x50, 0x38, 0x20,
   ]);
 }
 
@@ -52,8 +55,8 @@ describe("RECONSTRUCTED delivery integrity pure helpers", () => {
   test("inspectBytes rejects non-magic, empty, and oversized payloads", () => {
     expect(() => inspectBytes(new Uint8Array())).toThrow();
     expect(() => inspectBytes(Uint8Array.from([0x00, 0x01, 0x02]))).toThrow();
-    expect(() =>
-      inspectBytes(Uint8Array.from([0x3c, 0x73, 0x76, 0x67])), // <svg
+    expect(
+      () => inspectBytes(Uint8Array.from([0x3c, 0x73, 0x76, 0x67])), // <svg
     ).toThrow();
     const oversized = new Uint8Array(5 * 1024 * 1024 + 1);
     oversized.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

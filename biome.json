@@ -7,7 +7,10 @@
       "scripts/**",
       "convex/**",
       "*.json",
-      "!packages/contract/generated"
+      "!packages/contract/generated",
+      "!apps/web/public/qa-build",
+      "!scripts/gates/*.json",
+      "!gates"
     ]
   },
   "formatter": {

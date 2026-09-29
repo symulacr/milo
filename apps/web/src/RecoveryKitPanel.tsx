@@ -22,10 +22,9 @@ import {
   reserveRunStatus,
 } from "./buyer-reserve-runtime";
 import {
-  emitRecoveryKitChanged,
   forgetKit,
-  readKit,
   RECOVERY_KIT_CHANGED,
+  readKit,
   writeKit,
 } from "./recovery-runtime";
 

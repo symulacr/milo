@@ -489,7 +489,8 @@ export function decideObservationBinding(
   if (current.artifactFingerprint !== observed.artifactFingerprint) {
     return {
       kind: "contradictory",
-      reason: "observation does not reproduce the admitted artifact fingerprint",
+      reason:
+        "observation does not reproduce the admitted artifact fingerprint",
     };
   }
   if (observed.revision < current.revision) {

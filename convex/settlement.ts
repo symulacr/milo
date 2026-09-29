@@ -11,7 +11,6 @@ import { type GenericId, v } from "convex/values";
 import type { PaymentAuthorization } from "../packages/backend/src/admission-policy";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
-import { paymentAuthorization } from "./admissionValidators";
 import { invalidatePaymentObservation } from "./paymentMonitor";
 
 /** Bounded reclaim/resume scan. */
@@ -250,7 +249,7 @@ export const request = internalMutationGeneric({
         .unique();
       const now = Date.now();
       const auth: PaymentAuthorization | undefined = observation?.authorization;
-      if (!auth || auth.status !== "authorized") {
+      if (auth?.status !== "authorized") {
         throw new Error("Capture requires a fresh usable bound hold");
       }
       if (!usableObservation(auth, now, auth.usableFrom)) {
