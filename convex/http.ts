@@ -311,7 +311,7 @@ function paymentIntentRef(envelope: StripeEventEnvelope): string | null {
  * Secrets unset → 503 (fail closed, never accept unsigned traffic).
  */
 export async function stripeWebhookHandler(
-  _ctx: unknown,
+  actionCtx: unknown,
   request: Request,
 ): Promise<Response> {
   const secret = env("STRIPE_WEBHOOK_SECRET");
@@ -361,11 +361,12 @@ export async function stripeWebhookHandler(
   const reconcile = makeFunctionReference<"mutation">("settlement:reconcile");
   // Use a Convex-free runner when present (tests), else the scheduled mutation path
   // is reached through the action runtime. Record is idempotent on (provider,account,event).
-  const ctx = (
-    globalThis as {
+  const runMutation =
+    (actionCtx as { runMutation?: (ref: unknown, args: unknown) => Promise<unknown> })
+      ?.runMutation ??
+    (globalThis as {
       __miloRunMutation?: (ref: unknown, args: unknown) => Promise<unknown>;
-    }
-  ).__miloRunMutation;
+    }).__miloRunMutation;
   const args = {
     provider: "stripe" as const,
     accountId,
@@ -375,10 +376,10 @@ export async function stripeWebhookHandler(
     paymentIntentRef: paymentIntentRef(envelope),
   };
   let isNew = true;
-  if (ctx) {
-    const result = (await ctx(recordEvent, args)) as { isNew: boolean };
+  if (runMutation) {
+    const result = (await runMutation(recordEvent, args)) as { isNew: boolean };
     isNew = result.isNew;
-    if (isNew) await ctx(reconcile, { eventId: envelope.id, accountId });
+    if (isNew) await runMutation(reconcile, { eventId: envelope.id, accountId });
   } else {
     // Convex httpAction path: schedule through the action's ctx at runtime.
     // The durable record happens inside settlement:recordEvent.
