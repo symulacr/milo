@@ -138,3 +138,6 @@ apps/web/public/qa-build/
 # never track these
 apps/web/public/qa-build/
 packages/midnight-client/node_modules
+
+!/RECEIPTS.md
+!/SUBMISSION-UPDATE.md
