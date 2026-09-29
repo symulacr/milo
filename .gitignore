@@ -146,3 +146,8 @@ packages/midnight-client/node_modules
 !/DRIFT-CHECK.md
 !/scripts/gates/
 gates/*.json
+!/TODO.md
+!/WORKLOG.md
+!/BLOCKERS.md
+!/OWNER-QUEUE.md
+!/HANDOFF.md

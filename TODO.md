@@ -1,0 +1,49 @@
+# TODO.md
+
+- [ ] G0 | Audit gate.sh substance + self-tests | | gate JSON shows non-trivial checks; mutation self-tests fail | prototype
+- [ ] G1 | Complete MASTER-LEDGER script counts | G0 | script prints rows/DONE/PENDING/REMAINING | prototype
+- [ ] G2 | Integration exit 1→0 canonical hash | | test:integration exit 0 | prototype
+- [ ] G3 | ContractState keys 14/14 table | | per-circuit table pasted | prototype
+- [ ] G4 | Negative controls + indep signatures 7 modules | | N of 7 signed | prototype
+- [ ] G5 | P5 clean-clone P6 secrets P8 staleness | | outputs pasted | prototype
+- [ ] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
+- [ ] D1a | Deploy convex to dev | | function-spec list | demo
+- [ ] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
+- [ ] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
+- [ ] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
+- [ ] D2a | Local Midnight happy path | | tx hashes | demo
+- [ ] D2b | SPEND-LEDGER + faucet | | balance script | demo
+- [ ] D2c | Preprod happy path funded | D2b | receipts rows | demo
+- [ ] D3a | CLICK-MAP.md | | all routes | demo
+- [ ] D3b | Privy test login | | logged research | demo
+- [ ] D3c | SDK-connector-injected | D3b | not in prod bundle | demo
+- [ ] D3d | E2E-01 happy path | D3c | 3× pass | demo
+- [ ] D3e | Video trace HAR SRT | D3d | files on disk | demo
+- [ ] D4 | Negatives ×3 | D3d | results | demo
+- [ ] D5 | Independent receipts re-query | | verifier signed | demo
+- [ ] D6 | Judge clone ≤10 steps | | timed | demo
+- [ ] D7 | PITCH deck video submission | | files | demo
+- [ ] D8 | PUSH-READINESS hosting | | files | demo
+- [ ] D9 | Copy audit | | no live-pay claims | demo
+- [ ] D10 | gate.sh demo tag | D1-D9 | STAGE=demo | demo
+- [ ] M2 | 14 circuits multi-instance | | receipts table | mvp
+- [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
+- [ ] M4 | Stripe window vs deadlines | | fix or doc | mvp
+- [ ] M5 | attachUpload provenance | | tests | mvp
+- [ ] M6 | recovery-kit ops UI | | wired or justified | mvp
+- [ ] M7 | Auth inventory tests | | per route | mvp
+- [ ] M8 | Lace or owner gap | | evidence | mvp
+- [ ] M9 | Privacy invariant tests | | green | mvp
+- [ ] M10 | LCOV + mutation | | reports | mvp
+- [ ] M11 | Indep verify all rows | | signed | mvp
+- [ ] M12 | Design partner + runbook | | docs | mvp
+- [ ] M13 | gate.sh mvp tag | | STAGE=mvp | mvp
+- [ ] PR2 | Security inventory | | report | production
+- [ ] PR3 | Reliability drills | | report | production
+- [ ] PR4 | Chain ops | | report | production
+- [ ] PR5 | Payments live-gate OFF | | procedure | production
+- [ ] PR6 | Privacy copy | | tested | production
+- [ ] PR7 | UX axe keyboard | | 0 serious | production
+- [ ] PR8 | Ops runbooks | | docs | production
+- [ ] PR9 | Docs current | | dual-state | production
+- [ ] PR10 | gate.sh production tag | | final label | production
