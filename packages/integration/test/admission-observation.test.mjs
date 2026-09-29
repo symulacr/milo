@@ -352,7 +352,42 @@ test("admission observer binds independently expected state and keys to node/ind
 
 test("actual observer record interoperates with backend policy, but cannot replace payment/auth/persistence", async () => {
   const f = fixture();
-  const record = await f.observer.observe(f.observeInputs);
+  const raw = await f.observer.observe(f.observeInputs);
+  // Stored admission shape carries writer quote provenance (validObserved).
+  const record = {
+    ...raw,
+    quoteId: "synthetic-quote",
+    quoteVersion: 1,
+  };
+  assert.notEqual(
+    decideCanonicalAdmission(
+      {
+        transact: (op) =>
+          op({
+            authenticatedAccountId: () => undefined,
+            serverNow: () => 1_500,
+            getAdmissionTimingPolicy: () => ({ captureSafetyMarginMs: 60_000 }),
+            getFrozenQuote: () => undefined,
+            getCurrentPaymentAuthorization: () => undefined,
+            getObservedDeployment: () => raw,
+            getBinding: () => undefined,
+            getBindingByAddress: () => undefined,
+            getBindingByQuote: () => undefined,
+            insertBinding: () => {
+              throw new Error("must not bind");
+            },
+          }),
+      },
+      {
+        quoteId: "synthetic-quote",
+        observationId: raw.id,
+        authorizationId: "synthetic-authorization",
+        address,
+      },
+    ).kind,
+    "bound",
+    "raw observer record without quote provenance must not bind",
+  );
   const quote = {
     id: "synthetic-quote",
     version: 1,
