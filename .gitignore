@@ -36,15 +36,17 @@ packages/contract/generated/
 *.Zone.Identifier
 .DS_Store
 
-# Root planning corpus (blueprints, manifests, per-phase evidence).
-01-blueprint.md
-02-roadmap.md
-03-building-guide.md
-04-ui-design.md
-05-ux-design.md
-06-backend-design.md
-07-video-design.md
-08-midnight-core-audit.md
+# Root planning corpus. TRACKED since 6da76a0+: npm run check:plan reads these eight
+# documents and asserts their gate IDs, fences and links, so a fresh clone must have them.
+# The per-phase evidence files below stay local.
+#01-blueprint.md
+#02-roadmap.md
+#03-building-guide.md
+#04-ui-design.md
+#05-ux-design.md
+#06-backend-design.md
+#07-video-design.md
+#08-midnight-core-audit.md
 EXECUTION_MANIFEST.md
 PROGRESS_MANIFEST.md
 PROTOCOL_VERIFICATION.md
@@ -56,7 +58,18 @@ VERIFICATION.md
 !/LICENSE
 !/README.md
 !/CHANGELOG.md
+!/ARCHITECTURE_AUDIT.md
 !/THIRD_PARTY_NOTICES.md
+# The planning corpus: npm run check:plan reads these eight documents and asserts their
+# gate IDs, fences and links, so a fresh clone must have them.
+!/01-blueprint.md
+!/02-roadmap.md
+!/03-building-guide.md
+!/04-ui-design.md
+!/05-ux-design.md
+!/06-backend-design.md
+!/07-video-design.md
+!/08-midnight-core-audit.md
 !/package.json
 !/tsconfig.json
 !/biome.json
@@ -76,13 +89,19 @@ VERIFICATION.md
 !/infra/
 !/infra/**
 
-# 5. Re-include the sample images asserted by apps/web/src/assets.test.ts.
+# 5. Re-include the sample images the landing and demo render.
 !apps/web/public/images/
 !apps/web/public/images/*.png
+# Two unreferenced orphans (their asserting test, apps/web/src/assets.test.ts, no longer
+# exists). They stay on disk, untracked; later rules win over the re-include above.
+apps/web/public/images/avatar-merchant.png
+apps/web/public/images/avatar-operator.png
 
 # 6. Local-only workflow tooling. Kept on disk for development, never published.
 #    Untracked in 098573a. Not needed to build or run the app.
-#    NOT listed here on purpose, because a tracked file depends on them:
+#    NOT listed here on purpose, because CI or a documented command needs them:
+#      scripts/check-plan.ts         run by `npm run check:plan` in both
+#                                    .github/workflows/check.yml and local-checks.yml
 #      scripts/native-processes.ts   imported by setup-native-node.ts and
 #                                    setup-integration-runtime.ts, and by a test
 #      scripts/convex-local-lifecycle-check.py   a documented command in
@@ -91,8 +110,9 @@ apps/web/artwork/
 # re-ignored here because `!/packages/**` above overrides the section-2 rule
 packages/contract/generated/
 packages/integration/node_modules/
+packages/midnight-client/node_modules/
+packages/midnight-client/scripts/
 packages/integration/.hoplite/
-scripts/check-plan.ts
 scripts/convex-local-*
 !scripts/convex-local-lifecycle-check.py
 # re-included 2026-09-20: the documented test:native-node / test:native-network
@@ -109,3 +129,12 @@ apps/web/public/_redirects
 apps/web/public/watch.html
 # referenced by scripts/convex-local-verify.mjs:614 (local lane); kept untracked
 packages/integration/src/verify-persisted-constructor.mjs
+
+packages/midnight-client/node_modules/
+
+# generated QA bundle (rebuild via scripts/qa-build-reserve-ui.ts)
+apps/web/public/qa-build/
+
+# never track these
+apps/web/public/qa-build/
+packages/midnight-client/node_modules

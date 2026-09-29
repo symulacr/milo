@@ -1,3 +1,5 @@
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
 
 const id = z.string().trim().min(1).max(256);
@@ -96,7 +98,7 @@ export function freezeDelivery(
     const now = tx.serverNow();
     if (!Number.isSafeInteger(now) || now < 0)
       throw new Error("invalid server clock");
-    const files = request.files.map((claimed): FrozenDeliveryFile => {
+    const files = request.files.map((claimed: z.infer<typeof file>): FrozenDeliveryFile => {
       const grant = tx.getUploadGrant(claimed.grantId);
       if (
         !grant ||
@@ -122,8 +124,8 @@ export function freezeDelivery(
       return { ...claimed, storageId: grant.storageId };
     });
     if (
-      new Set(files.map((entry) => entry.grantId)).size !== 3 ||
-      new Set(files.map((entry) => entry.storageId)).size !== 3
+      new Set(files.map((entry: FrozenDeliveryFile) => entry.grantId)).size !== 3 ||
+      new Set(files.map((entry: FrozenDeliveryFile) => entry.storageId)).size !== 3
     )
       throw new Error(
         "delivery files require distinct grants and storage objects",
@@ -201,4 +203,97 @@ function authorized(tx: DeliveryTransaction, orderId: string) {
   )
     throw new Error("authorized order membership is required");
   return { account, order };
+}
+
+/** Short-lived upload grant window; grace covers orphaned-blob cleanup only. */
+export const GRANT_TTL_MS = 5 * 60 * 1000;
+export const GRANT_GRACE_MS = 60 * 60 * 1000;
+
+export interface InspectedBytes {
+  sha256: string;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+  byteLength: number;
+}
+
+const PNG_MAGIC = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_MAGIC = Uint8Array.from([0xff, 0xd8, 0xff]);
+const RIFF_MAGIC = Uint8Array.from([0x52, 0x49, 0x46, 0x46]);
+const WEBP_MAGIC = Uint8Array.from([0x57, 0x45, 0x42, 0x50]);
+
+function startsWith(bytes: Uint8Array, magic: Uint8Array): boolean {
+  if (bytes.length < magic.length) return false;
+  return magic.every((byte, index) => bytes[index] === byte);
+}
+
+/**
+ * Witnessed-byte inspection: magic-byte PNG/JPEG/WebP, ≤5 MiB, SHA-256 of raw
+ * bytes. Never trusts a client-declared MIME or digest.
+ */
+export function inspectBytes(bytes: Uint8Array): InspectedBytes {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0)
+    throw new Error("empty file bytes");
+  if (bytes.byteLength > 5 * 1024 * 1024)
+    throw new Error("file exceeds the 5 MiB delivery ceiling");
+  let contentType: InspectedBytes["contentType"];
+  if (startsWith(bytes, PNG_MAGIC)) contentType = "image/png";
+  else if (startsWith(bytes, JPEG_MAGIC)) contentType = "image/jpeg";
+  else if (
+    startsWith(bytes, RIFF_MAGIC) &&
+    bytes.length >= 12 &&
+    startsWith(bytes.subarray(8, 12), WEBP_MAGIC)
+  )
+    contentType = "image/webp";
+  else throw new Error("unsupported file signature");
+  return {
+    sha256: bytesToHex(sha256(bytes)),
+    contentType,
+    byteLength: bytes.byteLength,
+  };
+}
+
+/**
+ * Digest-bound delivery commitment.
+ *
+ * deliveryCommitment(files) = SHA-256( hex(f0.sha256) || hex(f1.sha256) || hex(f2.sha256) )
+ *
+ * Each `f.sha256` is the lowercase 64-hex SHA-256 of that file's raw bytes (as
+ * produced by inspectBytes). The join is plain string concatenation of the three
+ * hex digests (192 ASCII chars), then one SHA-256 over those bytes. Flat
+ * merkle-style commitment: order-sensitive, exactly 3 leaves, reproducible from
+ * the frozen manifest alone. Output is 64-char lowercase hex.
+ *
+ * Never use randomBytes for a delivery commitment.
+ */
+export function deliveryCommitment(
+  files: readonly { sha256: string }[],
+): string {
+  if (!Array.isArray(files) || files.length !== 3)
+    throw new Error("delivery commitment requires exactly three file digests");
+  const joined = files
+    .map((entry) => {
+      const parsed = digest.safeParse(entry?.sha256);
+      if (!parsed.success) throw new Error("invalid file digest");
+      return parsed.data;
+    })
+    .join("");
+  return bytesToHex(sha256(new TextEncoder().encode(joined)));
+}
+
+/** Per-serve re-check of retrieved bytes against the frozen inspected descriptor. */
+export function verifyRetrievedBytes(
+  descriptor: {
+    sha256: string;
+    contentType: InspectedBytes["contentType"];
+    byteLength: number;
+  },
+  bytes: Uint8Array,
+): typeof descriptor {
+  const actual = inspectBytes(bytes);
+  if (
+    actual.sha256 !== descriptor.sha256 ||
+    actual.contentType !== descriptor.contentType ||
+    actual.byteLength !== descriptor.byteLength
+  )
+    throw new Error("retrieved bytes do not match the frozen descriptor");
+  return { ...descriptor };
 }

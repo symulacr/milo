@@ -1,5 +1,222 @@
 # Changelog
 
+## v0.0.4 - 2026-09-25
+
+the concurrency wave: the adversarial audit converged, and the Preprod lane learned to batch,
+pipeline and burst, with each capability measured on the real chain before it was claimed. every
+claim below is backed by the code under `packages/integration/src/`, the analysis under
+`hardening/v6/`, and the retained receipts under `.hoplite/artifacts/preprod/`; `hardening/` and
+`.hoplite/` are gitignored, so the conclusions are recorded here for the tracked tree, as the
+Preprod deployment entry below already does.
+
+### implemented and proven
+
+- **the adversarial audit converged.** `hardening/v6/audit/FINDINGS-2026-09-24.md` ranks 37
+  findings against the tracked tree (3 critical, 12 high, 15 medium, 5 low, 2 cosmetic), and each
+  was fixed in this tree or deliberately kept with a reason. the fixes named below are checkable
+  directly in the tracked tree; the deliberately-kept items this round opens are in this entry's
+  known limits.
+- **the audit's tracked-document drift is fixed at the source.** README and
+  `ARCHITECTURE_AUDIT.md` no longer describe the retired workspace simulator, the removed sample
+  route or a phantom `workspace/model.tsx` (C-01 to C-03); the integration test count is stated
+  with its date instead of three disagreeing numbers (H-10).
+- **the delivery commitment is compared through the one canonical encoder.** the protected read
+  compares the retrieved manifest against `deliveryCommitment(delivery.files)` in
+  `convex/files.ts`, closing H-01, where a 64-hex write was compared as 192 hex and made every
+  protected read unsatisfiable.
+- **the `check:plan` gate is real and CI can call it.** `scripts/check-plan.ts` is tracked and
+  `package.json` carries the script again (H-02); both workflows invoke it.
+- **the stale hardcoded review deadline is deleted** (H-06, `apps/web/src/reviewDeadline.ts`), the
+  dead `HTTP_SUBMIT_MODULE` export is gone (M-04), and the lane is wired for typing rather than
+  excluded from it (`packages/integration/tsconfig.json` plus a package typecheck script, H-04's
+  structural half).
+- **a 24-intent batched transaction finalized on Preprod.** 24 `reserve` intents across 24 freshly
+  deployed order contracts landed as one transaction in block 2709384, tx
+  `00bf1bd7c80b37330efd72da8f1cf7b28b80f5e8b713eeb757de61c611f476ee39`, outcome `SucceedEntirely`,
+  projected declared ref-time 1,242,000,000,000 against the 1,299,891,843,000 per-extrinsic limit
+  (about 4.5 percent headroom). 24 is the fee-aware ceiling (`batchCeiling()`): 25 fits
+  construction-only and is over once the DUST fee offer is counted, so this is the largest batch
+  the lane can submit, not an arbitrary size.
+- **block packing was measured, not projected.** deliberate bursts landed 2 of this lane's
+  transactions in one block (block 2704877), then 3 (block 2707783), then 4 (block 2707884); the
+  8-wide run was coin-clamped at the wallet's 7 DUST coins (7 accepted, 1 rejected) and still put
+  4 in one block. dust coins, not block weight, are what stop a wider burst today.
+- **the pipeline overlap is real: 1.70x.** `--pipeline` ran 4 batched transactions overlapping each
+  next batch's build, prove and balance with the previous batch's observation: 85,464 ms against a
+  145,482 ms sequential equivalent, speedup 1.7023 (`pipeline-comparison`). the four batches still
+  landed in four blocks, because each submit completed 9.4 to 10.9 s apart, beyond the 6 s block
+  cadence - client-side serialization, not admission (`protocol-limits.md` section 5).
+- **the prover's efficiency win is applied where the server is spawned.**
+  `scripts/native-services-health.ts` now starts the proof server with `RAYON_NUM_THREADS=4`,
+  `MALLOC_MMAP_THRESHOLD_=131072` and `MALLOC_ARENA_MAX=2` (`proverSpawnPlan`). measured against
+  the default spawn on the same byte-for-byte `reserve` payload: steady RSS 514.8 to about 289 MB
+  (288.9-289.4 across the champion runs and the confirmation run), CPU-seconds per heavy proof
+  19.00 to 15.12-16.48 under the applied configuration (13.11-13.44 with the rayon cap alone), and
+  throughput +6 to +10 percent. the mechanism is measured, not assumed: pinning the mmap threshold
+  makes glibc return the proof arena on free, and 14 rayon threads oversubscribe a proof that
+  parallelises well across about four (`prover-efficiency.md`).
+- **the lane's proof fan-out is bounded.** the SDK fires all N per-circuit `POST /prove` requests
+  of a transaction at once, and past the server's worker pool a full job queue answers 429
+  `JobQueueFull`, which the SDK's `fetch-retry` does not retry. the lane wraps the provider with
+  `boundedProvingProvider` (`packages/integration/src/batch-proving.mjs`), so in-flight proofs stay
+  at or below what the server accepts (`preprod-lane.mjs`).
+- **the dust fence is derived, not hardcoded, and it can no longer be poisoned.** the volume run
+  stopped at 166 charged bounds because its ceiling was a hardcoded 5e16 and a rejected call's
+  stranded whole coin (12,067,226,229,999,999,808 specks) was read as a fee. `deriveFence` in
+  `bench.mjs` sizes the ceiling from the observed balance minus reserve - capacity at the measured
+  fee goes from 166 to 318,448 transactions, pinned by `bench.test.mjs` - and `raisedFeeBound`
+  lets only a LANDED transaction raise the bound.
+- **a rejected submission releases its dust.** `submitOrRevert` (`preprod-lane.mjs`) calls
+  `wallet.revertTransaction` when submission throws, so a rejection no longer strands the
+  transaction's whole booked DUST coin for the life of the process (the last volume run stranded
+  about 4.1e19 specks that way, more than every fee it paid).
+- **spec versions are allowlisted.** `resources.mjs` measures only against verified runtime spec
+  versions (`1000000`, `1000300`): Preprod moved to 1000300, and an unknown version now refuses
+  rather than silently measuring a different chain's runtime.
+- **new lane modes.** `--batch-proof` (one batched transaction, observed to its block),
+  `--pipeline` (batches overlapped), `--burst` and `--burst-sweep` (widths swept under a hard
+  `--max-transactions` cap, with `--plan` as the no-spend projection) dispatch in
+  `preprod-actions.mjs`; the off-chain proving probe runs directly
+  (`node src/batch-proving.mjs --plan` or `--calls N --prover-pid <pid>`) and supplies the lane's
+  bounded provider. the standalone prototypes these grew out of (`submit-batch.mjs`,
+  `batch-capacity.mjs` and their tests) were consolidated into `batch-calls.mjs` (the ceilings,
+  the per-order window, the provider executor) and `bench.mjs` (the fence), so the lane carries
+  one implementation of each idea; the deployment notes that name the removed files are
+  historical.
+- **a dependency duplicate ratchet.** `dependency-footprint.test.mjs` reads the resolved lockfile
+  and fails if any of 24 runtime-critical packages gains a second copy; 6 packages already
+  duplicated for recorded reasons are ratchets that may not grow; a second test fails if a guarded
+  package disappears from the tree.
+- **one gate entry point.** `hardening/v6/run-gates.sh` runs the four workflow gates (biome,
+  types, unit, integration) from anywhere, with the integration gate on the pinned Node 24.20.0
+  runtime.
+
+### refuted or refused
+
+- **more prover workers: refused on this host.** 1, 2 and 4 workers measured 0.316, 0.362 and
+  0.362 proofs/s while steady RSS went 523 to 963 to 1,745 MB and CPU-seconds per proof rose
+  19.00 to 24.78: the extra worker buys a 1.15x throughput bump at a 1.8x RAM cost.
+- **stacking the trim threshold on the arena cap: refused (measured).**
+  `MALLOC_TRIM_THRESHOLD_` with `MALLOC_ARENA_MAX=2` measured 18.23 CPU-seconds per proof, worse
+  than either variable alone (15.12 and 15.71-15.87); the knobs fight over the same pages, so the
+  spawn site sets the mmap threshold and the arena cap only.
+- **taskset pinning to 4 cores: measured, deliberately not applied.** it cuts a further 20-24
+  percent of CPU per proof for a 14-19 percent throughput cost; this lane is bound by the chain's
+  6 s cadence, not proof CPU, so the affinity-free default stays. a CPU-budgeted deployment should
+  take the taskset row.
+- **`/prove-tx` as a batch lever: refuted.** it carries a whole transaction in one request, but
+  the server proves the transaction's calls sequentially (2-intent: 6.73 s against 4.59 s for the
+  same proofs posted concurrently; 8-intent light: 3.71 s against 1.00 s at concurrency 4), and
+  the SDK never calls it.
+- **"a block permits only one Midnight transaction": refuted** by public chain data and by this
+  round's own runs: the normal class has a cumulative 1.5e12 budget, the earlier four-block
+  pipeline result was client-side pacing, and this round's bursts put up to 4 of ours in one
+  block.
+
+### numbers
+
+24 intents, 1,242,000,000,000 of 1,299,891,843,000 declared ref-time, block 2709384
+(`SucceedEntirely`); per-block packing measured 2, then 3, then 4 (blocks 2704877, 2707783,
+2707884); pipeline speedup 1.7023 over 4 batches (85,464 ms against 145,482 ms); prover steady RSS
+514.8 to about 289 MB and CPU-seconds per heavy proof 19.00 to 15.12-16.48 under the applied spawn
+environment; dust fence capacity 166 to 318,448 transactions at the measured fee; audit findings
+37 (3 critical, 12 high, 15 medium, 5 low, 2 cosmetic); dependency ratchet 24 single-copy packages
+and 6 recorded ratchets; 443 integration tests passing as recorded on 2026-09-25. no dependency
+was added, removed or changed by this round.
+
+### known limits
+
+- **the fee floor is open.** whether Preprod accepts the 1-speck protocol-minimum dust spend is
+  untested (`dust-efficiency.md` section 7); the lane still burns its own
+  300,000,000,000,001-speck overhead per landed transaction, and the bisect between the two ends
+  has not been run. deliberately open, not claimed.
+- **packing above 7 coins is open.** the wallet holds 7 DUST coins, so every burst wider than 7 is
+  coin-clamped; the 30-wide sweep that would also settle which block-usage reading the node
+  charges (Preprod's governance-set 1,000,000 admits 37 single calls per block, the documented
+  default 200,000 admits 17) needs at least 30 seeded coins and has not run.
+- **the lane typecheck backlog is open.** the lane is now typecheckable
+  (`packages/integration/tsconfig.json`, `checkJs`, `npm run typecheck` in the package), but the
+  backlog is not worked off: 2,792 errors as measured on 2026-09-25. the root `tsc --noEmit` gate
+  still does not cover the lane (its include is `packages/**/*.ts` only).
+- the receipts cited above live under `.hoplite/artifacts/preprod/` and the analysis under
+  `hardening/`; both are gitignored, so the claims are checkable locally but not from a fresh
+  clone.
+
+Changes are grouped by verified scope. “Added” does not mean a live service or a passed
+integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+
+## Preprod deployment - 2026-09-20
+
+the staged preprod deploy: the contract runs on the real network, all 14 order circuits were
+driven with finalized transactions, the must-reject suite was rejected at the contract layer, and
+the maintenance drills ran against the deployed contract. every claim below is backed by the
+disclosure in `hardening/v6/deployment/preprod-disposition.md` and the retained artifacts under
+`.hoplite/artifacts/preprod/`, both gitignored; the entry is recorded here so the tracked tree does
+not read as if the contract were undeployed.
+
+### implemented and proven
+
+- **the contract is deployed on Preprod at `0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`.**
+  it was deployed in block 2636672, tx
+  `0xd10923d24e70eb9c2e928f4cd18fd689822c85568d59b7ad3aa3af86222ab472`, which is where its
+  `ContractDeploy` sits; seven verifier keys went in that transaction and the remaining seven were
+  installed by maintenance update in block 2636676, tx
+  `0x8a6aed776b9ef01bc141da7414f008d56b64de47289e4bfce5bab7b2d52a8939`, the only `ContractUpdate` on
+  this contract before the drills. the operation set read back from state is 14 of 14. the run's own
+  receipt recorded the ids `0x63f45a99...` and `0x06a85a07...` with no block heights, and a direct
+  indexer query for both returns an empty result, so they are not on chain in any form. blocks
+  2636398 and 2636469, cited in an earlier draft of this entry, belong to the superseded contract
+  `0x731948c6...` that the resume-path defect produced. the deploy is staged because the full 14-key
+  deploy does not fit one transaction (see below).
+- **all 14 order circuits were driven on Preprod.** each call has a real txId and a block height
+  between 2638272 and 2639589.
+- **the must-reject suite was rejected at the contract layer.** every negative case failed with its
+  expected assert: `stale revision`, `accept requires reserved`, `approve requires submitted`,
+  `resolve requires disputed`, `expire requires disputed`, `submit requires accepted`, plus a
+  capability error for the wrong role.
+- **the maintenance drills ran against the deployed contract.** `removeVerifierKey` in block
+  2639606, `insertVerifierKey` in block 2639612, and `replaceAuthority` to an empty committee in
+  block 2639638, after which the contract state reads `committee: [], threshold: 1, counter: 4`.
+  authority is now relinquished by default from the deploy path, so the locked state is a property
+  of the deployment rather than a manual follow-up.
+- **funding and DUST are on chain, and the deploy is now linked.** the DUST registration transaction
+  `0xebb3dd39cb87d1ed9bf5...` in block 2634013 spent the generating NIGHT UTXO, and the wallet's
+  spendable balance was measured at `60349100000000000` specks after the operator funded five more
+  UTXOs. the README links the contract on both Preprod explorers, this registration transaction, the
+  deploy and insert transactions, and the three maintenance calls; the deploy and insert blocks were
+  recovered by scanning the chain for the contract's own actions, because the run's receipt persisted
+  neither a resolving transaction id nor a block height.
+
+### refuted or refused
+
+- **the full 14-key deploy in one transaction: still impossible (measured).** the fee-paying form
+  finalized locally declares 1,330,680,000,001 ref-time against a 1,299,891,843,000 per-extrinsic
+  limit, 2.37 percent over; the Preprod staged path declares the construction-only form at
+  1,321,480,000,001, 1.66 percent over. the 9,200,000,000 difference is the DUST fee-offer overhead
+  the fee-paying form carries, so these are one deploy measured two ways rather than a disagreement.
+  the staged 7+7 path is what makes the deploy fit; the limit was not raised and no missing
+  operation was dropped.
+
+### numbers
+
+contract address `0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`, deployed in
+block 2636672 (14 of 14 keys installed); order-circuit blocks 2638272 to 2639589;
+maintenance blocks 2639606, 2639612 and 2639638. the one-transaction deploy is 2.37 percent over
+its per-extrinsic ref-time limit as the fee-paying form finalized locally, and 1.66 percent over as
+the construction-only form the Preprod staged path declares. no dependency was added, removed or
+changed by this round.
+
+### known limits
+
+provider acceptance remains partial: the run exercised the provider slots, but no connected-provider
+order is claimed. the browser workspace is still simulated and no order is connected end to end;
+canonical address binding, a buyer-authorized application reservation, and browser, provider and
+payment acceptance remain open. the off-chain half is prototyped, not deployed: no Convex deployment
+exists, Privy is not configured, and the browser has no circuit-call path.
+
+Changes are grouped by verified scope. “Added” does not mean a live service or a passed
+integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+
 ## v0.0.3 - 2026-09-20
 
 the fast-sync wave: a start-late DUST seeder that skips the genesis replay, the fail-closed
@@ -93,7 +310,7 @@ integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANI
 
 ## v0.0.2 - 2026-09-20
 
-six hardening programs (v1 to v6) on top of the v0.0.1 surface. every claim below is backed by evidence under `hardening/` (local, unpublished) and by the test suite: 361 unit tests, 114 integration tests, 27 contract tests, 25 verifier checks, all green.
+six hardening programs (v1 to v6) on top of the v0.0.1 surface. every claim below is backed by evidence under `hardening/` (local, unpublished) and by the test suite as recorded for this release (v0.0.2, 2026-09-20): 361 unit tests, 185 integration tests, 27 contract tests, 25 verifier checks, all green.
 
 ### implemented and proven
 

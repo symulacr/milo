@@ -37,6 +37,8 @@ const authorization: PaymentAuthorization = {
 const observation: ObservedDeployment = {
   ...quote,
   id: "observation-1",
+  quoteId: quote.id,
+  quoteVersion: quote.version,
   observationVersion: 2,
   source: "chain-observer",
   network: quote.network,
