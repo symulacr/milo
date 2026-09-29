@@ -145,3 +145,4 @@ packages/midnight-client/node_modules
 !/STAGE-MAP.md
 !/DRIFT-CHECK.md
 !/scripts/gates/
+gates/*.json
