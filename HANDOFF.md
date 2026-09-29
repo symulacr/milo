@@ -1,23 +1,22 @@
 # HANDOFF.md
 
 ## State
-- Stage: PROTOTYPE (gate.sh 8/8, self-tests 4/4) at HEAD ~52c16fa
-- G0 done. G1 done (75 ledger rows). G2 done (integration 143/0). G3 keys 14/14 IDENTICAL (partial action list). G4 7/7 negative controls. G5 secrets clean. G6 gate green.
-- Unit 493/0/0. typecheck/lint/build 0. Contract canonical 0bede3fb.
+- Stage: PROTOTYPE. D1a done (37 functions). D1b done (webhook 400/413/200).
+- Live: https://tremendous-rooster-473.convex.cloud
+- Webhook secret matches local. HMAC WebCrypto verified RFC vector live.
+- Unit 493/0/0. http.test 13/13.
 
 ## Next 5 IDs
-1. D1a deploy convex to tremendous-rooster-473 + function-spec
-2. D1b webhook bad-signature reject cases
-3. D1c real Stripe test event
-4. D1d stripeSettlement:run rebuild
-5. D2a local Midnight happy path
-
-## Risks
-- G3 14 Call rows not fully enumerated
-- Online evidence 24h staleness
-- Owner items in OWNER-QUEUE.md
+1. D1c real Stripe test-mode PaymentIntent event
+2. D1d stripeSettlement:run rebuild
+3. D2a local Midnight happy path
+4. D2b SPEND-LEDGER
+5. D2c Preprod happy path
 
 ## Evidence
-E-GATE-01 E-SELF-01 E-NC-01..05 E-SIG-01 E-G3-STATE-01 E-SEC-01 E-RECV-01
+E-D1A-01 function-spec 37
+E-D1B-01 rejects 400/413
+E-D1B-02 accept 200 isNew
+E-HMAC-01 live RFC vector match
 
-CONTINUE: D1a
+CONTINUE: D1c
