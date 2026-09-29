@@ -56,6 +56,9 @@ export interface PaymentAuthorization {
 }
 export interface ObservedDeployment extends PublicConstructorInputs {
   id: string;
+  /** Frozen-quote provenance the writer and admission both require. */
+  quoteId: string;
+  quoteVersion: number;
   observationVersion: 2;
   source: "chain-observer";
   network: string;
@@ -152,12 +155,14 @@ export type AdmissionDecision =
 
 const ADDRESS = /^[a-f0-9]{64}$/;
 const HASH = /^[a-f0-9]{64}$/;
-const MAX_OBSERVATION_AGE_MS = 5 * 60_000;
+/** Freshness window for deployment observations at write and at bind. */
+export const MAX_OBSERVATION_AGE_MS = 5 * 60_000;
 // ADMISSION.md invariant: a payment observation authorizes admission for one
 // minute. Every consumer below imports this constant; the literals were
 // drift-prone copies of the same fact.
 export const PAYMENT_AUTHORIZATION_WINDOW_MS = 60_000;
-const MAX_FUTURE_SKEW_MS = 30_000;
+/** Future-dated observations beyond this skew are contradictory, not merely fresh. */
+export const MAX_FUTURE_SKEW_MS = 30_000;
 
 export function decideCanonicalAdmission(
   repository: AtomicAdmissionRepository,
@@ -338,6 +343,9 @@ function validObserved(o: ObservedDeployment): boolean {
     o.source === "chain-observer" &&
     o.observationVersion === 2 &&
     isId(o.id) &&
+    isId(o.quoteId) &&
+    Number.isSafeInteger(o.quoteVersion) &&
+    o.quoteVersion > 0 &&
     isId(o.network) &&
     isId(o.nonce) &&
     ADDRESS.test(o.address) &&
@@ -395,6 +403,112 @@ function sameEntrypoints(actual: readonly string[]): boolean {
     REQUIRED_ENTRYPOINTS.every((entrypoint) => actual.includes(entrypoint))
   );
 }
+
+/**
+ * Writer-side structural check for a deployment observation. Reused by
+ * `observationIngest:recordDeployment` so the ingest path and admission share
+ * one validator. Covers quote provenance, the locked DEPLOYED/rev-0 bootstrap,
+ * and the exact entrypoint set.
+ */
+export function validDeploymentObservation(o: ObservedDeployment): boolean {
+  return (
+    validObserved(o) &&
+    isId(o.quoteId) &&
+    Number.isSafeInteger(o.quoteVersion) &&
+    o.quoteVersion > 0 &&
+    sameEntrypoints(o.entrypoints) &&
+    o.phase === "DEPLOYED" &&
+    o.revision === 0 &&
+    o.maintenancePolicy === "locked"
+  );
+}
+
+/**
+ * Chain bind-verdict vocabulary shared by the observation writer and the
+ * order projection: bind | stale | contradictory | address-claimed.
+ */
+export type ObservationBinding =
+  | { kind: "bind"; phase: string; revision: number }
+  | { kind: "stale"; reason: string }
+  | { kind: "contradictory"; reason: string }
+  | { kind: "address-claimed"; reason: string };
+
+export interface ChainOrderTruth {
+  orderId: string;
+  address: string;
+  nonce: string;
+  artifactFingerprint: string;
+  phase: string;
+  revision: number;
+}
+
+export interface ChainObservationInput {
+  orderId: string;
+  address: string;
+  nonce: string;
+  artifactFingerprint: string;
+  phase: string;
+  revision: number;
+}
+
+/**
+ * Pure chain-observation verdict. Never writes. `addressOwner` is the current
+ * reverse-lookup claimant for the observed address, when one exists.
+ */
+export function decideObservationBinding(
+  current: ChainOrderTruth | null | undefined,
+  observed: ChainObservationInput,
+  addressOwner?: { orderId: string } | null,
+): ObservationBinding {
+  if (!current) {
+    return {
+      kind: "contradictory",
+      reason: "observation does not match the admitted order",
+    };
+  }
+  if (
+    addressOwner &&
+    addressOwner.orderId !== current.orderId &&
+    addressOwner.orderId !== observed.orderId
+  ) {
+    return {
+      kind: "address-claimed",
+      reason: "the observed address is already bound to a different order",
+    };
+  }
+  if (
+    current.orderId !== observed.orderId ||
+    current.address !== observed.address ||
+    current.nonce !== observed.nonce
+  ) {
+    return {
+      kind: "contradictory",
+      reason: "observation does not match the admitted order",
+    };
+  }
+  if (current.artifactFingerprint !== observed.artifactFingerprint) {
+    return {
+      kind: "contradictory",
+      reason: "observation does not reproduce the admitted artifact fingerprint",
+    };
+  }
+  if (observed.revision < current.revision) {
+    return {
+      kind: "stale",
+      reason: "chain observation is behind the recorded revision",
+    };
+  }
+  if (observed.revision === current.revision) {
+    return observed.phase === current.phase
+      ? { kind: "bind", phase: observed.phase, revision: observed.revision }
+      : {
+          kind: "contradictory",
+          reason: "observation does not match the admitted order",
+        };
+  }
+  return { kind: "bind", phase: observed.phase, revision: observed.revision };
+}
+
 function sameBinding(
   binding: AdmissionBinding,
   quote: FrozenQuote,

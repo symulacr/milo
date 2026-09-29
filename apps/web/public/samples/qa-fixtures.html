@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Milo · Sample SVG QA fixtures (light / dark / 375px)</title>
+    <style>
+      :root {
+        --paper: #f6f3ee;
+        --panel: #fffefb;
+        --ink: #20201f;
+        --muted: #5c5a57;
+        --line: #ddd8d0;
+        --violet: #5434d7;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #20201f;
+          --panel: #2c2926;
+          --ink: #f6f3ee;
+          --muted: #c4bfb6;
+          --line: #4a443c;
+          --violet: #b7a4f5;
+        }
+      }
+      html:has(#theme-light:checked) {
+        --paper: #f6f3ee;
+        --panel: #fffefb;
+        --ink: #20201f;
+        --muted: #5c5a57;
+        --line: #ddd8d0;
+        --violet: #5434d7;
+        color-scheme: light;
+      }
+      html:has(#theme-dark:checked) {
+        --paper: #20201f;
+        --panel: #2c2926;
+        --ink: #f6f3ee;
+        --muted: #c4bfb6;
+        --line: #4a443c;
+        --violet: #b7a4f5;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font: 16px/1.5 system-ui, sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+      }
+      header {
+        padding: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px;
+      }
+      .banner {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 12px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        font-size: 14px;
+      }
+      .controls label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        cursor: pointer;
+      }
+      main {
+        padding: 24px;
+      }
+      .narrow-frame {
+        max-width: 375px;
+        margin: 0 auto 32px;
+        border: 1px dashed var(--line);
+        border-radius: 16px;
+        padding: 16px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+      figure {
+        margin: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #e8e2d8;
+      }
+      figcaption {
+        padding: 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      figcaption strong {
+        display: block;
+        color: var(--ink);
+        font-size: 14px;
+      }
+      .hero-frame img {
+        max-height: 360px;
+        object-fit: contain;
+        width: 100%;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 28px 0 12px;
+      }
+      /* Pure CSS view switches — no script in this fixture. */
+      html:has(#viewport-narrow:checked) .narrow-frame {
+        display: block;
+      }
+      html:has(#viewport-narrow:checked) #wide-frame {
+        max-width: 375px;
+        margin-inline: auto;
+      }
+      html:has(#viewport-wide:checked) .narrow-frame {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Sample SVG QA fixtures</h1>
+      <p class="banner">
+        Prototype sample · No live payments · Preprod test runs only.
+        Static fixture for browser light / dark / 375px review.
+        Not a route-level verification (app cannot build in this phase).
+        Alt text labels every plate as sample.
+      </p>
+      <div class="controls" role="group" aria-label="Viewport and theme controls">
+        <label
+          ><input
+            type="radio"
+            name="viewport"
+            id="viewport-wide"
+            checked
+          />
+          Wide</label
+        >
+        <label
+          ><input type="radio" name="viewport" id="viewport-narrow" /> 375px
+          narrow</label
+        >
+        <label
+          ><input type="radio" name="theme" id="theme-system" checked />
+          System theme</label
+        >
+        <label><input type="radio" name="theme" id="theme-light" /> Light</label>
+        <label><input type="radio" name="theme" id="theme-dark" /> Dark</label>
+      </div>
+    </header>
+    <main>
+      <section class="narrow-frame" aria-label="375px narrow sample frame">
+        <h2>375px narrow frame</h2>
+        <div class="grid">
+          <figure>
+            <img
+              src="./still-hero.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: sculptural vessel on a warm studio plinth"
+            />
+            <figcaption>
+              <strong>SC-01 hero</strong>
+              still-hero.svg · portrait 600×720
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-detail.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: detail of an olive ceramic vessel"
+            />
+            <figcaption>
+              <strong>SC-01 detail</strong>
+              still-detail.svg · portrait 600×720
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-collection.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: the three-piece collection arrangement"
+            />
+            <figcaption>
+              <strong>SC-01 collection</strong>
+              still-collection.svg · portrait 600×720
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="wide-frame">
+        <h2>Landing hero sample</h2>
+        <figure class="hero-frame">
+          <img
+            src="./hero-order-stack.svg"
+            width="1200"
+            height="720"
+            alt="Sample illustration: sealed order card opening toward three delivery panels"
+          />
+          <figcaption>
+            <strong>Hero order stack</strong>
+            hero-order-stack.svg · landscape 1200×720 · design concept sample
+          </figcaption>
+        </figure>
+
+        <h2>SC-01 three-image sample set (distinct compositions)</h2>
+        <div class="grid">
+          <figure>
+            <img
+              src="./still-hero.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: sculptural vessel on a warm studio plinth"
+            />
+            <figcaption>
+              <strong>The hero</strong>
+              Product portrait · studio composition
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-detail.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: detail of an olive ceramic vessel"
+            />
+            <figcaption>
+              <strong>The details</strong>
+              Material study · close composition
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-collection.svg"
+              width="600"
+              height="720"
+              alt="Sample Still Studio photography: the three-piece collection arrangement"
+            />
+            <figcaption>
+              <strong>The collection</strong>
+              Campaign composition · family portrait
+            </figcaption>
+          </figure>
+        </div>
+
+        <h2>Gallery extras</h2>
+        <div class="grid">
+          <figure>
+            <img
+              src="./gallery-form-study.svg"
+              width="600"
+              height="720"
+              alt="Sample gallery plate: form study with vessel and monolith rhythm"
+            />
+            <figcaption>
+              <strong>Form study</strong>
+              gallery-form-study.svg
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./gallery-colorway.svg"
+              width="600"
+              height="720"
+              alt="Sample gallery plate: colorway pair of ceramic vessels"
+            />
+            <figcaption>
+              <strong>Colorway pair</strong>
+              gallery-colorway.svg
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-hero.png"
+              width="600"
+              height="720"
+              alt="Sample raster from still-hero.svg via rsvg-convert 2.58.0"
+            />
+            <figcaption>
+              <strong>Raster check</strong>
+              still-hero.png · rsvg-convert 2.58.0
+            </figcaption>
+          </figure>
+        </div>
+
+        <h2>Raster derivatives (product accepts PNG / WebP ≤ 5MB)</h2>
+        <div class="grid">
+          <figure>
+            <img
+              src="./hero-order-stack.webp"
+              width="1200"
+              height="720"
+              alt="Sample hero raster in WebP derived from hero-order-stack.svg"
+            />
+            <figcaption>
+              <strong>hero-order-stack.webp</strong>
+              ImageMagick convert · quality 82
+            </figcaption>
+          </figure>
+          <figure>
+            <img
+              src="./still-collection.webp"
+              width="600"
+              height="720"
+              alt="Sample collection raster in WebP derived from still-collection.svg"
+            />
+            <figcaption>
+              <strong>still-collection.webp</strong>
+              ImageMagick convert · quality 82
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

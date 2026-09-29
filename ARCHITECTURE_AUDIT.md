@@ -1,9 +1,11 @@
 # Milo architecture & readiness report
 
-Date: 2026-02-20  
+Date: 2026-09-23  
 Sources: 5 parallel audits (blueprint/roadmap · UI/UX · backend/Midnight · wallet · contract deploy)
 
 ---
+
+**SUPERSEDED (P3 A0-2 tree loss):** paths and modules cited below that lived under convex/, scripts/, packages/{backend,contract,domain,integration}, and packages/midnight-client are **gone from this tree** (see audit/discovery/BASELINE-P3.md). Claims about those modules are historical receipts only and are not re-verified on this tree. Fresh suite counts are UNKNOWN until sources are restored.
 
 ## Executive verdict
 
@@ -11,7 +13,7 @@ Sources: 5 parallel audits (blueprint/roadmap · UI/UX · backend/Midnight · wa
 |---|---|
 | Architecture coherent? | **Partially** — intent is clear; package/Convex tree drifts from blueprint |
 | Wallet ready for users? | **No** — connect-only; all order/pay actions are simulation |
-| Contract deployed? | **NOT on preprod/mainnet** — compile artifacts only + local undeployed stub |
+| Contract deployed? | **Preprod yes, mainnet no** — `0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`; all 14 circuits exercised, must-reject suite and maintenance drills run |
 | Ship as product? | **No** — UI can show success without chain/payment truth |
 
 ---
@@ -34,7 +36,7 @@ Optional gated: Lumera Cascade, Browser Use QA, DUST sponsorship.
 |---|---|
 | `packages/{contracts,midnight-client,ui,test-fixtures}` | Only `{backend,contract,domain,integration}` |
 | Convex `orders/payments/files/http/crons` | Flat modules; schema is admission/payment-centric |
-| Browser adapter ↔ workspace | UI → `prototype.ts` simulator |
+| Browser adapter ↔ workspace | No browser circuit-call path; read-only order console |
 | 8 product packages | `integration` is Node CLI harness |
 
 ---
@@ -44,12 +46,12 @@ Optional gated: Lumera Cascade, Browser Use QA, DUST sponsorship.
 | Band | Status | Notes |
 |---|---|---|
 | R0 / M-08–10 synthetic UI | **Done (bounded)** | Honest sample banners |
-| R1 / M-01–03 contract | **Partial** | Compiled 14 circuits; no live `reserve` |
+| R1 / M-01–03 contract | **Partial** | 14 circuits compiled and exercised on Preprod; no buyer-authorized application `reserve` |
 | R2 / M-04–07 product chain+pay | **Missing** | No browser Midnight client, files, Stripe Checkout |
 | R3 / M-09–11 QA | **Missing** | axe-core only |
 | M-12–14 film/3D | **Deferred** | Per PROGRESS_MANIFEST |
 
-MID coverage: **0/6 providers, 0/14 operations live**.
+MID coverage: **all 14 operations executed on Preprod (test network, 2026-09-20; execution 14/14); the six provider acceptance rows remain partial (acceptance 0/6 provider / 0/14 operation)**. SUPERSEDED (P3 A0-2): the earlier word live implied product/live-chain readiness; Preprod is a test network and this is not a live service or mainnet deployment.
 
 ---
 
@@ -60,15 +62,15 @@ MID coverage: **0/6 providers, 0/14 operations live**.
 **Specified but missing:**
 - Landing modal-over-demo
 - Real Privy OTP + quote resume
-- Recovery-kit create/verify
+- Recovery-kit checkpoint (canonical address) only; create/verify are local
 - Merchant 3-slot upload + immutable submit
 - Evidence privacy split / private receipt
 - `/m/:merchantSlug` generic
 - `/pilot` enquiry form
 
-**Unspecified extras:** `/connections` diagnostics, prototype toolbar, scenario deep-links.
+**Unspecified extras:** `/connections` diagnostics, scenario deep-links.
 
-**Top UX gaps:** sign-in resume · demo modal · recovery kit · evidence/receipt privacy · merchant delivery upload.
+**Top UX gaps:** sign-in resume · demo modal · recovery-kit checkpoint · evidence/receipt privacy · merchant delivery upload.
 
 ---
 
@@ -79,14 +81,12 @@ MID coverage: **0/6 providers, 0/14 operations live**.
 | Contract | `order.compact` + `generated/` (14 circuits) | No app circuit-call path |
 | Auth | Privy JWT plumbing | Hosted JWKS not proven |
 | Admission | Convex admission/canonical/policy | Observer ingest not wired |
-| Payments | Stripe test create/observe | No webhooks, capture/void, `reconciliation.ts` |
-| Files | `delivery-policy.ts` only | No storage/stream |
-| Chain harness | `packages/integration` local deploy/maintain | Network pinned `undeployed` |
-| UI domain | — | `prototype.ts` simulator |
+| Payments | Stripe test create/observe | ~~No webhooks, capture/void, `reconciliation.ts`~~ **STALE (doc truth pass):** `convex/http.ts` implements signed webhook ingress (HMAC verify, body cap, account/env fence) and `convex/settlement.ts` owns `recordEvent`/`reconcile`/`request`/`begin`/`finish`/`sweep` (capture/void reducers). There is no separate `reconciliation.ts`. Connected Stripe effects still unverified. |
+| Files | `delivery-policy.ts` + `convex/files.ts` + `http.ts` `/files` byte transport | ~~No storage/stream~~ **STALE (doc truth pass):** constrained manifest/freeze/resolveRead and protected byte streaming exist; browser wiring and hosted storage adapters remain open. |
+| Chain harness | `packages/integration` staged deploy/maintain | Network pinned `undeployed` for local runs; the same staged path then bound a real Preprod address |
+| UI domain | `prototype.ts` vocabulary only | No UI-domain logic |
 
 **Fail-closed (good):** membership+identity, provisioning revoke, payment windows, observation invalidation, actor-local secrets, PREPROD-only browser, Stripe never auto-captures.
-
-**Fail-open risk:** UI can simulate transitions circuits should own.
 
 ---
 
@@ -103,7 +103,7 @@ MID coverage: **0/6 providers, 0/14 operations live**.
 |---|---|
 | Connect | Partial (diagnostics) |
 | Sign | **None** |
-| Submit / accept / approve / dispute | **Stub** (`workspace/model.tsx` simulation) |
+| Submit / accept / approve / dispute | **None** - no browser circuit-call path; the simulator was removed, the circuits run from the native lane |
 | Pay | **Stub UI** |
 
 ### Integration order (recommended)
@@ -123,25 +123,23 @@ MID coverage: **0/6 providers, 0/14 operations live**.
 |---|---|
 | Source | `packages/contract/src/order.compact` (hash-bound) |
 | Generated | 14 circuits + keys/zkir + compile-receipt (**not a chain receipt**) |
-| Local | Staged 7+7+lock OK on disposable `undeployed` net |
-| **Preprod** | **NOT DEPLOYED** — disposition DEFERRED; `deploymentVerified: false`; no address |
+| Local | Staged 7+7+lock OK on disposable `undeployed` net; the same staged path then run on Preprod |
+| **Preprod** | **DEPLOYED** — `0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`, deployed in block **2636672** (tx `0xd10923d2...ab472`); seven verifier keys in that transaction and seven more by maintenance update in block **2636676** (tx `0x8a6aed77...a8939`), 14 of 14 read back from state; all 14 circuits exercised; maintenance drills then froze authority to `committee: [], threshold: 1, counter: 4` |
 | **Mainnet** | **NOT DEPLOYED / not claimable** |
 
-Full 14-key deploy hits RPC 1010 `ExhaustsResources`; staged path required.
+The full 14-key deploy in one transaction still exceeds the per-extrinsic ref-time limit. The fee-paying form finalized locally declares 1,330,680,000,001 (2.37 percent over the 1,299,891,843,000 limit); the Preprod staged path declares the construction-only form at 1,321,480,000,001 (1.66 percent over). The 9,200,000,000 difference is the DUST fee-offer overhead the fee-paying form carries, so these are one deploy measured two ways rather than a disagreement; the staged 7+7 path is what makes it fit.
 
-**To deploy:** tNIGHT + DUST registration → staged 7+7 preprod deploy → persist receipt/explorer proof → lift `undeployed` guards → bind address → live circuit calls.
-
-**Do not claim “deployed”** — compile ≠ deploy; local address is not public.
+**Deployed and proven:** tNIGHT funded, DUST registered, staged 7+7 Preprod deploy, all 14 order circuits driven with real txIds between blocks 2638272 and 2639589, must-reject suite rejected at the contract layer, and maintenance drills run; the receipt/explorer evidence is retained outside the tracked tree.
 
 ---
 
 ## 7. Remaining work (priority)
 
-1. **Preprod staged deploy** + durable address binding  
+1. **Durable address binding** of the deployed Preprod contract  
 2. **Browser wallet path** (Lace balance/submit/prove) for real order ops  
-3. **Replace `prototype.ts`** transitions with contract-backed client  
+3. **Wire the read-only console** to a contract-backed browser client  
 4. **Privy → Convex membership + private delivery files**  
-5. **Stripe lifecycle** (webhooks, capture-after-APPROVED, reconciliation)  
+5. **Stripe lifecycle** — webhook ingress (`http.ts`) and capture/void reducers (`settlement.ts`) exist; remaining work is connect/verify them against test-mode Stripe and wire capture-after-APPROVED 
 6. Recovery kit + merchant upload + evidence/receipt UX  
 7. Usability/a11y evidence (M-08–11)
 
