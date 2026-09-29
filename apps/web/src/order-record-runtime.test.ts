@@ -4,8 +4,8 @@ import {
   describeOrderRecord,
   describeUnconfiguredOrderRecord,
   OrderRecordController,
-  orderRecordProvenance,
   type OrderRecordTransport,
+  orderRecordProvenance,
 } from "./order-record-runtime";
 
 const record: ChainOrderRecord = {

@@ -54,7 +54,7 @@ const id = z
   .string()
   .min(1)
   .max(256)
-  .refine((value) => value.trim().length > 0);
+  .refine((value: string) => value.trim().length > 0);
 const identitySchema = z.strictObject({
   operationId: id,
   operation: z.enum(["authorize", "capture", "void"]),

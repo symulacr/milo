@@ -18,9 +18,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type ObservedDeployment,
   REQUIRED_ENTRYPOINTS,
   validDeploymentObservation,
-  type ObservedDeployment,
 } from "../packages/backend/src/admission-policy";
 
 export const DEPLOYMENT_FN = "observationIngest:recordDeployment";
@@ -106,7 +106,10 @@ export function buildRecordObservationPayload(
   };
 }
 
-export function planChainIngest(document: unknown, orderId: string): IngestPlan {
+export function planChainIngest(
+  document: unknown,
+  orderId: string,
+): IngestPlan {
   const args = buildRecordObservationPayload(document, orderId);
   return { kind: "chain", fn: CHAIN_FN, args, orderId };
 }
@@ -115,10 +118,7 @@ export function planChainIngest(document: unknown, orderId: string): IngestPlan 
  * Real spawn argv: convex CLI path + `run` + function + JSON-encoded args.
  * JSON encoding keeps special characters intact; this is never a shell string.
  */
-export function ingestArgv(
-  plan: IngestPlan,
-  convexCli: string,
-): string[] {
+export function ingestArgv(plan: IngestPlan, convexCli: string): string[] {
   return [convexCli, "run", plan.fn, JSON.stringify(plan.args)];
 }
 
@@ -144,7 +144,9 @@ function defaultConvexCli(): string {
 export function defaultRunner(): IngestRunner {
   return (argv) =>
     new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, argv, { stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(process.execPath, argv, {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       let stdout = "";
       let stderr = "";
       child.stdout.on("data", (chunk) => {
@@ -213,7 +215,9 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error: unknown) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exit(1);
   });
 }

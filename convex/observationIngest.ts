@@ -85,10 +85,18 @@ export interface StoredDeploymentRecord {
 }
 
 export interface DeploymentObservationDb {
-  byId(id: string): StoredDeploymentRecord | undefined | Promise<StoredDeploymentRecord | undefined>;
+  byId(
+    id: string,
+  ):
+    | StoredDeploymentRecord
+    | undefined
+    | Promise<StoredDeploymentRecord | undefined>;
   byAddress(
     address: string,
-  ): StoredDeploymentRecord | undefined | Promise<StoredDeploymentRecord | undefined>;
+  ):
+    | StoredDeploymentRecord
+    | undefined
+    | Promise<StoredDeploymentRecord | undefined>;
   insert(record: StoredDeploymentRecord): unknown | Promise<unknown>;
 }
 
@@ -211,15 +219,21 @@ export interface ChainObservationDb {
   addressOwner(
     address: string,
   ): { orderId: string } | undefined | Promise<{ orderId: string } | undefined>;
-  patchOrder(orderId: string, patch: Partial<ChainOrderRow>): unknown | Promise<unknown>;
-  insertObservation(record: Record<string, unknown>): unknown | Promise<unknown>;
+  patchOrder(
+    orderId: string,
+    patch: Partial<ChainOrderRow>,
+  ): unknown | Promise<unknown>;
+  insertObservation(
+    record: Record<string, unknown>,
+  ): unknown | Promise<unknown>;
 }
 
 export type ChainObservationResult =
-  | Extract<ObservationBinding, { kind: "bind" }> & { orderId: string }
-  | Extract<ObservationBinding, { kind: "stale" | "contradictory" | "address-claimed" }>;
-
-const TERMINAL_PHASES = new Set(["APPROVED", "CANCELLED"]);
+  | (Extract<ObservationBinding, { kind: "bind" }> & { orderId: string })
+  | Extract<
+      ObservationBinding,
+      { kind: "stale" | "contradictory" | "address-claimed" }
+    >;
 
 /**
  * Fixture-free chain writer body. Unknown orders, nonce mismatches, terminal

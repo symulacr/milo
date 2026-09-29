@@ -1,7 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ChainOrderRecord, OrderRecordTransport } from "./order-record-runtime";
 import { OrderRecordControls } from "./OrderRecordPanel";
+import type {
+  ChainOrderRecord,
+  OrderRecordTransport,
+} from "./order-record-runtime";
 
 const record: ChainOrderRecord = {
   orderId: "order_1",
@@ -15,7 +18,9 @@ const record: ChainOrderRecord = {
   fileCount: 2,
 };
 
-function transportOf(result: ChainOrderRecord | null | Error): OrderRecordTransport {
+function transportOf(
+  result: ChainOrderRecord | null | Error,
+): OrderRecordTransport {
   return {
     read: async () => {
       if (result instanceof Error) throw result;

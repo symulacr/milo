@@ -12,7 +12,7 @@ export const publicConfigSchema = z
       .nullish(),
     convexUrl: z
       .url()
-      .refine((value) => {
+      .refine((value: string) => {
         const url = new URL(value);
         return (
           url.protocol === "https:" &&

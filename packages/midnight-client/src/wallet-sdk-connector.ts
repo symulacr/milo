@@ -30,10 +30,7 @@ import type {
   InitialAPI,
   WalletConnectedAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import {
-  assertSupportedNetwork,
-  SUPPORTED_MIDNIGHT_NETWORK,
-} from "./network";
+import { assertSupportedNetwork, SUPPORTED_MIDNIGHT_NETWORK } from "./network";
 import type {
   WalletAccount,
   WalletConnectionState,
@@ -82,7 +79,9 @@ export type WalletSdkStatusAPI = {
  * (getConnectionStatus / getConfiguration / getUnshieldedAddress). Same
  * fail-closed network checks as the Lace path.
  */
-export function walletSdkStatusApi(session: WalletSdkSession): WalletSdkStatusAPI {
+export function walletSdkStatusApi(
+  session: WalletSdkSession,
+): WalletSdkStatusAPI {
   if (!session || typeof session.unshieldedAddress !== "string") {
     throw new Error(UNSUPPORTED_SDK_SESSION);
   }

@@ -71,7 +71,7 @@ describe("verifyStripeSignature (HMAC-SHA256, ±5 min, 256KB, whsec_ only)", () 
   test("tampered body refused", () => {
     expect(
       verifyStripeSignature({
-        payload: BODY + " ",
+        payload: `${BODY} `,
         header: headerFor(BODY, SECRET, NOW),
         secret: SECRET,
         now: NOW,

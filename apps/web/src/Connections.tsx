@@ -2,6 +2,7 @@ import {
   Component,
   lazy,
   type ReactNode,
+  type RefObject,
   Suspense,
   useEffect,
   useMemo,
@@ -145,8 +146,13 @@ export function LaceStatus() {
   );
 }
 
-export function Connections() {
-  const headingRef = useRef<HTMLHeadingElement>(null);
+export function Connections({
+  headingRef: externalHeadingRef,
+}: {
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+}) {
+  const localHeadingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = externalHeadingRef ?? localHeadingRef;
   return (
     <div className="connections-page">
       <div className="page-heading">

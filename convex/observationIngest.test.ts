@@ -23,7 +23,9 @@ import {
 const hash = "a".repeat(64);
 const NOW = 1_790_624_092_002;
 
-function buildRecord(overrides: Partial<ObservedDeployment> = {}): ObservedDeployment {
+function buildRecord(
+  overrides: Partial<ObservedDeployment> = {},
+): ObservedDeployment {
   const base = {
     constructorVersion: 1 as const,
     constructorEncoding: "milo:compact-configuration:v1" as const,
@@ -115,7 +117,9 @@ describe("observationIngest:recordDeployment (production writer)", () => {
 
   test("rejects a stale observation older than the freshness window", async () => {
     const { db, inserts } = memoryDb();
-    const record = buildRecord({ observedAt: NOW - MAX_OBSERVATION_AGE_MS - 1 });
+    const record = buildRecord({
+      observedAt: NOW - MAX_OBSERVATION_AGE_MS - 1,
+    });
     await expect(applyRecordDeployment(db, record, NOW)).rejects.toThrow(
       "stale deployment observation: record is older than the freshness window",
     );
@@ -177,10 +181,14 @@ describe("observationIngest:recordDeployment (production writer)", () => {
     const { db, inserts } = memoryDb();
     await expect(
       applyRecordDeployment(db, { ...buildRecord(), entrypoints: [] }, NOW),
-    ).rejects.toThrow("contradictory deployment observation: record is malformed");
+    ).rejects.toThrow(
+      "contradictory deployment observation: record is malformed",
+    );
     await expect(
       applyRecordDeployment(db, null as unknown as ObservedDeployment, NOW),
-    ).rejects.toThrow("contradictory deployment observation: record is malformed");
+    ).rejects.toThrow(
+      "contradictory deployment observation: record is malformed",
+    );
     expect(inserts).toHaveLength(0);
   });
 
@@ -246,7 +254,9 @@ describe("observationIngest freshness boundaries (Wave C edge cases)", () => {
     await expect(
       applyRecordDeployment(
         db,
-        buildRecord({ id: "obs-equal-claim-84bf7d12-8b60-4818-ad8c-6f2eba6f670e" }),
+        buildRecord({
+          id: "obs-equal-claim-84bf7d12-8b60-4818-ad8c-6f2eba6f670e",
+        }),
         NOW,
       ),
     ).rejects.toThrow(
@@ -263,16 +273,16 @@ describe("sameDeploymentRecord is field-by-field (Wave C edge cases)", () => {
       a.entrypoints[0],
       ...a.entrypoints.slice(2),
     ];
-    expect(
-      sameDeploymentRecord(a, { ...a, entrypoints: permuted }),
-    ).toBe(false);
+    expect(sameDeploymentRecord(a, { ...a, entrypoints: permuted })).toBe(
+      false,
+    );
   });
 
   test("a single defaulted/changed field never masquerades as a replay", () => {
     const a = buildRecord() as unknown as StoredDeploymentRecord;
-    expect(sameDeploymentRecord(a, { ...a, blockHeight: a.blockHeight + 1 })).toBe(
-      false,
-    );
+    expect(
+      sameDeploymentRecord(a, { ...a, blockHeight: a.blockHeight + 1 }),
+    ).toBe(false);
     expect(sameDeploymentRecord(a, { ...a, quoteVersion: 2 })).toBe(false);
     expect(sameDeploymentRecord(a, a)).toBe(true);
   });
@@ -336,7 +346,11 @@ describe("applyChainObservation (recordObservation body, fixture-free)", () => {
   });
 
   test("rejects a stale observation behind the recorded revision", async () => {
-    const { db, patches } = chainDb({ ...chainOrder, revision: 2, phase: "ACCEPTED" });
+    const { db, patches } = chainDb({
+      ...chainOrder,
+      revision: 2,
+      phase: "ACCEPTED",
+    });
     const result = await applyChainObservation(
       db,
       {
@@ -369,7 +383,8 @@ describe("applyChainObservation (recordObservation body, fixture-free)", () => {
     );
     expect(result).toMatchObject({
       kind: "contradictory",
-      reason: "observation does not reproduce the admitted artifact fingerprint",
+      reason:
+        "observation does not reproduce the admitted artifact fingerprint",
     });
     expect(patches).toHaveLength(0);
   });
@@ -404,7 +419,11 @@ describe("applyChainObservation (recordObservation body, fixture-free)", () => {
     await applyChainObservation(first.db, forward, NOW);
     const second = chainDb({ ...chainOrder, phase: "RESERVED", revision: 1 });
     const replay = await applyChainObservation(second.db, forward, NOW);
-    expect(replay).toMatchObject({ kind: "bind", phase: "RESERVED", revision: 1 });
+    expect(replay).toMatchObject({
+      kind: "bind",
+      phase: "RESERVED",
+      revision: 1,
+    });
     expect(second.patches).toHaveLength(1);
   });
 

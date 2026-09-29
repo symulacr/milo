@@ -1,12 +1,26 @@
-import { chromium } from "/home/eya/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs";
 import fs from "node:fs";
+import { chromium } from "/home/eya/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs";
 
 const OUT = "/tmp/milo-qa";
 fs.mkdirSync(OUT, { recursive: true });
 const rows = [];
 function rec(url, action, observedText, observedState, chainResult, passFail) {
-  rows.push({ url, action, observedText, observedState, chainResult, passFail });
-  console.log("REC", passFail, "|", action, "|", String(observedText).slice(0, 140).replace(/\n/g, " "));
+  rows.push({
+    url,
+    action,
+    observedText,
+    observedState,
+    chainResult,
+    passFail,
+  });
+  console.log(
+    "REC",
+    passFail,
+    "|",
+    action,
+    "|",
+    String(observedText).slice(0, 140).replace(/\n/g, " "),
+  );
 }
 
 const browser = await chromium.launch({
@@ -25,7 +39,7 @@ const moduleUrls = [];
 page.on("response", (res) => {
   const u = res.url();
   if (/privy|react-auth|RecoveryKit|buyer-reserve|\.tsx|\/src\//i.test(u)) {
-    moduleUrls.push(res.status() + " " + u);
+    moduleUrls.push(`${res.status()} ${u}`);
   }
 });
 
@@ -36,19 +50,22 @@ await page.goto("http://127.0.0.1:3000/orders", {
 await page.waitForTimeout(2500);
 
 const bodyText = await page.locator("body").innerText();
-fs.writeFileSync(OUT + "/orders-initial.txt", bodyText);
+fs.writeFileSync(`${OUT}/orders-initial.txt`, bodyText);
 console.log("=== INITIAL /orders ===");
 console.log(bodyText.slice(0, 3000));
 
 rec(
   "http://127.0.0.1:3000/orders",
   "LOAD /orders (PRIVY_APP_ID+CONVEX_URL set, not signed in)",
-  bodyText.includes("Order console") ? "Order console heading present" : "Order console MISSING",
+  bodyText.includes("Order console")
+    ? "Order console heading present"
+    : "Order console MISSING",
   bodyText.includes("Privy is not configured")
     ? "privy-unconfigured"
     : bodyText.includes("Sign in above to bind")
       ? "recovery-unauthenticated"
-      : bodyText.includes("Initializing Privy") || bodyText.includes("Not signed in")
+      : bodyText.includes("Initializing Privy") ||
+          bodyText.includes("Not signed in")
         ? "privy-ready-unauthenticated"
         : "other",
   bodyText.includes("Order recovery context")
@@ -93,8 +110,8 @@ rec(
   laceBits.length ? "PASS" : "FAIL",
 );
 
-await page.screenshot({ path: OUT + "/orders-unauth.png", fullPage: true });
-fs.writeFileSync(OUT + "/module-urls.txt", moduleUrls.join("\n"));
+await page.screenshot({ path: `${OUT}/orders-unauth.png`, fullPage: true });
+fs.writeFileSync(`${OUT}/module-urls.txt`, moduleUrls.join("\n"));
 console.log("MODULE URLS count", moduleUrls.length);
 console.log(moduleUrls.slice(0, 40).join("\n"));
 
@@ -105,7 +122,7 @@ if (await connectBtn.count()) {
   rec(
     "http://127.0.0.1:3000/orders",
     "CLICK Connect Midnight wallet (no Lace)",
-    "button=" + (await connectBtn.innerText()) + " disabled=" + disabled,
+    `button=${await connectBtn.innerText()} disabled=${disabled}`,
     disabled ? "connect-disabled" : "connect-enabled",
     "Without Lace expect fail-closed error",
     "PASS",
@@ -114,7 +131,7 @@ if (await connectBtn.count()) {
     await connectBtn.click().catch(() => {});
     await page.waitForTimeout(2000);
     const after = await page.locator("body").innerText();
-    fs.writeFileSync(OUT + "/orders-after-connect.txt", after);
+    fs.writeFileSync(`${OUT}/orders-after-connect.txt`, after);
     const walletMsg =
       after.match(
         /Not connected[^\n]*|No compatible[^\n]*|Connection not established[^\n]*|Approve the PREPROD[^\n]*|Connected to PREPROD[^\n]*|Permission may have been[^\n]*/gi,
@@ -127,7 +144,10 @@ if (await connectBtn.count()) {
       "Fail-closed: no fake connection, no signature",
       walletMsg.length ? "PASS" : "FAIL",
     );
-    await page.screenshot({ path: OUT + "/orders-after-connect.png", fullPage: true });
+    await page.screenshot({
+      path: `${OUT}/orders-after-connect.png`,
+      fullPage: true,
+    });
   }
 }
 
@@ -145,8 +165,8 @@ for (const name of [
     const dis = await btn.isDisabled();
     rec(
       "http://127.0.0.1:3000/orders",
-      "PROBE button " + name,
-      "disabled=" + dis,
+      `PROBE button ${name}`,
+      `disabled=${dis}`,
       dis ? "blocked-disabled" : "enabled",
       dis ? "Fail-closed gate closed" : "Gate open (needs further drive)",
       "PASS",
@@ -154,7 +174,7 @@ for (const name of [
   } else {
     rec(
       "http://127.0.0.1:3000/orders",
-      "PROBE button " + name,
+      `PROBE button ${name}`,
       "NOT PRESENT in DOM",
       "not-mounted",
       name.includes("Prepare reserve") || name.includes("Begin")
@@ -166,5 +186,5 @@ for (const name of [
 }
 
 await browser.close();
-fs.writeFileSync(OUT + "/rows-phase1.json", JSON.stringify(rows, null, 2));
+fs.writeFileSync(`${OUT}/rows-phase1.json`, JSON.stringify(rows, null, 2));
 console.log("PHASE1 DONE", rows.length, "rows");

@@ -110,5 +110,7 @@ export function paymentLine(payment: Payment): string {
       return "hold released";
     case "none":
       return "no payment attempt yet";
+    case "failed":
+      return "attempt failed; payment unresolved";
   }
 }

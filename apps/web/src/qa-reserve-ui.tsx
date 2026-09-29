@@ -5,12 +5,12 @@
  */
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BuyerReserveSection, RecoveryKitPanel } from "./RecoveryKitPanel";
+import type { RecoveryKit } from "../../../packages/domain/src/recovery-kit";
 import {
   beginReserveOperation,
   confirmObservedReserve,
 } from "./buyer-reserve-runtime";
-import type { RecoveryKit } from "../../../packages/domain/src/recovery-kit";
+import { BuyerReserveSection, RecoveryKitPanel } from "./RecoveryKitPanel";
 
 // ---------------------------------------------------------------------------
 // window.midnight Lace mock (dapp-connector-api v4 shape)
@@ -33,7 +33,9 @@ function installMidnightMock(mode: MockMode) {
           ? { status: "connected", networkId: "mainnet" }
           : { status: "connected", networkId: "preprod" },
       getConfiguration: async () =>
-        mode === "wrong-network" ? { networkId: "mainnet" } : { networkId: "preprod" },
+        mode === "wrong-network"
+          ? { networkId: "mainnet" }
+          : { networkId: "preprod" },
       getUnshieldedAddress: async () => ({
         unshieldedAddress: "addr_test1_qa_unshielded",
       }),
@@ -67,7 +69,8 @@ const rows: { tag: string; message: string }[] = [];
 function log(tag: string, message: string) {
   rows.push({ tag, message });
   const el = document.getElementById("qa-log");
-  if (el) el.textContent = rows.map((r) => `[${r.tag}] ${r.message}`).join("\n");
+  if (el)
+    el.textContent = rows.map((r) => `[${r.tag}] ${r.message}`).join("\n");
   console.log("[QA]", tag, message);
 }
 
@@ -237,13 +240,17 @@ function Shell() {
           <RecoveryKitPanel />
         </div>
       </section>
-      <section style={{ border: "1px dashed #666", padding: 12, borderRadius: 8 }}>
+      <section
+        style={{ border: "1px dashed #666", padding: 12, borderRadius: 8 }}
+      >
         <h2>BuyerReserveSection (product, checkpointed kit)</h2>
         <div data-testid="reserve-host" key={`reserve-${bump}`}>
           <BuyerReserveSection kit={checkpointedFixture()} onBegin={() => {}} />
         </div>
       </section>
-      <section style={{ border: "1px dashed #666", padding: 12, borderRadius: 8 }}>
+      <section
+        style={{ border: "1px dashed #666", padding: 12, borderRadius: 8 }}
+      >
         <h2>BuyerReserveSection (product, kit=null)</h2>
         <BuyerReserveSection kit={null} onBegin={() => {}} />
       </section>

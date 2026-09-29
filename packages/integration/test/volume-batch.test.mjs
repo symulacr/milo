@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { deliveryCommitment } from "../../backend/src/delivery-commitment.mjs";
 import {
   deliveryOf,
   finishRecord,
   runVolumeBatch,
 } from "../src/volume-batch.mjs";
-import { deliveryCommitment } from "../../backend/src/delivery-commitment.mjs";
 
 test("deliveryOf is deterministic and digest-bound (no randomBytes placeholder)", () => {
   const first = deliveryOf("order-label-a");

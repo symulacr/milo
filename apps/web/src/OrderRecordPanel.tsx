@@ -7,15 +7,11 @@ import {
   describeUnconfiguredOrderRecord,
   ORDER_RECORD_FUNCTION,
   OrderRecordController,
-  orderRecordProvenance,
   type OrderRecordTransport,
   type OrderRecordView,
+  orderRecordProvenance,
 } from "./order-record-runtime";
-import {
-  emitRecoveryKitChanged,
-  readKit,
-  writeKit,
-} from "./recovery-runtime";
+import { emitRecoveryKitChanged, readKit, writeKit } from "./recovery-runtime";
 
 const readOrder = makeFunctionReference<
   "query",
@@ -38,7 +34,8 @@ export function OrderRecordPanel({
   const client = useConvex();
   const transport = useMemo<OrderRecordTransport>(
     () => ({
-      read: (args) => client.query(readOrder, args) as Promise<ChainOrderRecord | null>,
+      read: (args) =>
+        client.query(readOrder, args) as Promise<ChainOrderRecord | null>,
     }),
     [client],
   );
@@ -72,7 +69,11 @@ export function OrderRecordControls({
     controller.getSnapshot,
   );
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => setNow(Date.now()), [snapshot.outcome]);
+  const [seenOutcome, setSeenOutcome] = useState(snapshot.outcome);
+  if (seenOutcome !== snapshot.outcome) {
+    setSeenOutcome(snapshot.outcome);
+    setNow(Date.now());
+  }
   const view: OrderRecordView = unconfigured
     ? describeUnconfiguredOrderRecord()
     : controller.view();

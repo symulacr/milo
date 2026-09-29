@@ -149,10 +149,14 @@ export async function attachUpload(
       throw new Error("storage object is already claimed by another grant");
   }
   await ctx.db.patch(grant._id as never, { storageId: input.storageId });
-  await ctx.scheduler.runAfter(0, "files:inspect" as never, {
-    grantId: String(grant._id),
-    storageId: input.storageId,
-  } as never);
+  await ctx.scheduler.runAfter(
+    0,
+    "files:inspect" as never,
+    {
+      grantId: String(grant._id),
+      storageId: input.storageId,
+    } as never,
+  );
   return { grantId: String(grant._id), storageId: input.storageId };
 }
 
@@ -192,7 +196,9 @@ export async function markInspected(
 export async function inspectGrant(
   ctx: AdmissionContext & {
     storage: {
-      get: (id: string) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+      get: (
+        id: string,
+      ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
     };
   },
   input: { grantId: string; storageId: string },
@@ -326,7 +332,10 @@ export async function freeze(
     files: input.files.map((entry) => ({
       grantId: entry.grantId,
       sha256: entry.sha256,
-      contentType: entry.contentType as "image/png" | "image/jpeg" | "image/webp",
+      contentType: entry.contentType as
+        | "image/png"
+        | "image/jpeg"
+        | "image/webp",
       byteLength: entry.byteLength,
     })),
   });
@@ -422,7 +431,9 @@ export async function resolveRead(
 export async function serveFile(
   ctx: AdmissionContext & {
     storage: {
-      get: (id: string) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+      get: (
+        id: string,
+      ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
     };
   },
   input: {

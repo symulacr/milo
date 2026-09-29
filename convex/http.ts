@@ -283,7 +283,7 @@ export async function filesGetHandler(
     contentType: string;
     membershipScopeId: string;
   } | null;
-  if (!resolved || !resolved.bytes) {
+  if (!resolved?.bytes) {
     return new Response("Not found", { status: 404 });
   }
   return new Response(Buffer.from(resolved.bytes), {

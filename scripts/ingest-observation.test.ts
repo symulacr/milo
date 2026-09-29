@@ -9,8 +9,8 @@ import {
   CHAIN_FN,
   DEPLOYMENT_FN,
   executeIngest,
-  ingestArgv,
   type IngestPlan,
+  ingestArgv,
   planChainIngest,
   planDeploymentIngest,
 } from "./ingest-observation";

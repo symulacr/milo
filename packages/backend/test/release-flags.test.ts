@@ -1,7 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "bun:test";
 import {
   RELEASE_FLAG_DEFAULTS,
   releaseFlags,
@@ -69,7 +69,10 @@ describe("release-flags evidence gate (RECONSTRUCTED P8-W1-C)", () => {
   });
 
   test("both stored receipts flip both flags", () => {
-    const flags = releaseFlagsFromEvidence({ canonicalBinding, chainReservation });
+    const flags = releaseFlagsFromEvidence({
+      canonicalBinding,
+      chainReservation,
+    });
     expect(flags.immutableOrderAdmission).toBe(true);
     expect(flags.r1Complete).toBe(true);
   });
