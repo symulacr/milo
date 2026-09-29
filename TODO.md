@@ -7,7 +7,7 @@
 - [x] G4 | Negative controls + indep signatures 7 modules | | N of 7 signed | prototype
 - [x] G5 | P5 clean-clone P6 secrets P8 staleness | | outputs pasted | prototype
 - [x] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
-- [ ] D1a | Deploy convex to dev | | function-spec list | demo
+- [x] D1a | Deploy convex to dev | | function-spec list | demo
 - [ ] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
 - [ ] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
 - [ ] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
