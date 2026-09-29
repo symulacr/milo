@@ -1,12 +1,12 @@
 # TODO.md
 
-- [ ] G0 | Audit gate.sh substance + self-tests | | gate JSON shows non-trivial checks; mutation self-tests fail | prototype
-- [ ] G1 | Complete MASTER-LEDGER script counts | G0 | script prints rows/DONE/PENDING/REMAINING | prototype
-- [ ] G2 | Integration exit 1→0 canonical hash | | test:integration exit 0 | prototype
-- [ ] G3 | ContractState keys 14/14 table | | per-circuit table pasted | prototype
-- [ ] G4 | Negative controls + indep signatures 7 modules | | N of 7 signed | prototype
-- [ ] G5 | P5 clean-clone P6 secrets P8 staleness | | outputs pasted | prototype
-- [ ] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
+- [x] G0 | Audit gate.sh substance + self-tests | | gate JSON shows non-trivial checks; mutation self-tests fail | prototype
+- [x] G1 | Complete MASTER-LEDGER script counts | G0 | script prints rows/DONE/PENDING/REMAINING | prototype
+- [x] G2 | Integration exit 1→0 canonical hash | | test:integration exit 0 | prototype
+- [x] G3 | ContractState keys 14/14 table | | per-circuit table pasted | prototype
+- [x] G4 | Negative controls + indep signatures 7 modules | | N of 7 signed | prototype
+- [x] G5 | P5 clean-clone P6 secrets P8 staleness | | outputs pasted | prototype
+- [x] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
 - [ ] D1a | Deploy convex to dev | | function-spec list | demo
 - [ ] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
 - [ ] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
