@@ -67,7 +67,7 @@
 - [x] U1 | Dependency research log | U0 | RESEARCH-LOG rows | prototype
 - [x] U2 | Midnight cohort policy COHORT-UPGRADE.md | U1 | go/no-go | prototype
 - [x] U3 | Bump non-cohort deps (types, react, convex, stripe, zod, noble 1.x) by risk group | U2 | outdated empty or justified | prototype
-- [ ] U4 | Reduce dependencies ROI | U3 | removals proven | prototype
+- [x] U4 | Reduce dependencies ROI | U3 | removals proven | prototype
 - [ ] U5 | Dead code / duplication | U4 | knip clean critical | prototype
 - [ ] U6 | Midnight integration upgrade | U5 | observer + provider factory | prototype
 - [ ] U7 | PERF-QUALITY-REPORT.md | U6 | before/after/delta | prototype

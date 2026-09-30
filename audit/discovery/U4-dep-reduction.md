@@ -11,3 +11,11 @@ Date: 2026-09-30 (candidates only; no removals yet)
 | demo.gif / large assets | LFS or drop | size scan | REVIEW |
 
 Removals deferred to U5 after knip/jscpd.
+
+
+## Removals executed
+
+| Package | Before | After | ROI |
+|---|---|---|---|
+| firecrawl-cli | devDep | removed | unused in source; lockfile −70 lines |
+| zod | dep | removed | zero imports in apps/packages/convex/scripts |
