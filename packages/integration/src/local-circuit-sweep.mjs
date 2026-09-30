@@ -19,16 +19,23 @@
  * Lane lock: flock on .locks/local-circuit-sweep.lock (run script wraps this).
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
+import {
+  appendFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
-import { intentExpiry } from "./tx.mjs";
 import { installFeeMath, localFixedFeeConfig } from "./fee-math.mjs";
+import { intentExpiry } from "./tx.mjs";
 
 const RUN_DIR = process.env.MILO_SWEEP_RUN_DIR || "/tmp/m2-circuit-sweep";
-const TRAIL = process.env.MILO_SWEEP_TRAIL || "/tmp/m2-circuit-sweep-trail.jsonl";
+const TRAIL =
+  process.env.MILO_SWEEP_TRAIL || "/tmp/m2-circuit-sweep-trail.jsonl";
 mkdirSync(RUN_DIR, { recursive: true });
 const trail = (event, fields = {}) => {
   const line = JSON.stringify({ event, at: Date.now(), ...fields });
@@ -53,8 +60,7 @@ process.on("uncaughtException", fail);
 process.on("unhandledRejection", fail);
 
 const bytes32 = () => new Uint8Array(randomBytes(32));
-const sha256hex = (text) =>
-  createHash("sha256").update(text).digest("hex");
+const sha256hex = (text) => createHash("sha256").update(text).digest("hex");
 
 function withTimeout(promise, ms, label) {
   let timer;
@@ -548,7 +554,10 @@ async function main() {
     // Optional single- or multi-scenario run: MILO_SWEEP_ONLY=cancel,decline
     const onlyRaw = process.env.MILO_SWEEP_ONLY;
     const onlyLabels = onlyRaw
-      ? onlyRaw.split(",").map((s) => s.trim()).filter(Boolean)
+      ? onlyRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : null;
     const selected = onlyLabels
       ? SCENARIOS.filter((s) => onlyLabels.includes(s.label))
@@ -583,11 +592,7 @@ async function main() {
         terms,
         limit: 36_000n,
       });
-      const configuration = configurationFor(
-        scenario.offsets,
-        secrets,
-        terms,
-      );
+      const configuration = configurationFor(scenario.offsets, secrets, terms);
       const deadlines = deadlinesFor(scenario.offsets);
 
       step(`deploy-${scenario.label}`);
