@@ -10,3 +10,4 @@ receipts. Scratch helpers stay ignored.
 | obs_m11_indep_verify_1 | obs_m11_indep_verify_1.mjs | `node evidence/scripts/obs_m11_indep_verify_1.mjs` |
 | obs_pr7_axe_1 | obs_pr7_axe_1.mjs | `node evidence/scripts/obs_pr7_axe_1.mjs` |
 | obs_d2c_preprod_1 | packages/integration/src/preprod-*.mjs | see RECEIPTS.md / SPEND-LEDGER.md |
+| obs_m2_circuit_sweep_1 | packages/integration/src/local-circuit-sweep.mjs (+ .run.sh) | `bash evidence/scripts/obs_m2_circuit_sweep_1.run.sh` |
