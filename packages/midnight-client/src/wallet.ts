@@ -18,7 +18,8 @@ import {
   assertSupportedNetwork,
   SUPPORTED_MIDNIGHT_NETWORK,
   type SupportedMidnightNetwork,
-} from "./network";
+} from "./network.ts";
+import { LockedWalletError } from "./errors.ts";
 
 export type WalletRegistry = Window["midnight"] | undefined | null;
 
@@ -69,7 +70,7 @@ export function discoverWallets(registry: WalletRegistry): InitialAPI[] {
 export async function verifyPreprodConnection(api: StatusAPI): Promise<void> {
   const status = await api.getConnectionStatus();
   if (status.status !== "connected") {
-    throw new Error("Wallet is not connected");
+    throw new LockedWalletError("Wallet is not connected");
   }
   assertSupportedNetwork(status.networkId);
   const configuration = await api.getConfiguration();
@@ -79,7 +80,7 @@ export async function verifyPreprodConnection(api: StatusAPI): Promise<void> {
 async function readAccount(api: StatusAPI): Promise<WalletAccount> {
   const { unshieldedAddress } = await api.getUnshieldedAddress();
   if (typeof unshieldedAddress !== "string" || unshieldedAddress.length === 0) {
-    throw new Error("Wallet returned no unshielded address");
+    throw new LockedWalletError("Wallet returned no unshielded address");
   }
   return { unshieldedAddress };
 }
@@ -198,7 +199,7 @@ export function assertWalletConnected(
   state: WalletConnectionState,
 ): asserts state is Extract<WalletConnectionState, { status: "connected" }> {
   if (state.status !== "connected") {
-    throw new Error("A connected PREPROD wallet is required.");
+    throw new LockedWalletError("A connected PREPROD wallet is required.");
   }
   assertSupportedNetwork(state.networkId);
 }
