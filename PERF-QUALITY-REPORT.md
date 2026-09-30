@@ -51,3 +51,36 @@ Before/After/Δ vs PERF-BASELINE.md (U7). Filled after U3–U8.
 | firecrawl-cli | present | **removed** | unused |
 | zod removal | attempt | **reverted** | public-config.ts imports zod |
 | Midnight cohort | pinned | unchanged | U2 NO-GO |
+
+
+## After snapshot (post U3–U6) 2026-09-30
+
+| Metric | Before | After | Δ |
+|---|---|---|---|
+| src LOC | 70855 | 73833 | 2978 |
+| unit | 562/0 | 562/0 | — |
+| typecheck | 0 err | 0 | — |
+| unit time s | 16.0 | 25.0 | 9.0 |
+| typecheck s | 10.2 | 45.4 | 35.2 |
+| deps removed | — | firecrawl-cli | −1 |
+| Midnight cohort | pinned | pinned | 0 (U2) |
+
+### Bundle after
+
+| Entry | raw | gzip | brotli |
+|---|---|---|---|
+| index-2mpkz6ht.js | 0 | 20 | 1 |
+| public-app-6cxfayfz.js | 282058 | 89217 | 77543 |
+| app-m0tdq368.js | 5490379 | 1611234 | 1161345 |
+
+
+## Regressions
+
+- zod removal attempted and reverted (public-config.ts).
+- buyer-reserve-runtime.test.ts slot stubs updated for U6 types.
+
+## ROI
+
+- firecrawl-cli removed (unused).
+- fee-math eraseProofs: eliminates Preprod WASM spin (R8).
+- M2 14/14 local circuits, M3 3× chain matrix.
