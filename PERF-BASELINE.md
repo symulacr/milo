@@ -49,3 +49,12 @@ HEAD: `be18745` · collected 2026-09-30 (U0, before Phase U changes)
 - Fees: local-happy uses fixed fee `2_000_000_000n` behind local path; real
   `feesWithMargin` WASM spin on proved call txs is R8 open.
 - Midnight cohort **not bumped** (U2 policy).
+
+
+## Bundle compression (U1 S1 complete)
+
+| Entry | raw | gzip -9 | brotli |
+|---|---|---|---|
+| app-xc21g14s.js | 5456666 | 1600778 | 1152069 |
+| public-app-fqgxxsnb.js | 252550 | 80476 | 69877 |
+| index-2mpkz6ht.js | 0 | 20 | 1 |
