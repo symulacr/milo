@@ -17,3 +17,10 @@ D7 | PITCH deck video submission | files
 - gate-selftest.sh: 11 mutations must FAIL; all OK.
 - R7: reverted Privy SIWE login to documented email model; OWNER-QUEUE O-PRIVY-AUTH.
 - Honest stage at HEAD 3f5770d: PROTOTYPE (higher tags suppressed until R2 audit).
+
+
+## 2026-09-30 R2 TODO audit
+- Re-ran acceptance on checked items. Unchecked: PR7 (axe scope), M11 (relabel D5-type),
+  M8 (owner), D10/M13/PR10 (tags revoked), M2 (re-scope), D2c (need Preprod tx hashes).
+- Report: audit/discovery/R2-TODO-AUDIT.md
+- Counts after audit: see script output in HANDOFF.
