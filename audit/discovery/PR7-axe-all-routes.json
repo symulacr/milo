@@ -1,0 +1,104 @@
+{
+  "evidenceId": "obs_pr7_axe_all_routes_1",
+  "at": "2026-09-30T15:51:21.832Z",
+  "routes": 16,
+  "seriousTotal": 0,
+  "results": [
+    {
+      "route": "/demo",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/sign-in",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/how-it-works",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/privacy",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/terms",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/pilot",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/orders",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/quotes/new",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator/cases",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/account",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/connections",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/m",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/quotes",
+      "html": "public-app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator",
+      "html": "app.html",
+      "serious": [],
+      "other": []
+    }
+  ]
+}
