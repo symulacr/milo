@@ -81,19 +81,23 @@ for (const route of unique) {
 }
 await browser.close();
 
-
 // 375px pass
 for (const route of unique) {
   const html = htmlFor(route);
   const file = join(DIST, html);
   if (!existsSync(file)) continue;
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
-  await page.goto(pathToFileURL(file).href + "#" + route, { waitUntil: "domcontentloaded" });
+  await page.goto(pathToFileURL(file).href + "#" + route, {
+    waitUntil: "domcontentloaded",
+  });
   await page.addScriptTag({ content: AXE });
   const raw = await page.evaluate(async () => {
     return await window.axe.run(document, {
       resultTypes: ["violations"],
-      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
+      runOnly: {
+        type: "tag",
+        values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+      },
     });
   });
   const serious = raw.violations
