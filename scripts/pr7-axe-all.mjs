@@ -81,6 +81,29 @@ for (const route of unique) {
 }
 await browser.close();
 
+
+// 375px pass
+for (const route of unique) {
+  const html = htmlFor(route);
+  const file = join(DIST, html);
+  if (!existsSync(file)) continue;
+  const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+  await page.goto(pathToFileURL(file).href + "#" + route, { waitUntil: "domcontentloaded" });
+  await page.addScriptTag({ content: AXE });
+  const raw = await page.evaluate(async () => {
+    return await window.axe.run(document, {
+      resultTypes: ["violations"],
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
+    });
+  });
+  const serious = raw.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => `${v.id}:${v.nodes.length}`);
+  results.push({ route: route + "@375", html, serious, other: [] });
+  console.log(JSON.stringify({ route: route + "@375", serious }));
+  await page.close();
+}
+
 const seriousTotal = results.reduce((n, r) => n + r.serious.length, 0);
 const report = {
   evidenceId: "obs_pr7_axe_all_routes_1",
