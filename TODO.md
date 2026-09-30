@@ -38,11 +38,11 @@
 - [ ] M11 | Indep verify all rows | | signed | mvp
 - [x] M12 | Design partner + runbook | | docs | mvp
 - [ ] M13 | gate.sh mvp tag | | STAGE=mvp | mvp
-- [ ] PR2 | Security inventory | | report | production
+- [x] PR2 | Security inventory | | report | production
 - [ ] PR3 | Reliability drills | | report | production
 - [ ] PR4 | Chain ops | | report | production
 - [x] PR5 | Payments live-gate OFF | | procedure | production
-- [ ] PR6 | Privacy copy | | tested | production
+- [x] PR6 | Privacy copy | | tested | production
 - [ ] PR7 | UX axe keyboard | | 0 serious | production
 - [x] PR8 | Ops runbooks | | docs | production
 - [ ] PR9 | Docs current | | dual-state | production
