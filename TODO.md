@@ -69,7 +69,7 @@
 - [x] U3 | Bump non-cohort deps (types, react, convex, stripe, zod, noble 1.x) by risk group | U2 | outdated empty or justified | prototype
 - [x] U4 | Reduce dependencies ROI | U3 | removals proven | prototype
 - [x] U5 | Dead code / duplication | U4 | knip clean critical | prototype
-- [ ] U6 | Midnight integration upgrade | U5 | observer + provider factory | prototype
+- [x] U6 | Midnight integration upgrade (milestone1 factory+errors+guards; remainder in U6-integration-review) | U5 | observer + provider factory | prototype
 - [ ] U7 | PERF-QUALITY-REPORT.md | U6 | before/after/delta | prototype
 - [ ] U8 | Re-pin evidence IDs at new HEAD | U7 | gate + lanes re-run | prototype
 

@@ -60,9 +60,13 @@ function slots(): MidnightProviderSlots {
     privateStateProvider: {},
     publicDataProvider: {},
     zkConfigProvider: {},
-    proofProvider: {},
-    walletProvider: {},
-    midnightProvider: {},
+    proofProvider: { proveTx: async () => ({}) },
+    walletProvider: {
+      getCoinPublicKey: () => "00".repeat(32),
+      getEncryptionPublicKey: () => "00".repeat(32),
+      balanceTx: async (tx: unknown) => tx,
+    },
+    midnightProvider: { submitTx: async () => "tx" },
   };
 }
 
@@ -227,7 +231,7 @@ describe("prepare reserve readiness is fail-closed", () => {
   test("incomplete providers name the missing slots", () => {
     const result = assessPrepareReserve({
       ...base,
-      providers: { proofProvider: {} },
+      providers: { proofProvider: { proveTx: async () => ({}) } },
     });
     expect(result.ready).toBe(false);
     if (!result.ready) {
