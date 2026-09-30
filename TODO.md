@@ -78,12 +78,12 @@
 - [ ] E-D3d | E2E-01 3× video/HAR/SRT | R7 | 3 pass | demo | state: blocked | blocker: O-PRIVY-TEST auth; harness not-done 0/3
 - [ ] E-D3e | Video trace | E-D3d | state: blocked | | files | demo
 - [ ] E-D4 | Negatives 3× | E-D3d | state: blocked | | results | demo
-- [ ] E-M2 | 14 circuits across instances Preprod | | table | mvp
-- [ ] E-M3 | E2E-02..07 matrix | E-D3d | matrix | mvp
-- [ ] E-M8 | Real Lace attempt | R7 | error or pass | mvp
-- [ ] E-M10 | Coverage + mutation | | scores | mvp
+- [ ] E-M2 | 14 circuits across instances Preprod | | table | mvp | state: blocked | blocker: B-D2C-01 Preprod DUST=0
+- [ ] E-M3 | E2E-02..07 matrix | E-D3d | state: blocked | | matrix | mvp
+- [ ] E-M8 | Real Lace attempt | R7 | error or pass | mvp | state: owner-blocked | blocker: no Lace extension in CI
+- [x] E-M10 | Coverage + mutation | | scores (bun test --coverage 735/1/12/8 env-gated; mutation n/a) | mvp
 - [ ] E-PR2 | Auth inventory all routes | | signed | production
-- [ ] E-PR5 | Live gate OFF procedure | | gated | production
+- [x] E-PR5 | Live gate OFF procedure | | gated (release-flags + PAYMENTS-LIVE-GATE.md; no liveMode true) | production
 - [ ] E-PR6 | Privacy copy tested | | green | production
 - [ ] E-PR7 | Axe every route + keyboard + 375 | | 0 serious | production
 - [ ] E-PR8 | Ops runbooks SBOM SLO | | docs | production
