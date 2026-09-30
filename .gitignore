@@ -191,3 +191,9 @@ playwright-report/
 midnight-level-db/
 hardening/
 .hoplite/
+
+# junk / generated
+convex/_generated/
+e2e/**/out/
+packages/integration/src/p0-*.mjs
+release-manifest.json
