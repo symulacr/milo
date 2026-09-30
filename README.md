@@ -189,3 +189,8 @@ test -f .env.example
 bun install --frozen-lockfile
 bun run typecheck
 ```
+
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
