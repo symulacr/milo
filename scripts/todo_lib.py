@@ -70,19 +70,28 @@ def parse_items():
     return items
 
 
+def expand_dep(token):
+    # D1-D9, G0-G5, M1-M12 → list of IDs present in the table
+    m = re.match(r"([A-Za-z]+)(\d+)-([A-Za-z]*)(\d+)$", token)
+    if not m:
+        return [token]
+    prefix, a, prefix2, b = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+    if prefix2 and prefix2 != prefix:
+        return [token]
+    return [f"{prefix}{i}" for i in range(a, b + 1)]
+
+
 def is_unblocked(item, by_id):
     for d in item["depends"]:
-        # strip parenthetical
         d2 = re.split(r"[\s(]", d)[0]
-        dep = by_id.get(d2)
-        if dep is None:
-            # unknown dep: treat as satisfied if it looks like a stage label
-            if d2.lower() in ("g0", "g1", "g2", "g3", "g4", "g5", "d1", "d2", "d3", "r1", "r2", "u0"):
-                continue
-            # if depends on something not in list, don't block forever
+        if not d2 or d2 in ("—", "-", "n/a", "none"):
             continue
-        if dep["state"] != "checked":
-            return False
+        for tok in expand_dep(d2):
+            dep = by_id.get(tok)
+            if dep is None:
+                continue
+            if dep["state"] != "checked":
+                return False
     return True
 
 
