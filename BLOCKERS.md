@@ -23,3 +23,10 @@
 - Error: `e2e/e2e-01/run.ts --auth C` → status not-done, consecutivePasses 0/3
 - Substitutes: option C test issuer exists (R7C); live local Convex + Privy test accounts (O-PRIVY-TEST) not available
 - Next: owner enables Privy test accounts or coordinator wires option C to disposable Convex
+
+## B-DUST-01 Preprod DUST registration cannot complete
+- Error: `preprod-lane --register-dust` → `wallet-state-verify.mjs:886 TypeError: Cannot convert undefined to a BigInt` when indexer returns null tip / 503
+- Also: local Midnight indexer 127.0.0.1:8088 connection refused (stack down)
+- Substitutes: force-respend of 7 NIGHT UTXOs (`dust-force-respend`), fee estimate 300000000000001, waitForGeneratedDust never reached submit
+- Docs: registration self-spends NIGHT; DUST accrues 1–2 min; retroactive generation pays first registration fee
+- Next: bring local stack up; retry when Preprod indexer healthy; poll DUST
