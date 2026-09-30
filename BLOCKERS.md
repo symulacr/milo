@@ -18,3 +18,8 @@
 - Next: reuse preprod-lane session restore, transfer 2 NIGHT to self to mint an
   unregistered UTXO, register it, wait for DUST > 0, then `MILO_SWEEP_ONLY=happy-path
   preprod-lane --sweep` with installFeeMath wired (Agent A).
+
+## B-E2E-01 auth gate
+- Error: `e2e/e2e-01/run.ts --auth C` → status not-done, consecutivePasses 0/3
+- Substitutes: option C test issuer exists (R7C); live local Convex + Privy test accounts (O-PRIVY-TEST) not available
+- Next: owner enables Privy test accounts or coordinator wires option C to disposable Convex

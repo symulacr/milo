@@ -75,9 +75,9 @@
 
 ## Phase E — remaining original gates (after R7 auth)
 
-- [ ] E-D3d | E2E-01 3× video/HAR/SRT | R7 | 3 pass | demo
-- [ ] E-D3e | Video trace | E-D3d | files | demo
-- [ ] E-D4 | Negatives 3× | E-D3d | results | demo
+- [ ] E-D3d | E2E-01 3× video/HAR/SRT | R7 | 3 pass | demo | state: blocked | blocker: O-PRIVY-TEST auth; harness not-done 0/3
+- [ ] E-D3e | Video trace | E-D3d | state: blocked | | files | demo
+- [ ] E-D4 | Negatives 3× | E-D3d | state: blocked | | results | demo
 - [ ] E-M2 | 14 circuits across instances Preprod | | table | mvp
 - [ ] E-M3 | E2E-02..07 matrix | E-D3d | matrix | mvp
 - [ ] E-M8 | Real Lace attempt | R7 | error or pass | mvp
