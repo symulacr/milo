@@ -12,8 +12,9 @@
  *
  * Never prints secrets. Exit 0 when the spin (or the fix) is demonstrated.
  */
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+
 import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,8 +48,14 @@ function sha256(buf) {
 
 function findDustWalletTransacting() {
   const candidates = [
-    join(PKG, "node_modules/@midnight-ntwrk/wallet-sdk-dust-wallet/dist/v1/Transacting.js"),
-    join(REPO, "packages/integration/node_modules/@midnight-ntwrk/wallet-sdk-dust-wallet/dist/v1/Transacting.js"),
+    join(
+      PKG,
+      "node_modules/@midnight-ntwrk/wallet-sdk-dust-wallet/dist/v1/Transacting.js",
+    ),
+    join(
+      REPO,
+      "packages/integration/node_modules/@midnight-ntwrk/wallet-sdk-dust-wallet/dist/v1/Transacting.js",
+    ),
   ];
   for (const path of candidates) {
     try {
@@ -66,9 +73,11 @@ function staticRepro() {
   if (!found) {
     step("static-pinned-source", {
       ok: false,
-      reason: "wallet-sdk-dust-wallet Transacting.js not installed in this worktree",
+      reason:
+        "wallet-sdk-dust-wallet Transacting.js not installed in this worktree",
     });
-    evidence.verdict = "ROOT-CAUSE DOCUMENTED; install packages/integration deps to pin file:line";
+    evidence.verdict =
+      "ROOT-CAUSE DOCUMENTED; install packages/integration deps to pin file:line";
     return;
   }
   const { path, src } = found;
@@ -100,8 +109,8 @@ function staticRepro() {
 }
 
 async function syntheticRepro() {
-  const L = await import("@midnight-ntwrk/ledger-v8/ledger-v8.js").catch(() =>
-    import("@midnight-ntwrk/ledger-v8"),
+  const L = await import("@midnight-ntwrk/ledger-v8/ledger-v8.js").catch(
+    () => import("@midnight-ntwrk/ledger-v8"),
   );
   const { Transaction } = L;
   // Best-effort construction; if the public API cannot forge a proven call tx
@@ -109,13 +118,13 @@ async function syntheticRepro() {
   step("synthetic-import", {
     hasTransaction: typeof Transaction === "function",
     hasEraseProofs: typeof Transaction?.prototype?.eraseProofs === "function",
-    hasFeesWithMargin: typeof Transaction?.prototype?.feesWithMargin === "function",
+    hasFeesWithMargin:
+      typeof Transaction?.prototype?.feesWithMargin === "function",
   });
-  const { probeFeesWithMargin, installFeeMath, resetFeeMathForTests } = await import(
-    "./fee-math.mjs"
-  );
+  const { probeFeesWithMargin, installFeeMath, resetFeeMathForTests } =
+    await import("./fee-math.mjs");
   // Time eraseProofs().feesWithMargin vs direct on any available empty tx.
-  let network = "undeployed";
+  const network = "undeployed";
   try {
     const net = new Uint8Array(32);
     net.set(new TextEncoder().encode(network));
@@ -152,7 +161,10 @@ async function syntheticRepro() {
       networkId: "undeployed",
       Transaction,
     });
-    step("install-local-fixed", { mode: handle.mode, fee: handle.fee?.toString() });
+    step("install-local-fixed", {
+      mode: handle.mode,
+      fee: handle.fee?.toString(),
+    });
     handle.uninstall();
     resetFeeMathForTests();
   } catch (error) {
@@ -231,12 +243,15 @@ function writeEvidence() {
 
 async function main() {
   if (evidence.mode === "static" || evidence.mode === "live") staticRepro();
-  if (evidence.mode === "synthetic" || evidence.mode === "live") await syntheticRepro();
+  if (evidence.mode === "synthetic" || evidence.mode === "live")
+    await syntheticRepro();
   writeEvidence();
   process.stdout.write(`VERDICT: ${evidence.verdict}\n`);
 }
 
 main().catch((error) => {
-  process.stderr.write(String(error && error.stack ? error.stack : error) + "\n");
+  process.stderr.write(
+    String(error && error.stack ? error.stack : error) + "\n",
+  );
   process.exit(1);
 });

@@ -101,6 +101,40 @@ export default defineSchema({
     .index("by_network_nonce", ["network", "nonce"])
     .index("by_address", ["address"])
     .index("by_quote", ["quoteId"]),
+  // Admitted chain-order truth for the A1 observation path.
+  chainOrders: defineTable({
+    orderId: v.string(),
+    quoteId: v.string(),
+    network: v.literal("preprod"),
+    address: v.string(),
+    nonce: v.string(),
+    artifactFingerprint: v.string(),
+    phase: v.union(
+      v.literal("DEPLOYED"),
+      v.literal("RESERVED"),
+      v.literal("ACCEPTED"),
+      v.literal("SUBMITTED"),
+      v.literal("DISPUTED"),
+      v.literal("APPROVED"),
+      v.literal("CANCELLED"),
+    ),
+    revision: v.number(),
+    deliveryManifest: v.optional(v.union(v.string(), v.null())),
+    terminal: v.boolean(),
+    merchantActive: v.boolean(),
+    observedAt: v.optional(v.number()),
+  })
+    .index("by_order", ["orderId"])
+    .index("by_address", ["address"])
+    .index("by_quote", ["quoteId"]),
+  // Durable chain-observation log behind orders:recordObservation.
+  chainObservations: defineTable({
+    orderId: v.string(),
+    phase: v.string(),
+    revision: v.number(),
+    observedAt: v.number(),
+    kind: v.string(),
+  }).index("by_order", ["orderId"]),
   memberships: defineTable({
     privySubject: v.string(),
     accountId: v.string(),

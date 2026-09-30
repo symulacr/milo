@@ -716,17 +716,17 @@ describe("Trusted provisioning — explicit doubles", () => {
       providerReceiptFingerprint: "a".repeat(64),
     } as PaymentAuthorization;
     // Inside both the 60s age budget and the usable window.
-    expect(usableObservation(authorization, startedAt + 29_999, startedAt)).toBe(
-      true,
-    );
+    expect(
+      usableObservation(authorization, startedAt + 29_999, startedAt),
+    ).toBe(true);
     // Half-open: usableUntil itself is already expired.
-    expect(usableObservation(authorization, startedAt + 30_000, startedAt)).toBe(
-      false,
-    );
+    expect(
+      usableObservation(authorization, startedAt + 30_000, startedAt),
+    ).toBe(false);
     // Still younger than 60s, but past usableUntil (provider expiry / session cap).
-    expect(usableObservation(authorization, startedAt + 45_000, startedAt)).toBe(
-      false,
-    );
+    expect(
+      usableObservation(authorization, startedAt + 45_000, startedAt),
+    ).toBe(false);
     // captureBeforeMs alone does not extend the usable observation window.
     expect(
       usableObservation(

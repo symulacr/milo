@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  installFeeMath,
   LOCAL_FIXED_FEE_ACK,
   LOCAL_FIXED_FEE_ENV,
   LOCAL_FIXED_FEE_SPECKS,
-  installFeeMath,
   localFixedFeeConfig,
   probeFeesWithMargin,
   resetFeeMathForTests,
@@ -138,7 +138,9 @@ test("installFeeMath local-fixed returns fixed fee and refuses non-local", () =>
 
 test("probeFeesWithMargin times out a spinning feesWithMargin", async () => {
   const spinning = fakeTransaction({ spin: true });
-  const result = await probeFeesWithMargin(spinning, null, 0, { timeoutMs: 50 });
+  const result = await probeFeesWithMargin(spinning, null, 0, {
+    timeoutMs: 50,
+  });
   assert.equal(result.timedOut, true);
   assert.equal(result.ok, false);
   const okTx = fakeTransaction({ fee: 5n });

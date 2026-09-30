@@ -23,6 +23,7 @@ import type * as diagnostics from "../diagnostics.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as observationIngest from "../observationIngest.js";
+import type * as orders from "../orders.js";
 import type * as paymentMonitor from "../paymentMonitor.js";
 import type * as paymentMonitoring from "../paymentMonitoring.js";
 import type * as provisioning from "../provisioning.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   http: typeof http;
   observationIngest: typeof observationIngest;
+  orders: typeof orders;
   paymentMonitor: typeof paymentMonitor;
   paymentMonitoring: typeof paymentMonitoring;
   provisioning: typeof provisioning;

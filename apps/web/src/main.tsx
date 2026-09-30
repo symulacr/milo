@@ -14,6 +14,15 @@ addEventListener("unhandledrejection", (e: PromiseRejectionEvent) => {
     e.preventDefault();
 });
 
+// D3c: SDK connector injection is demo/E2E only. NODE_ENV is defined to
+// "production" by scripts/build.ts, so this dynamic import is eliminated
+// from the production bundle. Public entry never loads it.
+if (process.env.NODE_ENV !== "production") {
+  void import("./sdk-connector-inject").then((m) => {
+    m.installSdkConnectorHandle();
+  });
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing application root");
 createRoot(root).render(

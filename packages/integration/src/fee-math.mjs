@@ -89,12 +89,23 @@ export function resetFeeMathForTests() {
  *  - for sync spins, callers must run probe in a worker/child (see fee-spin-repro).
  * Returns { ok, fee, ms, timedOut }.
  */
-export async function probeFeesWithMargin(tx, params, margin, { timeoutMs = 2000 } = {}) {
+export async function probeFeesWithMargin(
+  tx,
+  params,
+  margin,
+  { timeoutMs = 2000 } = {},
+) {
   const started = Date.now();
   let timer;
   const watchdog = new Promise((resolve) => {
     timer = setTimeout(
-      () => resolve({ ok: false, fee: null, ms: Date.now() - started, timedOut: true }),
+      () =>
+        resolve({
+          ok: false,
+          fee: null,
+          ms: Date.now() - started,
+          timedOut: true,
+        }),
       timeoutMs,
     );
   });

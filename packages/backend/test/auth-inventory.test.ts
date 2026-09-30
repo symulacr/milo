@@ -11,10 +11,7 @@ import { requireMembership } from "../../../convex/auth/identity";
 import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
 import * as files from "../../../convex/files";
-import {
-  filesGetHandler,
-  stripeWebhookHandler,
-} from "../../../convex/http";
+import { filesGetHandler, stripeWebhookHandler } from "../../../convex/http";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
 import { requirePrivySubject } from "../src/privy-identity";
@@ -383,10 +380,13 @@ describe("M7 auth inventory — HTTP routes", () => {
     const prev = process.env.STRIPE_WEBHOOK_SECRET;
     delete process.env.STRIPE_WEBHOOK_SECRET;
     try {
-      const res = await stripeWebhookHandler({}, new Request("https://x", {
-        method: "POST",
-        body: "{}",
-      }));
+      const res = await stripeWebhookHandler(
+        {},
+        new Request("https://x", {
+          method: "POST",
+          body: "{}",
+        }),
+      );
       expect(res.status).toBe(503);
     } finally {
       if (prev !== undefined) process.env.STRIPE_WEBHOOK_SECRET = prev;
@@ -490,6 +490,8 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       "files.freezeMutation": "files.freeze",
       "http.stripeWebhook": "http.stripeWebhook",
       "http.filesGet": "http.filesGet",
+      // Public chain-projection read (B3): no identity required; never a write.
+      "orders.read": "orders.read",
     };
     const missing: string[] = [];
     for (const [key, kind] of found) {
@@ -505,6 +507,7 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       const covered =
         PUBLIC_QUERY_MUTATION.some((row) => row.name === target) ||
         target === "admission.bind" ||
+        target === "orders.read" ||
         target.startsWith("http.");
       expect(covered).toBe(true);
     }

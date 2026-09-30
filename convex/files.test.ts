@@ -172,14 +172,22 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
   test("refuses missing grant, unauthenticated, non-merchant, wrong owner, revoked membership", async () => {
     const missing = databaseDouble();
     await expect(
-      attachUpload(missing.ctx, { grantId: "nope", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(missing.ctx, {
+        grantId: "nope",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const anonymous = databaseDouble({
       identity: null,
     });
     await expect(
-      attachUpload(anonymous.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(anonymous.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const buyer = databaseDouble({
@@ -189,7 +197,11 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     buyer.membership.accountId = "buyer-1";
     buyer.membership.privySubject = "did:privy:buyer";
     await expect(
-      attachUpload(buyer.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(buyer.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const wrongOwner = databaseDouble({
@@ -208,7 +220,11 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     const revoked = databaseDouble();
     revoked.membership.status = "revoked";
     await expect(
-      attachUpload(revoked.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(revoked.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
     expect(revoked.grant.storageId).toBeUndefined();
   });
@@ -217,32 +233,52 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     const mismatch = databaseDouble();
     mismatch.grant.uploaderId = "someone-else";
     await expect(
-      attachUpload(mismatch.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(mismatch.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const consumed = databaseDouble();
     consumed.grant.consumed = true;
     await expect(
-      attachUpload(consumed.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(consumed.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const already = databaseDouble();
     already.grant.storageId = "blob-other-grant";
     await expect(
-      attachUpload(already.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(already.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
 
     const expired = databaseDouble();
     expired.grant.expiresAt = Date.now() - 1;
     await expect(
-      attachUpload(expired.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(expired.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
   });
 
   test("refuses missing storage object before any grant write", async () => {
     const f = databaseDouble();
     await expect(
-      attachUpload(f.ctx, { grantId: "grant-1", storageId: "blob-missing", uploadTicket: "ut_grant-1_test" }),
+      attachUpload(f.ctx, {
+        grantId: "grant-1",
+        storageId: "blob-missing",
+        uploadTicket: "ut_grant-1_test",
+      }),
     ).rejects.toThrow();
     expect(f.grant.storageId).toBeUndefined();
   });

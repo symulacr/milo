@@ -8,12 +8,12 @@ import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  authorizeDeliveryRead,
-  freezeDelivery,
   type AtomicDeliveryRepository,
+  authorizeDeliveryRead,
   type DeliveryAccount,
   type DeliveryOrder,
   type FrozenDelivery,
+  freezeDelivery,
   type UploadGrant,
 } from "../src/delivery-policy";
 import { publicConfigResponse } from "../src/public-config";
@@ -25,10 +25,7 @@ const BACKEND_SRC = join(ROOT, "packages/backend/src");
 
 describe("M9.1 no plaintext terms on-chain", () => {
   test("public Configuration carries termsCommitment, never Terms openings", async () => {
-    const source = await readFile(
-      join(CONTRACT, "src/order.compact"),
-      "utf8",
-    );
+    const source = await readFile(join(CONTRACT, "src/order.compact"), "utf8");
     const configBlock = source.match(
       /export struct Configuration \{([\s\S]*?)\}/,
     )?.[1];
@@ -51,10 +48,7 @@ describe("M9.1 no plaintext terms on-chain", () => {
   });
 
   test("ledger exports never hold a Terms struct or role secrets", async () => {
-    const source = await readFile(
-      join(CONTRACT, "src/order.compact"),
-      "utf8",
-    );
+    const source = await readFile(join(CONTRACT, "src/order.compact"), "utf8");
     const ledgerLines = source
       .split("\n")
       .filter((line) => /export (sealed )?ledger /.test(line))
@@ -72,7 +66,9 @@ describe("M9.1 no plaintext terms on-chain", () => {
       join(CONTRACT, "generated/contract/index.d.ts"),
       "utf8",
     );
-    const configType = dts.match(/export type Configuration = \{([\s\S]*?)\};/)?.[1];
+    const configType = dts.match(
+      /export type Configuration = \{([\s\S]*?)\};/,
+    )?.[1];
     expect(configType).toBeTruthy();
     for (const field of [
       "unitPrice",
@@ -93,8 +89,8 @@ describe("M9.1 no plaintext terms on-chain", () => {
       "../src/public-constructor.mjs"
     );
     const quote = {
-      constructorVersion: 1,
-      constructorEncoding: "milo:compact-configuration:v1",
+      constructorVersion: 1 as const,
+      constructorEncoding: "milo:compact-configuration:v1" as const,
       network: "preprod",
       nonce: "4".repeat(64),
       termsCommitment: "a".repeat(64),
@@ -231,7 +227,11 @@ describe("M9.2 no PII/secrets in logs or public projections", () => {
         const text = await readFile(join(root, entry.name), "utf8");
         for (const line of text.split("\n")) {
           if (!/console\.(log|info|warn|error|debug)/.test(line)) continue;
-          if (/whsec_|sk_live_|sk_test_|PRIVY_APP_SECRET|STRIPE_SECRET|privateState|rawBody|seed/i.test(line)) {
+          if (
+            /whsec_|sk_live_|sk_test_|PRIVY_APP_SECRET|STRIPE_SECRET|privateState|rawBody|seed/i.test(
+              line,
+            )
+          ) {
             offenders.push(`${entry.name}: ${line.trim()}`);
           }
         }
