@@ -1,6 +1,6 @@
 # Third-party notices
 
-The root [MIT license](LICENSE) applies to project-original material only. It does
+The root [Apache-2.0 license](LICENSE) applies to project-original material only. It does
 not replace upstream licenses, copyright notices or trademark restrictions.
 
 ## Midnight local development configuration
@@ -17,6 +17,6 @@ records attribution and Milo's modifications.
 
 Installed packages, downloaded compiler/runtime tools and native Midnight services
 retain their respective upstream licenses. Their inclusion in setup or a lockfile
-does not relicense them under MIT. Preserve applicable upstream notices when
+does not relicense them under Apache-2.0. Preserve applicable upstream notices when
 redistributing them; consult the packages' license files and
 [native service provenance](docs/native-service-sources.md).
