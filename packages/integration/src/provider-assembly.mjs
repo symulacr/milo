@@ -24,9 +24,7 @@ import {
   LockedWalletError,
   WrongNetworkError,
 } from "../midnight-client/src/provider-factory.ts";
-import {
-  isInsufficientDust as isInsufficientDustShape,
-} from "./dust.mjs";
+import { isInsufficientDust as isInsufficientDustShape } from "./dust.mjs";
 import { intentExpiry } from "./tx.mjs";
 
 export {
@@ -58,7 +56,10 @@ export function walletActorFromTestkit(provider) {
   assert.equal(typeof provider.wallet.balanceUnboundTransaction, "function");
   assert.equal(typeof provider.wallet.signRecipe, "function");
   assert.equal(typeof provider.wallet.finalizeRecipe, "function");
-  assert(provider.unshieldedKeystore, "wallet actor requires unshieldedKeystore");
+  assert(
+    provider.unshieldedKeystore,
+    "wallet actor requires unshieldedKeystore",
+  );
   return provider;
 }
 
@@ -75,7 +76,10 @@ export function waitForPositiveDust(wallet, { deadlineMs, timeoutMs, rx }) {
       map(([state]) => state.dust.balance(new Date())),
       filter((balance) => balance > 0n),
       timeout({
-        first: Math.max(1_000, Math.min(timeoutMs ?? 30_000, deadlineMs - Date.now())),
+        first: Math.max(
+          1_000,
+          Math.min(timeoutMs ?? 30_000, deadlineMs - Date.now()),
+        ),
       }),
     ),
   );
@@ -85,7 +89,10 @@ export function waitForPositiveDust(wallet, { deadlineMs, timeoutMs, rx }) {
  * Shared walletProvider.balanceTx: wait for positive DUST, then
  * balanceUnbound → signRecipe → finalizeRecipe. No estimateTransactionFee.
  */
-export function skipEstimateBalanceTx(actor, { deadlineMs, timeoutMs, rx, emit }) {
+export function skipEstimateBalanceTx(
+  actor,
+  { deadlineMs, timeoutMs, rx, emit },
+) {
   return async function balanceTx(tx, ttl = new Date(Date.now() + 3_600_000)) {
     if (emit) emit("balance-start", { note: "skip-estimate" });
     await waitForPositiveDust(actor.wallet, { deadlineMs, timeoutMs, rx });
@@ -227,7 +234,8 @@ export function buildLocalProviders({
 }) {
   const effectiveGuard = guard;
   const effectiveNetwork =
-    network ?? (effectiveGuard === LOCAL_GUARD ? LOCAL_DISPOSABLE_NETWORK : "preprod");
+    network ??
+    (effectiveGuard === LOCAL_GUARD ? LOCAL_DISPOSABLE_NETWORK : "preprod");
   assertNetworkGuard(effectiveNetwork, effectiveGuard);
 
   let balanceTx;
@@ -250,7 +258,8 @@ export function buildLocalProviders({
     zkConfigProvider,
     proof,
     actor: walletActorFromTestkit(actor),
-    balanceStrategy: balanceStrategy === "skip-estimate" ? "injected" : balanceStrategy,
+    balanceStrategy:
+      balanceStrategy === "skip-estimate" ? "injected" : balanceStrategy,
     balanceTx,
     waitForBalancedRecipe,
     onEvent,

@@ -30,13 +30,16 @@ import type {
   InitialAPI,
   WalletConnectedAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import { assertSupportedNetwork, SUPPORTED_MIDNIGHT_NETWORK } from "./network.ts";
+import { LockedWalletError, RejectedSignatureError } from "./errors.ts";
+import {
+  assertSupportedNetwork,
+  SUPPORTED_MIDNIGHT_NETWORK,
+} from "./network.ts";
 import type {
   WalletAccount,
   WalletConnectionState,
   WalletConnector,
 } from "./wallet.ts";
-import { LockedWalletError, RejectedSignatureError } from "./errors.ts";
 
 /**
  * Minimal wallet-SDK session shape. Structural so testkit's

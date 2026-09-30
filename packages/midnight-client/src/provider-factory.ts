@@ -19,19 +19,19 @@
  */
 
 import {
-  InsufficientDustError,
-  type MidnightClientErrorCode,
-  LockedWalletError,
-  RejectedSignatureError,
   classifyMidnightClientError,
+  InsufficientDustError,
+  LockedWalletError,
+  type MidnightClientErrorCode,
+  RejectedSignatureError,
   rethrowAsMidnightClientError,
 } from "./errors.ts";
 import {
+  assertNetworkGuard,
   type LocalDisposableNetwork,
   type NetworkForGuard,
   type NetworkGuardMode,
   type SupportedMidnightNetwork,
-  assertNetworkGuard,
 } from "./network.ts";
 
 /** Manages actor-local private state (secrets never leave the actor). */
@@ -423,9 +423,9 @@ export {
   isRejectedSignatureError,
   isWrongNetworkError,
   LockedWalletError,
-  type MidnightClientErrorCode,
   MidnightClientError,
-  rethrowAsMidnightClientError,
+  type MidnightClientErrorCode,
   RejectedSignatureError,
+  rethrowAsMidnightClientError,
   WrongNetworkError,
 } from "./errors.ts";
