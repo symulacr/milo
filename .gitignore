@@ -157,3 +157,4 @@ gates/*.json
 !/PAYMENTS-LIVE-GATE.md
 !/RUNBOOKS.md
 !/SECURITY-INVENTORY.md
+!/PR7-UX.md
