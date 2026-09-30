@@ -52,7 +52,7 @@ def parse_items():
             state = "checked"
         elif re.search(r"\bowner[- ]?blocked\b|O-PRIVY|owner gap|owner accept", body, re.I):
             state = "owner-blocked"
-        elif re.search(r"\bblocked\b", body, re.I):
+        elif re.search(r"\bblocked\b", body, re.I) or "state: blocked" in body:
             state = "blocked"
         else:
             state = "todo"

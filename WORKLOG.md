@@ -30,3 +30,8 @@ D7 | PITCH deck video submission | files
 - Claims: A wt/R6-D2c (D2c/R6/R8/R9) · B wt/R7C-e2e (R7C/E2E) · disjoint ownership.
 - Bundle gzip/brotli measured. Full coverage suite env-gated (registerHooks / isolated Node).
 - next-task prints D2c until Agent A lands Preprod hashes.
+
+## 2026-09-30 agent merges
+- A: R8 fee-math, R6 signed keys, R9 table, D2c attempt (DUST blocker).
+- B: R7C test issuer + E2E-01 scaffold + CLICK-MAP verify.
+- D2c marked blocked B-D2C-01 (DUST=0). Fee spin fixed.
