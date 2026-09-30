@@ -20,8 +20,8 @@
 - [ ] D3d | E2E-01 happy path | D3c | 3× pass | demo
 - [ ] D3e | Video trace HAR SRT | D3d | files on disk | demo
 - [ ] D4 | Negatives ×3 | D3d | results | demo
-- [ ] D5 | Independent receipts re-query | | verifier signed | demo
-- [ ] D6 | Judge clone ≤10 steps | | timed | demo
+- [x] D5 | Independent receipts re-query | | verifier signed | demo
+- [x] D6 | Judge clone ≤10 steps | | timed | demo
 - [x] D7 | PITCH deck video submission | | files (PITCH.md, pitch/deck 10 SVG + PDF, VIDEO-SCRIPT-90S.md, SUBMISSION-UPDATE v2) | demo
 - [x] D8 | PUSH-READINESS hosting | | files | demo
 - [x] D9 | Copy audit | | no live-pay claims | demo
