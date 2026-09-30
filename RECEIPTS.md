@@ -103,3 +103,24 @@ Fee estimates were taken **before** submission. Seed material is never printed; 
 | hash | purpose | fee | block | chain height |
 |---|---|---|---|---|
 | `5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58` | ContractUpdate (replaceAuthority) | not captured | 2639638 | 2765910 (read) |
+
+## Preprod D2c happy-path attempt (2026-09-30) — SDK-connector / harness
+
+| Fact | Value | Status |
+|---|---|---|
+| Network | Midnight Preprod | VERIFIED |
+| Allow gate | `MILO_PREPROD_ALLOW=disposable-owned-preprod` | VERIFIED |
+| Wallet (unshielded) | `mn_addr_preprod1y7kqu30rc3dq647v37r77eew7efml5pzvcgpntp28rv85fzzz7usc2n4h7` | VERIFIED |
+| NIGHT balance | `35000000000` specks | VERIFIED |
+| DUST balance | `0` specks | VERIFIED (blocker) |
+| UTXOs | 7 available, 0 pending, all `registeredForDustGeneration` | VERIFIED |
+| DUST seed snapshot | `wallet-state/dust.json`, roots verified, cutoff 1575327 | VERIFIED |
+| Wallet-state verify | 16/16 PASS, UTXO crosscheck 7=7 | VERIFIED |
+| Happy-path tx hashes | none (deploy failed: `could not balance dust`) | **NOT LANDED** |
+| Indexer read-back | `ContractUpdate` `5ce74cb9…` block 2639638; tip 2770140 | VERIFIED-ONCHAIN |
+| Ingest (deployment) | `observationIngest:recordDeployment` → `{"kind":"recorded","observationId":"obs_d2c_preprod_1"}` | VERDICT: recorded |
+| Ingest (chain) | `orders:recordObservation` missing on Convex | VERDICT: blocked |
+| Label | SDK-connector / harness | — |
+| Seed | `.env.preprod` only — never printed | — |
+
+Full narrative + NOT DONE: [`audit/discovery/IMPLEMENTATION-P2-D2c-preprod.md`](./audit/discovery/IMPLEMENTATION-P2-D2c-preprod.md).
