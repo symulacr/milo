@@ -11,7 +11,7 @@
 - [x] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
 - [x] D1c | Real Stripe event to endpoint | D1b | pi_/evt_ + inbox row | demo
 - [x] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
-- [ ] D2a | Local Midnight happy path | | tx hashes | demo
+- [ ] D2a (partial: stack up)| Local Midnight happy path | | tx hashes | demo
 - [ ] D2b | SPEND-LEDGER + faucet | | balance script | demo
 - [ ] D2c | Preprod happy path funded | D2b | receipts rows | demo
 - [ ] D3a | CLICK-MAP.md | | all routes | demo
