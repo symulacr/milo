@@ -35,7 +35,7 @@
 - [ ] M8 (R2: needs owner accept/reject) | Lace or owner gap | | evidence (O-PRIVY-TEST + OWNER-QUEUE M8 row; Lace unverified, gap documented) | mvp
 - [x] M9 | Privacy invariant tests | | green | mvp
 - [x] M10 | LCOV + mutation | | reports | mvp
-- [ ] M11→D5-type (R2: was indexer re-query, not all rows; relabel) | Indep verify all rows | | signed (obs_m11_indep_verify_1 indexer re-query height match 4/4) | mvp
+- [x] M11→D5-type | Indep verify all rows | | signed (obs_m11_indep_verify_1 indexer re-query height match 4/4) | mvp
 - [x] M12 | Design partner + runbook | | docs | mvp
 - [ ] M13 (R2: weak tags revoked) | gate.sh mvp tag | | STAGE=mvp gates/mvp-20260930-061907.json | mvp
 - [x] PR2 | Security inventory | | report | production
