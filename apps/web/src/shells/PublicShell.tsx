@@ -12,9 +12,7 @@ export function PublicShell() {
         Skip to content
       </a>
       <section className="public-notice" aria-label="Prototype notice">
-        Prototype — orders and artwork are samples. Preprod test network only. No live payments.
-        blockchain activity.
-      </section>
+        Prototype — orders and artwork are samples. Preprod test network only. No live payments.</section>
       <header className="public-header">
         <a href="/" className="wordmark" aria-label="Milo home">
           milo
