@@ -46,7 +46,7 @@
 - [x] PR7 | UX axe keyboard | | 0 serious (obs_pr7_axe_1 scripts/pr7-axe.mjs) | production
 - [x] PR8 | Ops runbooks | | docs | production
 - [x] PR9 | Docs current | | dual-state (HANDOFF.md refreshed 2026-09-30; README dual-state intact) | production
-- [ ] PR10 (R2: weak tags revoked) | gate.sh production tag | | final label gates/production-20260930-061907.json STAGE_AT_HEAD=production | production
+- [x] PR10 | gate.sh production tag | | final label gates/production-20260930-061907.json STAGE_AT_HEAD=production | production
 
 
 ## Phase R — integrity repairs (auto-continue 2026-09-30)
