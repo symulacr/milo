@@ -171,10 +171,13 @@ export async function attachUpload(
       throw new Error("storage object is already claimed by another grant");
   }
   // Consume the ticket on bind so the URL path is one-shot.
-  await ctx.db.patch(grant._id as never, {
-    storageId: input.storageId,
-    uploadTicket: undefined,
-  } as never);
+  await ctx.db.patch(
+    grant._id as never,
+    {
+      storageId: input.storageId,
+      uploadTicket: undefined,
+    } as never,
+  );
   await ctx.scheduler.runAfter(
     0,
     "files:inspect" as never,
@@ -224,10 +227,13 @@ export async function storeAndAttachUpload(
     throw new Error("upload bytes are required");
   // Produce the storage identity on the authorized path only.
   const storageId = await ctx.storage.store(input.bytes);
-  await ctx.db.patch(grant._id as never, {
-    storageId,
-    uploadTicket: undefined,
-  } as never);
+  await ctx.db.patch(
+    grant._id as never,
+    {
+      storageId,
+      uploadTicket: undefined,
+    } as never,
+  );
   await ctx.scheduler.runAfter(
     0,
     "files:inspect" as never,

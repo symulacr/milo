@@ -9,8 +9,8 @@ import {
   kitStatus,
   loseCapability,
   type RecoveryKit,
-  resumeOperation,
   restoreKit,
+  resumeOperation,
   sameScope,
   verifyKit,
 } from "../src/recovery-kit";

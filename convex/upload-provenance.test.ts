@@ -135,7 +135,9 @@ function databaseDouble(options?: {
     },
   };
   return {
-    ctx: ctx as unknown as AdmissionContext,
+    ctx: ctx as unknown as AdmissionContext & {
+      storage: { store: (bytes: Uint8Array) => Promise<string> };
+    },
     tables,
     order,
     membership,
@@ -226,7 +228,7 @@ describe("upload URL to storageId provenance is closed", () => {
   test("action-based storeAndAttachUpload produces and binds the storageId itself", async () => {
     const f = databaseDouble();
     const issued = await requestUpload(f.ctx, { orderId: "order-1" });
-    const result = await storeAndAttachUpload(f.ctx, {
+    const result = await storeAndAttachUpload(f.ctx as never, {
       grantId: issued.grantId,
       bytes: png(),
     });
