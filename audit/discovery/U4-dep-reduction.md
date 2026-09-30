@@ -19,3 +19,10 @@ Removals deferred to U5 after knip/jscpd.
 |---|---|---|---|
 | firecrawl-cli | devDep | removed | unused in source; lockfile −70 lines |
 | zod | dep | removed | zero imports in apps/packages/convex/scripts |
+
+
+## Reverted
+
+`zod` removal reverted: `packages/backend/src/public-config.ts` imports zod
+(`z.url()`). Re-added `zod@4.6.5`. Grep miss was `--glob '!*.md'` plus
+`from "zod"` vs namespace import.
