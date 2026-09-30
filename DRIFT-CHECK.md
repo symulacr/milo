@@ -24,3 +24,15 @@ Terms off-chain. Midnight proves lifecycle only. Stripe off-chain money. Capture
 | bun run lint | STALE (errors) |
 
 Re-run after every wave.
+
+
+## ON-PURPOSE-CHANGE: Privy SIWE login (reverted 2026-09-30)
+
+A session change switched `loginMethods` to `["wallet","email"]` and added
+`useLoginWithSiwe` with `chainId: eip155:1`. The documented product model
+(04-ui-design.md) is Privy email OTP only. R7 requires revert unless the owner
+accepts the change. **Reverted.** Options:
+
+- A — email + Privy test accounts (documented default; needs O-PRIVY-TEST)
+- B — EVM-wallet SIWE (product change; owner accept)
+- C — local test JWT issuer on disposable Convex only (E2E unblock; never prod)

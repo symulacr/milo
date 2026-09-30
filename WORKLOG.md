@@ -10,3 +10,10 @@ D1c | pi_3ULApvIDa2vgC4L910VVRFbO inbox row dedup
 D1d | stripeSettlement:run deployed | function-spec
 D2a | compose healthy | wallet sync blocked B-D2A-01
 D7 | PITCH deck video submission | files
+
+## 2026-09-30 R1 integrity repairs
+- Revoked mis-issued stage/demo|mvp|production tags (weak gate arms). Logged in STAGE-LOG.md.
+- Rebuilt scripts/gates/gate.sh check sets: prototype 8, demo 9, mvp 12, production 9 (substance).
+- gate-selftest.sh: 11 mutations must FAIL; all OK.
+- R7: reverted Privy SIWE login to documented email model; OWNER-QUEUE O-PRIVY-AUTH.
+- Honest stage at HEAD 3f5770d: PROTOTYPE (higher tags suppressed until R2 audit).

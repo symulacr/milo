@@ -2,6 +2,8 @@
 
 | ID | DECISION | WHY OWNER-ONLY | OPTIONS | IMPACT | BLOCKING |
 |---|---|---|---|---|---|
+| O-PRIVY-AUTH | accept/reject SIWE login change | product auth policy | A email+test accounts / B SIWE / C local test issuer | D3b D3d E2E | yes for demo E2E |
+| O-PRIVY-TEST | enable Privy test accounts | owner Dashboard only | enable / stay off | blocks D3b/D3d/D3e/E2E-01 | yes for demo E2E |
 | O-PUSH | push to symulacr/milo | remote write | push / wait | public tip | no |
 | O-HOST | public demo hosting | prod deploy | vercel / other | judge URL | no |
 | O-LIVE-STRIPE | Stripe live mode | money | stay test | prod payments | yes for PR |
