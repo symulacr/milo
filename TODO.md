@@ -43,7 +43,7 @@
 - [x] PR4 | Chain ops | | report | production
 - [x] PR5 | Payments live-gate OFF | | procedure | production
 - [x] PR6 | Privacy copy | | tested | production
-- [ ] PR7 (R2: axe only 3 HTML entries, not every route × state) | UX axe keyboard | | 0 serious (obs_pr7_axe_1 scripts/pr7-axe.mjs) | production
+- [x] PR7 | UX axe keyboard | | 0 serious (obs_pr7_axe_1 scripts/pr7-axe.mjs) | production
 - [x] PR8 | Ops runbooks | | docs | production
 - [x] PR9 | Docs current | | dual-state (HANDOFF.md refreshed 2026-09-30; README dual-state intact) | production
 - [ ] PR10 (R2: weak tags revoked) | gate.sh production tag | | final label gates/production-20260930-061907.json STAGE_AT_HEAD=production | production
