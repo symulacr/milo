@@ -7,13 +7,13 @@
  * - appendFileSync trail so progress is never lost to stdout buffering
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
-import { intentExpiry } from "./tx.mjs";
 import { installFeeMath, localFixedFeeConfig } from "./fee-math.mjs";
+import { intentExpiry } from "./tx.mjs";
 
 const TRAIL = "/tmp/d2a-happy-trail.jsonl";
 mkdirSync("/tmp/d2a-happy-run", { recursive: true });
@@ -29,7 +29,10 @@ const fail = (error) => {
   emit("failed", {
     ...errorDiagnostics(error),
     message: (error && error.message) || String(error),
-    stack: error && error.stack ? error.stack.split("\n").slice(0, 8).join(" | ") : null,
+    stack:
+      error && error.stack
+        ? error.stack.split("\n").slice(0, 8).join(" | ")
+        : null,
   });
   process.exit(1);
 };
@@ -135,7 +138,11 @@ async function main() {
   const network = new Uint8Array(32);
   network.set(new TextEncoder().encode("undeployed"));
   const nonce = bytes32();
-  const secrets = { buyer: bytes32(), merchant: bytes32(), operator: bytes32() };
+  const secrets = {
+    buyer: bytes32(),
+    merchant: bytes32(),
+    operator: bytes32(),
+  };
   const terms = {
     serviceVersion: 1n,
     packQuantity: 1n,
@@ -153,9 +160,24 @@ async function main() {
     network,
     orderNonce: nonce,
     termsCommitment: pureCircuits.hashTerms(network, nonce, terms),
-    buyerCommitment: pureCircuits.hashCapability(network, nonce, Role.BUYER, secrets.buyer),
-    merchantCommitment: pureCircuits.hashCapability(network, nonce, Role.MERCHANT, secrets.merchant),
-    operatorCommitment: pureCircuits.hashCapability(network, nonce, Role.OPERATOR, secrets.operator),
+    buyerCommitment: pureCircuits.hashCapability(
+      network,
+      nonce,
+      Role.BUYER,
+      secrets.buyer,
+    ),
+    merchantCommitment: pureCircuits.hashCapability(
+      network,
+      nonce,
+      Role.MERCHANT,
+      secrets.merchant,
+    ),
+    operatorCommitment: pureCircuits.hashCapability(
+      network,
+      nonce,
+      Role.OPERATOR,
+      secrets.operator,
+    ),
     acceptanceDeadline: now + 3600n,
     deliveryDeadline: now + 7200n,
     reviewDeadline: now + 10800n,
@@ -172,7 +194,10 @@ async function main() {
   const circuits = Object.keys(contract.provableCircuits).sort();
   const zkConfigProvider = new NodeZkConfigProvider(artifacts);
   const verifierKeys = await zkConfigProvider.getVerifierKeys(circuits);
-  const publicDataProvider = indexerPublicDataProvider(env.indexer, env.indexerWS);
+  const publicDataProvider = indexerPublicDataProvider(
+    env.indexer,
+    env.indexerWS,
+  );
   const proof = httpClientProofProvider(env.proofServer, zkConfigProvider, {
     timeout: env.timeoutMs,
   });
@@ -235,10 +260,18 @@ async function main() {
     const signed = await funder.wallet.signRecipe(recipe, (payload) =>
       funder.unshieldedKeystore.signData(payload),
     );
-    const fundingId = await funder.submitTx(await funder.wallet.finalizeRecipe(signed));
+    const fundingId = await funder.submitTx(
+      await funder.wallet.finalizeRecipe(signed),
+    );
     emit("submitted", { txId: fundingId });
-    emit("funding-finalized", publicReceipt(await publicDataProvider.watchForTxData(fundingId)));
-    await waitState(buyer, (state) => (state.unshielded.balances[night] ?? 0n) > 0n);
+    emit(
+      "funding-finalized",
+      publicReceipt(await publicDataProvider.watchForTxData(fundingId)),
+    );
+    await waitState(
+      buyer,
+      (state) => (state.unshielded.balances[night] ?? 0n) > 0n,
+    );
     await tk.waitForFunds(buyer.wallet, env, false, buyer.unshieldedKeystore);
     await waitState(buyer, (state) => state.dust.balance(new Date()) > 0n);
 
@@ -308,7 +341,9 @@ async function main() {
       signingKey,
       submit: async (unprovenTx) => {
         const raw = await submitTx(providers, { unprovenTx });
-        return typeof raw === "string" && !raw.startsWith("0x") ? `0x${raw}` : raw;
+        return typeof raw === "string" && !raw.startsWith("0x")
+          ? `0x${raw}`
+          : raw;
       },
       observe: (address, blockHash) =>
         blockHash
@@ -322,7 +357,10 @@ async function main() {
       onDeployed: async ({ address: landed }) => {
         privateStateProvider.setContractAddress(landed);
         for (const actor of ["buyer", "merchant", "operator"])
-          await privateStateProvider.set(`happy-${actor}`, privateStateFor(actor));
+          await privateStateProvider.set(
+            `happy-${actor}`,
+            privateStateFor(actor),
+          );
       },
     });
     const address = receipt.address;
@@ -341,7 +379,10 @@ async function main() {
     });
 
     step("handles");
-    const compiledContract = CompiledContract.make("milo-order", generated.Contract).pipe(
+    const compiledContract = CompiledContract.make(
+      "milo-order",
+      generated.Contract,
+    ).pipe(
       CompiledContract.withWitnesses(witnesses),
       CompiledContract.withCompiledFileAssets(artifacts),
     );
@@ -365,10 +406,34 @@ async function main() {
       deliveryHex: Buffer.from(delivery).toString("hex"),
     });
     const happy = [
-      { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [], pid: "happy-buyer" },
-      { circuit: "accept", actor: "merchant", revision: 1n, args: () => [], pid: "happy-merchant" },
-      { circuit: "submitDelivery", actor: "merchant", revision: 2n, args: () => [delivery], pid: "happy-merchant" },
-      { circuit: "approve", actor: "buyer", revision: 3n, args: () => [delivery], pid: "happy-buyer" },
+      {
+        circuit: "reserve",
+        actor: "buyer",
+        revision: 0n,
+        args: () => [],
+        pid: "happy-buyer",
+      },
+      {
+        circuit: "accept",
+        actor: "merchant",
+        revision: 1n,
+        args: () => [],
+        pid: "happy-merchant",
+      },
+      {
+        circuit: "submitDelivery",
+        actor: "merchant",
+        revision: 2n,
+        args: () => [delivery],
+        pid: "happy-merchant",
+      },
+      {
+        circuit: "approve",
+        actor: "buyer",
+        revision: 3n,
+        args: () => [delivery],
+        pid: "happy-buyer",
+      },
     ];
 
     const receipts = [];
@@ -438,13 +503,16 @@ async function main() {
         txId: item.txId,
         txHash: item.txHash,
         indexed: Boolean(found?.transactions?.length),
-        blockHeight: found?.transactions?.[0]?.block?.height ?? item.blockHeight,
+        blockHeight:
+          found?.transactions?.[0]?.block?.height ?? item.blockHeight,
       });
     }
     const state = await publicDataProvider.queryContractState(address);
     const ops = state
       .operations()
-      .map((name) => (typeof name === "string" ? name : new TextDecoder().decode(name)))
+      .map((name) =>
+        typeof name === "string" ? name : new TextDecoder().decode(name),
+      )
       .sort();
     const ledger = generated.ledger(state.data);
 
@@ -454,7 +522,8 @@ async function main() {
       tipHash: tip?.block?.hash ?? null,
       contractActionIndexed: Boolean(action?.contractAction),
       actionTxHash: action?.contractAction?.transaction?.hash ?? null,
-      actionBlockHeight: action?.contractAction?.transaction?.block?.height ?? null,
+      actionBlockHeight:
+        action?.contractAction?.transaction?.block?.height ?? null,
       stateBytes: action?.contractAction?.state?.length ?? 0,
       operations: ops,
       txReads,

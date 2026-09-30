@@ -3,18 +3,18 @@
  * Stripe HMAC webhook ingress + authenticated private-file transport.
  * Specs: FINDINGS-LEDGER F-04/F-13, W2-A2, W2-A3, IMPLEMENTATION-WB-stripe.
  */
-import {
-  httpActionGeneric,
-  httpRouter,
-  makeFunctionReference,
-} from "convex/server";
-import { v } from "convex/values";
 
 // HMAC-SHA256 via @noble/hashes (maintained). WebCrypto is preferred in
 // verifyStripeSignatureAsync; the sync path exists for tests and non-async call
 // sites. Convex default runtime allows pure-JS packages (no "use node").
 import { hmac } from "@noble/hashes/hmac";
 import { sha256 } from "@noble/hashes/sha256";
+import {
+  httpActionGeneric,
+  httpRouter,
+  makeFunctionReference,
+} from "convex/server";
+import { v } from "convex/values";
 
 function utf8Bytes(s: string): Uint8Array {
   return new TextEncoder().encode(s);

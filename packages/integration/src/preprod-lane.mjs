@@ -79,7 +79,6 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { proofCircuits } from "./artifacts.mjs";
-import { installFeeMath } from "./fee-math.mjs";
 import {
   DustSeedError,
   DustSeedTimeoutError,
@@ -87,6 +86,7 @@ import {
   encodeMerkleRoot,
   seedDustState,
 } from "./dust-seed.mjs";
+import { installFeeMath } from "./fee-math.mjs";
 import { createHttpSubmitter } from "./http-submit.mjs";
 import { miloOrder, run } from "./preprod-actions.mjs";
 import {
