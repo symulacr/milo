@@ -79,6 +79,7 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { proofCircuits } from "./artifacts.mjs";
+import { installFeeMath } from "./fee-math.mjs";
 import {
   DustSeedError,
   DustSeedTimeoutError,
@@ -589,6 +590,16 @@ async function loadWalletSdk(config) {
   );
   setNetworkId(config.networkId);
   const ledger = await import("@midnight-ntwrk/midnight-js-protocol/ledger");
+  // R8 product fix: price feesWithMargin on eraseProofs() copies so proved call
+  // txs cannot spin the WASM fee path (local-fixed fee is refused on preprod).
+  const feeMath = installFeeMath({
+    env: process.env,
+    networkId: config.networkId,
+    Transaction: ledger.Transaction,
+  });
+  if (feeMath.mode !== "erase-proofs") {
+    throw new Error("preprod forbids local-fixed fee math");
+  }
   const addressFormat = await import(
     "@midnight-ntwrk/wallet-sdk-address-format"
   );
