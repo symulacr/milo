@@ -12,7 +12,7 @@ print(f"verify blocks {len(blocks)}")
 fail=0
 for i,b in enumerate(blocks):
     print(f"--- block {i} ---")
-    r=subprocess.run(["bash","-c",b], capture_output=True, text=True, timeout=300)
+    r=subprocess.run(["bash","-ec",b], capture_output=True, text=True, timeout=300)
     print(r.stdout[-500:])
     if r.returncode!=0:
         print(r.stderr[-500:])
