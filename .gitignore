@@ -168,3 +168,6 @@ gates/*.json
 !/e2e/**
 !/clickmap-harness/
 !/clickmap-harness/**
+# Audit discovery tables are tracked (R9/M2)
+!/audit/
+!/audit/**

@@ -35,3 +35,7 @@ D7 | PITCH deck video submission | files
 - A: R8 fee-math, R6 signed keys, R9 table, D2c attempt (DUST blocker).
 - B: R7C test issuer + E2E-01 scaffold + CLICK-MAP verify.
 - D2c marked blocked B-D2C-01 (DUST=0). Fee spin fixed.
+
+## 2026-09-30 M2 complete
+- A2 local-circuit-sweep: 14/14 circuits, 10 instances, 30 SucceedEntirely rows.
+- Evidence: obs_m2_circuit_sweep_1 · M2-circuit-table.md

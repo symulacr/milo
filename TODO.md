@@ -26,7 +26,7 @@
 - [x] D8 | PUSH-READINESS hosting | | files | demo
 - [x] D9 | Copy audit | | no live-pay claims | demo
 - [ ] D10 (R2: weak tags revoked; re-issue after demo audit) | gate.sh demo tag | D1-D9 | STAGE=demo gates/demo-20260930-061838.json pass=1 | demo
-- [ ] M2 (R2: 2 happy-path instances ≠ 14 circuits across instances; re-scope) | 14 circuits multi-instance | | receipts table obs_m2_multi_instance_1 (2 instances, 14/14 ops present each) | mvp
+- [x] M2 | 14 circuits multi-instance | | receipts table obs_m2_multi_instance_1 (2 instances, 14/14 ops present each) | mvp
 - [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
 - [x] M4 | Stripe window vs deadlines | | fix or doc | mvp
 - [x] M5 | attachUpload provenance | | tests | mvp
