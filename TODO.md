@@ -132,4 +132,4 @@
 | L-29 | clean-clone P5 | G0 |
 | L-30 | secret scan P6 | G0 |
 
-- [ ] CV1 | fix 12 fail 8 errors in full coverage suite | | bun test --coverage | prototype
+- [ ] CV1 (env-gated: host node lacks registerHooks; use scripts/with-bun.sh Node 24.20) | fix 12 fail 8 errors in full coverage suite | | bun test --coverage | prototype

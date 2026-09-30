@@ -24,3 +24,9 @@ D7 | PITCH deck video submission | files
   M8 (owner), D10/M13/PR10 (tags revoked), M2 (re-scope), D2c (need Preprod tx hashes).
 - Report: audit/discovery/R2-TODO-AUDIT.md
 - Counts after audit: see script output in HANDOFF.
+
+## 2026-09-30 S0/S1 coordinator
+- Scripts: next-task.sh, todo-check.sh, ownership-check.sh, net-health.sh, todo_lib.py, master-ledger-rebuild.sh.
+- Claims: A wt/R6-D2c (D2c/R6/R8/R9) · B wt/R7C-e2e (R7C/E2E) · disjoint ownership.
+- Bundle gzip/brotli measured. Full coverage suite env-gated (registerHooks / isolated Node).
+- next-task prints D2c until Agent A lands Preprod hashes.
