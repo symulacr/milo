@@ -86,7 +86,7 @@
 - [x] E-PR5 | Live gate OFF procedure | | gated (release-flags + PAYMENTS-LIVE-GATE.md; no liveMode true) | production
 - [x] E-PR6 | Privacy copy tested | | green (privacy-invariants + web suite) | production
 - [x] E-PR7 | Axe every route + keyboard + 375 | | 0 serious (obs_pr7_axe_all_routes_1 incl 375; keyboard residual) | production
-- [ ] E-PR8 | Ops runbooks SBOM SLO | | docs | production
+- [x] E-PR8 | Ops runbooks SBOM SLO | | docs (RUNBOOKS SBOM+SLO draft) | production
 - [ ] E-D6 | Timed judge clone | | timed | demo
 - [ ] E-D7 | PITCH refresh | U8 | files | demo
 
