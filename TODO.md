@@ -29,8 +29,8 @@
 - [ ] M2 | 14 circuits multi-instance | | receipts table | mvp
 - [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
 - [x] M4 | Stripe window vs deadlines | | fix or doc | mvp
-- [ ] M5 | attachUpload provenance | | tests | mvp
-- [ ] M6 | recovery-kit ops UI | | wired or justified | mvp
+- [x] M5 | attachUpload provenance | | tests | mvp
+- [x] M6 | recovery-kit ops UI | | wired or justified | mvp
 - [x] M7 | Auth inventory tests | | per route | mvp
 - [ ] M8 | Lace or owner gap | | evidence | mvp
 - [x] M9 | Privacy invariant tests | | green | mvp

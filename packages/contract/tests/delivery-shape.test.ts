@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   CompactTypeBytes,
   CompactTypeUnsignedInteger,
 } from "@midnight-ntwrk/compact-runtime";
+import { deliveryCommitment as deliveryCommitmentNode } from "../../backend/src/delivery-commitment.mjs";
 import {
   deliveryCommitment,
   deliveryCommitmentBytes32,
   submitDeliveryArgs,
 } from "../../backend/src/delivery-policy";
-import { deliveryCommitment as deliveryCommitmentNode } from "../../backend/src/delivery-commitment.mjs";
 
 const digests = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
 const files = digests.map((sha256, index) => ({
@@ -41,7 +41,9 @@ describe("deliveryCommitment equals on-chain submitDelivery arg shape", () => {
     expect(args.commitment.byteLength).toBe(32);
 
     // The on-chain commitment is exactly the deliveryCommitment digest bytes.
-    const expected = createHash("sha256").update(digests.join(""), "utf8").digest();
+    const expected = createHash("sha256")
+      .update(digests.join(""), "utf8")
+      .digest();
     expect(Array.from(args.commitment)).toEqual(Array.from(expected));
     expect(Buffer.from(args.commitment).toString("hex")).toBe(manifest);
   });
@@ -68,7 +70,9 @@ describe("deliveryCommitment equals on-chain submitDelivery arg shape", () => {
       "export circuit submitDelivery(expectedRevision: Uint<64>, commitment: Bytes<32>)",
     );
     expect(orderCompact).toContain("deliveryCommitment = c;");
-    expect(orderCompact).toContain("export ledger deliveryCommitment: Bytes<32>;");
+    expect(orderCompact).toContain(
+      "export ledger deliveryCommitment: Bytes<32>;",
+    );
   });
 
   test("generated TS surface types commitment as Uint8Array (Bytes<32>)", () => {

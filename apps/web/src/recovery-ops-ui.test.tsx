@@ -66,7 +66,7 @@ describe("M6: seven recovery-kit ops are wired or justified", () => {
       const entry = ops.find((row) => row.op === op || row.op.startsWith(op));
       expect(entry, `missing inventory row for ${op}`).toBeTruthy();
       expect(entry?.detail.length ?? 0).toBeGreaterThan(20);
-      expect(["ui-wired", "justified"]).toContain(entry?.disposition);
+      expect(["ui-wired", "justified"]).toContain(entry?.disposition ?? "");
     }
   });
 
@@ -81,7 +81,9 @@ describe("M6: seven recovery-kit ops are wired or justified", () => {
     ).filter((row) => row.disposition === "justified");
     expect(justified.length).toBeGreaterThan(0);
     for (const row of justified) {
-      expect(row.detail).toMatch(/browser UI|no browser|not wired|Blocked|gated/i);
+      expect(row.detail).toMatch(
+        /browser UI|no browser|not wired|Blocked|gated/i,
+      );
     }
   });
 
