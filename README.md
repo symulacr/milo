@@ -173,3 +173,19 @@ any wallet whose seed was disclosed. sample receipts are not proofs.
 
 mit, see [LICENSE](LICENSE). third-party material keeps its own license, see
 [third-party notices](THIRD_PARTY_NOTICES.md). the spec corpus is unpublished.
+
+
+## Quick start (verified)
+
+```bash verify
+test -f package.json
+test -f packages/contract/src/order.compact
+test -f .env.example
+```
+
+## How to test
+
+```bash verify
+bun install --frozen-lockfile
+bun run typecheck
+```
