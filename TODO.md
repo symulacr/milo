@@ -93,7 +93,7 @@
 
 ## Marker scan (§2.3) 2026-09-30
 
-- [ ] MK1 | map/remove 5 source markers | | rg markers; 2 ts-expect-error tests, 3 biome-ignore with reasons | prototype
+- [x] MK1 | map/remove 5 source markers (mapped: 2 ts-expect-error tests, 3 biome-ignore with reasons) | | rg markers; 2 ts-expect-error tests, 3 biome-ignore with reasons | prototype
 - [x] MK0 | marker scan run | | /tmp/markers.txt count 5 | prototype
 
 
