@@ -22,7 +22,7 @@
 - [ ] D4 | Negatives ×3 | D3d | results | demo
 - [ ] D5 | Independent receipts re-query | | verifier signed | demo
 - [ ] D6 | Judge clone ≤10 steps | | timed | demo
-- [ ] D7 | PITCH deck video submission | | files | demo
+- [x] D7 | PITCH deck video submission | | files (PITCH.md, pitch/deck 10 SVG + PDF, VIDEO-SCRIPT-90S.md, SUBMISSION-UPDATE v2) | demo
 - [ ] D8 | PUSH-READINESS hosting | | files | demo
 - [ ] D9 | Copy audit | | no live-pay claims | demo
 - [ ] D10 | gate.sh demo tag | D1-D9 | STAGE=demo | demo
