@@ -53,8 +53,8 @@
 
 - [x] R1 | Stage tags revoked + gate.sh full sets + self-tests | | STAGE-LOG.md; prototype 8/8; demo 9/9; mvp 12/12; production 9/9; selftest 11/11 | prototype
 - [x] R2 | TODO audit re-run every checked acceptance | R1 | unchecked-by-audit list | prototype
-- [ ] R3 | Evidence scripts under evidence/scripts/ | R2 | cited IDs reproduce | prototype
-- [ ] R4 | Stripe HMAC → WebCrypto/@noble + RFC4231 + differential | R1 | KATs + 10k diff | prototype
+- [x] R3 | Evidence scripts under evidence/scripts/ | R2 | cited IDs reproduce | prototype
+- [x] R4 | Stripe HMAC → WebCrypto/@noble + RFC4231 + differential | R1 | KATs + 10k diff | prototype
 - [ ] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
 - [ ] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
 - [ ] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
@@ -63,7 +63,7 @@
 
 ## Phase U — dependency / dead-code / LOC (start after R2 baseline)
 
-- [ ] U0 | PERF-BASELINE.md | | LOC deps bundle times | prototype
+- [x] U0 | PERF-BASELINE.md | | LOC deps bundle times | prototype
 - [ ] U1 | Dependency research log | U0 | RESEARCH-LOG rows | prototype
 - [ ] U2 | Midnight cohort policy COHORT-UPGRADE.md | U1 | go/no-go | prototype
 - [ ] U3 | Bump non-cohort deps by risk group | U2 | outdated empty or justified | prototype
