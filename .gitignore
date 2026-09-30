@@ -151,3 +151,4 @@ gates/*.json
 !/BLOCKERS.md
 !/OWNER-QUEUE.md
 !/HANDOFF.md
+!/JUDGE-STEPS.md
