@@ -162,3 +162,6 @@ gates/*.json
 # Evidence scripts are tracked (R3)
 !evidence/
 !evidence/**
+# Audit discovery tables are tracked (R9/M2)
+!/audit/
+!/audit/**

@@ -1,0 +1,607 @@
+{
+  "evidenceId": "obs_m2_circuit_sweep_1",
+  "at": "2026-09-30T15:21:32.002Z",
+  "networkId": "undeployed",
+  "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+  "artifactSetSha256": "13bc8bf4ee518fa678b3f4adccdedbd05e1120473ce79594c8dbb2b4c840a944",
+  "maintenanceKeyPath": "/tmp/m2-circuit-sweep/maintenance-key.json",
+  "feeMathMode": "local-fixed",
+  "scenarios": [
+    {
+      "scenario": "happy-path",
+      "address": "942db00ad83dd5d31921b8c0550f421834e642d832255ab71e0e747ab5fc60f8",
+      "deploy": {
+        "txId": "00c1409f13ee6d30ff321979f24272d99dd7c484e9738134ee792811f19ec8614a",
+        "txHash": "3b443ea39842826a22e6fffcced8619e071d39150ad22b78f2f30bd1b2dc55be",
+        "blockHeight": 8593
+      },
+      "inserts": [
+        {
+          "txId": "003d3cb12352a583f3b3703d54c36c18a11c8d38860e228e841151885762c5cec4",
+          "txHash": "d864ec36943fbb9d10461b03b33b213249c07f5d0529f3299eff2a3a91a94909",
+          "blockHeight": 8596,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "happy-path",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "00696775ef87dd5148641efda6d1e081fa9c5f64a0d482d9c525c2058a02b56c13",
+          "txHash": "b4a03403327f73b29313224041a51a7dd4aed82e0fab776b6668c4e513e23601",
+          "blockHash": "db5bb4cc20b6b44d5dbdea51031d11ca78bb40c0e61f20042f8dc1ac1738b926",
+          "blockHeight": 8601,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "happy-path",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "00339bf0bbd2aaa5bde4a99f0bfe07b4fd793d09912908754e7c5763326c696645",
+          "txHash": "ee7582e0308bb0f86be5fc0166af73f9995770532c1da5f949083830c9f6d4cd",
+          "blockHash": "35f813a886e3b94fee6e156d6adcb476f20a59160ebd627a5042e877b3fcd915",
+          "blockHeight": 8606,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "happy-path",
+          "circuit": "submitDelivery",
+          "actor": "merchant",
+          "revision": "2",
+          "txId": "0052d1b1fba643d2f506eaad992e7c4872170c92305ca94b8a38a00d66d95e1e66",
+          "txHash": "139bfeec29185c17abbeb8a6eda96d9958a047867c1225da0efe591786f54223",
+          "blockHash": "49f0c58b237b1e808415126336620ef2c83faa135f16bf81438c7b21c272c246",
+          "blockHeight": 8610,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "happy-path",
+          "circuit": "approve",
+          "actor": "buyer",
+          "revision": "3",
+          "txId": "003b6735185a364438d13cdf159639b18624454f344521d5ae29eee673a49b61d5",
+          "txHash": "58e16030019624ac1e3cbe319aecbd8eb496de197e7203320decc6f578db1773",
+          "blockHash": "10ed6f9cc23b080ce7d8326f5bef895bbe73fb2277adc3a39b56624f7abb933d",
+          "blockHeight": 8615,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "cancel",
+      "address": "4e6febce1ccbf0be48d8906d446e83df69cdc9509cdab4be5b4b36533ee47830",
+      "deploy": {
+        "txId": "003e8567a29faf63693f8d2e11c4054682fccff4c014d9af1478ceb303df5888dc",
+        "txHash": "62600bb5ca64d8c0ca8fb74be3be113972d5d24f518a27fa6df45f60583324ed",
+        "blockHeight": 8618
+      },
+      "inserts": [
+        {
+          "txId": "008d2d9826eb2ac9734d79a57ccde397456abe218c3354ac65fbdeda4319f736bf",
+          "txHash": "dc761c20ab9f3dc0c5eba3829f1be4644cc90a70b5ac9843283ef521f14e6702",
+          "blockHeight": 8621,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "cancel",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "006106e2cbc171798501c84723b1bf32bdec2bc6eae5f62f14555330d16f66b873",
+          "txHash": "32d8cbbe0cae8c995dc3e902927afc4ecef13b0c7ba7d4cca4085b5ca2d2e916",
+          "blockHash": "26ba7d00487ee9b26f9dca68a876cb8865a147ffa72f2fde716e5e061f204456",
+          "blockHeight": 8625,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "cancel",
+          "circuit": "cancelReserved",
+          "actor": "buyer",
+          "revision": "1",
+          "txId": "00c4b20a77c3b1825e3579c34d4d5655226ca2d88d843c69160955f59e07287403",
+          "txHash": "58388a9ef7595604f35550f4e230e61528d6a9a1e9869b7f5270e9622716afb9",
+          "blockHash": "a48ab7fc714b3e75e2a2408cc460ebdcd5909f99776f45bc1878624aaf47ba75",
+          "blockHeight": 8629,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "decline",
+      "address": "13fb55f01110c8a57fe1b0afc8f5ebacd987839e85c757d8c585c01633063b3f",
+      "deploy": {
+        "txId": "007b7d1669083868179a88590851e697134c21ba39a911f1bd1cf5d0ae617fbdf0",
+        "txHash": "f689f54c083db811b57b7521d1e3b5c2f2cb485da8cd1af1fa032d2891a48992",
+        "blockHeight": 8632
+      },
+      "inserts": [
+        {
+          "txId": "0084b1e6e54e03535eabc8167f29a7cec00242e24437be1c88df0b246dbf6415aa",
+          "txHash": "27a1bf96d67b92883c6866d0a2966780a7c1ec6694c7b76555805d9d3b412dfc",
+          "blockHeight": 8635,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "decline",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "00527b97cfa9f4d50ead035a6fdba47769ff6966ecc09f9beb91a52e746dbb0eb4",
+          "txHash": "3ee267314c48db93256a21f6bd1dbfc41efab6c247c8c8d9b2974d5833e607b5",
+          "blockHash": "5579513966b9a8c866cfd4afccbcebaba57800d0f06452cc99575c5ff9429f08",
+          "blockHeight": 8639,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "decline",
+          "circuit": "decline",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "003302e6870519833d8b3847d87bae09c156ced9d10a8afec482dc99e173353a12",
+          "txHash": "bae7f336c45a1f69f6f42f5b95d69065871ea293f543cdff8c4c1875319b4d38",
+          "blockHash": "0b670d83a5783b93ab091dda5ea46cedffbd5b5862260a0153254d63a9b2f3f2",
+          "blockHeight": 8643,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "dispute-buyer",
+      "address": "cc34a77c7e1ec43f6a5e41ce0414d1a43ddc6514f430b38c4370d88e6223a524",
+      "deploy": {
+        "txId": "003aad25d12acd00af9a61a56d25e10da072d3badf639a9a5e0c44a9dcaaf20810",
+        "txHash": "da429fb0dde1a0b53297ad4de8e4614a554939271ae72bc8846fd155f5df9813",
+        "blockHeight": 8646
+      },
+      "inserts": [
+        {
+          "txId": "002511e3f2804047e551fe907c0851a3b66272bd9dcb64d6bb279c10488d0247b3",
+          "txHash": "5da479e9ec3e0897ea9af3698aba194d34b8e3aa5c4eeeef04396facc1350be3",
+          "blockHeight": 8649,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "dispute-buyer",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "003a1afa41d5da75769551276fe96846fce3a0d600e564200e2c65db26e91996e4",
+          "txHash": "5dea426b1d188a9aabbe9282f684107248d24e8a4a567ded6c199b26de4a38b2",
+          "blockHash": "8e7773002cd08d912d7d3722c3d5c90e0ac4a1c707f7d569a6a8d0790bef1aa4",
+          "blockHeight": 8653,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-buyer",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "004b86a4bf9ac5cf54db309cce3c0ad5de8a55d66cd1cf462c9dfd3386455e14ce",
+          "txHash": "ef20b44e5792d5ffd0d39b4210c606f37e43b479cd53ecab2f85b435b2e1b180",
+          "blockHash": "8bd3abd20646f375b9c812e50d020875450f7d2130e9b06024dde93e23a1817d",
+          "blockHeight": 8657,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-buyer",
+          "circuit": "disputeBuyer",
+          "actor": "buyer",
+          "revision": "2",
+          "txId": "00699763b8129553d1b6c37654aeb48b843e13fdaf423149fe371bf4460b760c21",
+          "txHash": "ae6865875f0315de7b497fcf77e370b1dd9899941d2b1722a26b30fbd3f6fd3f",
+          "blockHash": "015cf7dcc5a56d5c2eb01ef49d549a9d22e6d50be93ea9bdf2a1fec579a32273",
+          "blockHeight": 8661,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-buyer",
+          "circuit": "resolve",
+          "actor": "operator",
+          "revision": "3",
+          "txId": "00d9ba5e5b85e4c15bf1ab6bc5774239a3944346d95d1d468104c022660bc58fbd",
+          "txHash": "f1906c27c828fd50a883c20e77eaa713a25478865760446160f018ea70c7032f",
+          "blockHash": "2614da70c129b1399bcb535a1c96abb4214e18a6443f6bde4f38ec0dc9236801",
+          "blockHeight": 8665,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "dispute-merchant",
+      "address": "d8aaf53e27c7df3a7341975a15115076fb82ebcb7af10d136a6802cab1d97ae1",
+      "deploy": {
+        "txId": "00170957a1402ac4801223ab30ad1fb46d49254207a601bd44e4c065d97e340ee2",
+        "txHash": "f2c34ffd26cbf35794e48bc216edfde0d25c715e588dd5bdc0fe4eef4549244a",
+        "blockHeight": 8668
+      },
+      "inserts": [
+        {
+          "txId": "00e360e36cfb0a88c079a75d23ea82aae1b52b4ec2cdfa83e2801450798ca1cb4f",
+          "txHash": "cf856b5cbaee4d2138b14a498d1686e403c30a9ead85193de7e9e798c18eb3ab",
+          "blockHeight": 8671,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "dispute-merchant",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "005d9b26d3f36bf1fed1177f92a81d7bbcce11d7bd5badaaa1d0466362be4f379c",
+          "txHash": "b33ab600765f8b966f179a5b18b08b70190a0dc0c43b711038eabb19653c6daa",
+          "blockHash": "0b34d972b058c18c50b84250a10cd476e1acb4883ab8c61ff2750c2c1ca3789e",
+          "blockHeight": 8675,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-merchant",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "00854b78a5de62d7087f4e1d8ae9dd1d833e8a9bd4afb3b85d79c1267b5309e70e",
+          "txHash": "13ad7415cca203e95fc9ec0b15679d208fd73607fa81a8e8be6dfc3357ed9954",
+          "blockHash": "2cc336bfee150a9215815512203ea8f2be95e302b62f3a132e9e046c8b63648b",
+          "blockHeight": 8679,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-merchant",
+          "circuit": "disputeMerchant",
+          "actor": "merchant",
+          "revision": "2",
+          "txId": "004720bcc48b6357bd990392281525fa47438854a10309020f0cff8598959139b5",
+          "txHash": "c14bb8ece6b0a676a9c5e5e763849a880afe10e92bfc7b4823101ba6e83e3423",
+          "blockHash": "e8400f41d34ee65cbcd9865545557469242127e19013d4a429a96b439f7476cc",
+          "blockHeight": 8682,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "dispute-merchant",
+          "circuit": "resolve",
+          "actor": "operator",
+          "revision": "3",
+          "txId": "00099b6ddaef93cb1e7cb72a36e0315d59c6a7a31629c30d108a6c155b32f117c7",
+          "txHash": "31172801398ddba6cf63d09a18a7ed2a2254a499811260043727130a0f108e13",
+          "blockHash": "b0730b2ac14d564fd0b500b957c441dc5df2adf27a05211a2cef17d8ae5ff98e",
+          "blockHeight": 8686,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "expire-bootstrap",
+      "address": "09927de272c7b012b2fefc2ff2890a542bdb8b792a22c6fba13229ee736450ee",
+      "deploy": {
+        "txId": "00e150f12a1c5bd604982e81764f38ee193d8816bad7205114ac1909db464e6008",
+        "txHash": "6b0c3478eb2b9aee86769b002933b207d9d5d9bab8279ed3dec5539b474d0220",
+        "blockHeight": 8714
+      },
+      "inserts": [
+        {
+          "txHash": "89e607e5803b724244f3cdee665017b14f245dc264132646493b4956ddfb9b34"
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "expire-bootstrap",
+          "circuit": "expireBootstrap",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "00d24fe980f83b37e580f78f21b9888590d6e7da1bfc6de26a6c628cc869d6f594",
+          "txHash": "d389b9a51c461668a60aa291aad6f9dc0ac498ddeea3e096552e934b7a87a9df",
+          "blockHash": "aa737d7f1e2d4f95811c064f12bdf52da0b37842b7d47a37c50da6e58b4432e1",
+          "blockHeight": 8721,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "expire-reserved",
+      "address": "ce879aef2e55ac0bdb02f145d447191159a2637fa421887bb02b4b63578d8d68",
+      "deploy": {
+        "txId": "005b41eadee37bf8d0064a097be1a2a86843b18bc727b9f2f107b58497613e1a99",
+        "txHash": "a1737b9c8d4da10facd686f2a8ab85dd265cd12fc87cb7361a3517301611d316",
+        "blockHeight": 8758
+      },
+      "inserts": [
+        {
+          "txHash": "74963f1f6e07b97746740ec385501b36a4e79a5654fb8a97a9d9705e935c7f81"
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "expire-reserved",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "009c04a9e18d77b78e564dbd874f6934fa503f8eb24cd0f69ab21aafc143c2a6c7",
+          "txHash": "1fbb942c0218e702f0561fa9840c6bff22a296375f7745e2c73a9968dfcc09ad",
+          "blockHash": "e42451a70e543cbe11e814d4bd0d1281e4868f204d90d4410cb924307af05002",
+          "blockHeight": 8766,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-reserved",
+          "circuit": "expireReserved",
+          "actor": "buyer",
+          "revision": "1",
+          "txId": "00bfc950e62344e2bcf5edc8fff2b8fb6207030fd5dd0f01177d9df9e722c5755f",
+          "txHash": "a63809497c3e2dfc2c11069b1a94a7d18655e0da1a6515a45367b7bd587ccc9a",
+          "blockHash": "16541fe3b158576a857f118b2a50df0c29992be89faf5511257e100598641b27",
+          "blockHeight": 8777,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "expire-undelivered",
+      "address": "d0a141b0ee496b7ff5d258dd5f150c5d93b16d208de981b66482120495bdc743",
+      "deploy": {
+        "txId": "00e2729773ef235049a628350fea5702a3b218a7e5790aec316b1b2cf3a41c8136",
+        "txHash": "1ac42747f45f8c16eab90844eb5c51534d37e63ac2e46a6b1f9f52ebe2897ec6",
+        "blockHeight": 8834
+      },
+      "inserts": [
+        {
+          "txId": "000363ae51f854cf997a4e6df9e92a7af2b1a840e050eba64c4c61245cbcf8840f",
+          "txHash": "c58789068b6293ab11896da79002197d40f5345e1153216b7a81885b74f57eb0",
+          "blockHeight": 8837,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "expire-undelivered",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "00454c7cc4401ed98a36ededca80ede1891230711548aac4c9c3986b8589ef1feb",
+          "txHash": "92569e27955bb1c00df828ba3cbba76952ad083a13f73b3684457334ec4d17e1",
+          "blockHash": "9a9e546c08013847e7718740dfc4128f3ff50a5eddbbf0323f2b78665400a5d4",
+          "blockHeight": 8841,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-undelivered",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "005584b9f0dab3c6c6d3ffffe69baced151e93f9c260452216e33de11e56a4b053",
+          "txHash": "358a68ed87730fd5809e8477fc42c84c46ed6186744e86e826024bcb5347ed8c",
+          "blockHash": "c52ed8effb7a9be76823f9b84f216695bf80291c02893f62c81a450dc04a27ef",
+          "blockHeight": 8845,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-undelivered",
+          "circuit": "expireUndelivered",
+          "actor": "buyer",
+          "revision": "2",
+          "txId": "000cd82ff266b4b0de9a2d722fbaf7ca2eee83bfca91c929eb8f362fcdb16e30b3",
+          "txHash": "6a4650db2bdc6177804a331fa1733bcf14c226a48ad65f9b6111de05538b8dbf",
+          "blockHash": "5f65a94a1aaf6a78f9fbce75cbb91d14c9db819293063be12d6030d480777fac",
+          "blockHeight": 8859,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "escalate-unreviewed",
+      "address": "046f9f3e584c75dbb6ff8799a7b659f0cbf57e5c659ca6d56cced965bb6572b3",
+      "deploy": {
+        "txId": "0081e10f85ff7da8374012e119bb216098231d9e2c671d68ecc35e0ab560c6b488",
+        "txHash": "0062ab523b61f53dae7b3fab3bee72c626dbb010ff8eb03456eb525c6bb93d1d",
+        "blockHeight": 8956
+      },
+      "inserts": [
+        {
+          "txId": "0002f0b0339a46276de49ad8800b5937ca335cec4077ae420b004c8f518f97cdb4",
+          "txHash": "9903b5e64318dd3b94407190e8f55d10c19ddf629c9637475db092561ac0cc15",
+          "blockHeight": 8959,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "escalate-unreviewed",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "0023aaa9e030276f3761b212dba8d180ef940c61209120fb8eb82018bcacc46e17",
+          "txHash": "1a07bd048ee1805782430c704314f8e14f113763b93746f5c98ba941d563aebf",
+          "blockHash": "5cd09f2281766a6942dc7c2396ade076bc60648d3f7c77b2d0cafcf356fa8206",
+          "blockHeight": 8964,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "escalate-unreviewed",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "005106e1d57bd970577a5718a50e6df05a0641be2b8d95acf9f9cf916453390147",
+          "txHash": "124baa8d890547b4b704bcd2e5d7d621e16f6fe77fc3d236ee6cb4476cf44b68",
+          "blockHash": "25fda4955da2f1c8312ebfb4893e4b64b17f2e8698f18e32bf6ec4eddd49fc47",
+          "blockHeight": 8968,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "escalate-unreviewed",
+          "circuit": "submitDelivery",
+          "actor": "merchant",
+          "revision": "2",
+          "txId": "00bca86a04dda279727d3cbd172fb3cb6720659eb9f2b6033965e17d738c62f9f2",
+          "txHash": "843b2f809d0bc329e1f91fa711334e9f93f76f169d4622d8bd6e258312404c4c",
+          "blockHash": "655f4c7dec342170813f2b0d351a3ad5ffdc22e9e89a7529c3c8d0a44b0a3be7",
+          "blockHeight": 8972,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "escalate-unreviewed",
+          "circuit": "escalateUnreviewed",
+          "actor": "buyer",
+          "revision": "3",
+          "txId": "007dee110b427f83c7b24244303342ef82f70a804a58b8347854171b7ac38938e1",
+          "txHash": "c2ddeec238c8dbd492e8be22d0ed4d518c0c5f00ca10e04bb62c7498629da5a3",
+          "blockHash": "155de3517d796cc6414ea02853cbe0343427b0ac252780617d584067c6e0e283",
+          "blockHeight": 9002,
+          "status": "SucceedEntirely"
+        }
+      ]
+    },
+    {
+      "scenario": "expire-dispute",
+      "address": "838c0beebf3536be2b3bf2f9cb89c26357403b773743df740c35c243c1f717ef",
+      "deploy": {
+        "txId": "00f656969f9bf06ced45dbb84f293b414511e9948fd63c91b269703df34d6be9a2",
+        "txHash": "d7f2539979cd90e49ac847309e95d901734837485d157dc7d609b6f036c13c8b",
+        "blockHeight": 9005
+      },
+      "inserts": [
+        {
+          "txId": "00b4780f2a1ce29e7702982e371754f81a25670a248fc91d68b7b62b7a44485469",
+          "txHash": "323d17f78ad487d566d1955eee4fdd054a215a37d61e076f1c0513d094826875",
+          "blockHeight": 9008,
+          "circuits": [
+            "expireBootstrap",
+            "expireDispute",
+            "expireReserved",
+            "expireUndelivered",
+            "reserve",
+            "resolve",
+            "submitDelivery"
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "scenario": "expire-dispute",
+          "circuit": "reserve",
+          "actor": "buyer",
+          "revision": "0",
+          "txId": "000a958c48e44f72ee620e296b6dc5da573782ae2fc13788398935de1da6ad7714",
+          "txHash": "8e2804ce0dd3ab28f8d9845a59db7a95dd9fc3c7829ac975357d0e52d638eb34",
+          "blockHash": "e9b617d6f8b092ee9eb2b21ca79ef137c2b3efe40bbdc556add060654381c6c0",
+          "blockHeight": 9013,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-dispute",
+          "circuit": "accept",
+          "actor": "merchant",
+          "revision": "1",
+          "txId": "00ce391f430acb40bcd08c9b17886a01d4b802e89ebfcbd254626fd86c1b63bfb1",
+          "txHash": "a357afb57d09d35959c52290f346dfbf84f4aca99c9a91f405ade97382f3e661",
+          "blockHash": "33b2eade903f952064742d5e19996f4ede1cda92ea833eeaa4f11ab4d0be6568",
+          "blockHeight": 9018,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-dispute",
+          "circuit": "disputeBuyer",
+          "actor": "buyer",
+          "revision": "2",
+          "txId": "0010d94a4660e9b7fd83c1d6c3ba78238c3318327ff57569d07915e54c3a91e2a6",
+          "txHash": "eeac96c7ddc05b2e3b27b9e6ea85775b2e7e7d6e9d1a847d388eb705995fd022",
+          "blockHash": "272aef07b6e28ab7e77797424fcc295aaa8929f954a04f2a5b1cd2a707f182f5",
+          "blockHeight": 9022,
+          "status": "SucceedEntirely"
+        },
+        {
+          "scenario": "expire-dispute",
+          "circuit": "expireDispute",
+          "actor": "buyer",
+          "revision": "3",
+          "txId": "00971d7d071b38c8b862335e8c94ed853f39bb7512349532bf613332286349d903",
+          "txHash": "f639a440b31336d78867ec057b4140656cf22a51041e6510fab42d8743bc45c5",
+          "blockHash": "3dbed5e57778abeb9dd858730a8a60ff965460ed968a6db084cce43ab2636db4",
+          "blockHeight": 9055,
+          "status": "SucceedEntirely"
+        }
+      ]
+    }
+  ],
+  "calledCircuits": [
+    "reserve",
+    "accept",
+    "cancelReserved",
+    "decline",
+    "submitDelivery",
+    "approve",
+    "disputeBuyer",
+    "disputeMerchant",
+    "resolve",
+    "expireBootstrap",
+    "expireReserved",
+    "expireUndelivered",
+    "escalateUnreviewed",
+    "expireDispute"
+  ],
+  "calledCount": 14,
+  "missingCircuits": []
+}
