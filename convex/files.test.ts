@@ -40,6 +40,7 @@ function databaseDouble(options?: {
     uploaderId: "merchant-1",
     expiresAt: now + GRANT_TTL_MS,
     consumed: false,
+    uploadTicket: "ut_grant-1_test",
     storageId: undefined,
     inspected: undefined,
   };
@@ -162,6 +163,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     await attachUpload(f.ctx, {
       grantId: "grant-1",
       storageId: "blob-1",
+      uploadTicket: "ut_grant-1_test",
     });
     expect(f.grant.storageId).toBe("blob-1");
     expect(f.scheduled).toContain("files:inspect");
@@ -170,14 +172,14 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
   test("refuses missing grant, unauthenticated, non-merchant, wrong owner, revoked membership", async () => {
     const missing = databaseDouble();
     await expect(
-      attachUpload(missing.ctx, { grantId: "nope", storageId: "blob-1" }),
+      attachUpload(missing.ctx, { grantId: "nope", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const anonymous = databaseDouble({
       identity: null,
     });
     await expect(
-      attachUpload(anonymous.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(anonymous.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const buyer = databaseDouble({
@@ -187,7 +189,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     buyer.membership.accountId = "buyer-1";
     buyer.membership.privySubject = "did:privy:buyer";
     await expect(
-      attachUpload(buyer.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(buyer.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const wrongOwner = databaseDouble({
@@ -199,13 +201,14 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
       attachUpload(wrongOwner.ctx, {
         grantId: "grant-1",
         storageId: "blob-1",
+        uploadTicket: "ut_grant-1_test",
       }),
     ).rejects.toThrow();
 
     const revoked = databaseDouble();
     revoked.membership.status = "revoked";
     await expect(
-      attachUpload(revoked.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(revoked.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
     expect(revoked.grant.storageId).toBeUndefined();
   });
@@ -214,32 +217,32 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     const mismatch = databaseDouble();
     mismatch.grant.uploaderId = "someone-else";
     await expect(
-      attachUpload(mismatch.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(mismatch.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const consumed = databaseDouble();
     consumed.grant.consumed = true;
     await expect(
-      attachUpload(consumed.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(consumed.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const already = databaseDouble();
     already.grant.storageId = "blob-other-grant";
     await expect(
-      attachUpload(already.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(already.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
 
     const expired = databaseDouble();
     expired.grant.expiresAt = Date.now() - 1;
     await expect(
-      attachUpload(expired.ctx, { grantId: "grant-1", storageId: "blob-1" }),
+      attachUpload(expired.ctx, { grantId: "grant-1", storageId: "blob-1", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
   });
 
   test("refuses missing storage object before any grant write", async () => {
     const f = databaseDouble();
     await expect(
-      attachUpload(f.ctx, { grantId: "grant-1", storageId: "blob-missing" }),
+      attachUpload(f.ctx, { grantId: "grant-1", storageId: "blob-missing", uploadTicket: "ut_grant-1_test" }),
     ).rejects.toThrow();
     expect(f.grant.storageId).toBeUndefined();
   });
@@ -259,6 +262,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
       attachUpload(f.ctx, {
         grantId: "grant-1",
         storageId: "blob-other-grant",
+        uploadTicket: "ut_grant-1_test",
       }),
     ).rejects.toThrow();
 
@@ -275,6 +279,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
     await attachUpload(consumed.ctx, {
       grantId: "grant-1",
       storageId: "blob-other-grant",
+      uploadTicket: "ut_grant-1_test",
     });
     expect(consumed.grant.storageId).toBe("blob-other-grant");
   });

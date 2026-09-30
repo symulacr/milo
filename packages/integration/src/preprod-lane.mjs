@@ -768,7 +768,25 @@ async function buildProviders(config, session) {
       );
       return session.wallet.finalizeRecipe(recipe);
     },
-    submitTx: (tx) => session.submitter.submit(tx),
+    // Fee estimates first (SPEND-LEDGER.md): estimate → record → submit.
+    // Mirrors local.mjs bootstrap-wallet-fee-estimate: calculateTransactionFee on the
+    // balanced tx, emit the bigint in specks (with margin), then submit.
+    async submitTx(tx) {
+      let feeEstimateSpecksWithMargin = null;
+      try {
+        const estimate = await session.wallet.calculateTransactionFee(tx);
+        if (typeof estimate === "bigint" && estimate >= 0n)
+          feeEstimateSpecksWithMargin = estimate.toString();
+      } catch {
+        // estimate is advisory; never block a submission that would otherwise proceed
+      }
+      await emit(config.runDir, {
+        event: "fee-estimate-first",
+        feeEstimateSpecksWithMargin,
+        address: session.address,
+      });
+      return session.submitter.submit(tx);
+    },
   };
   return {
     zkConfigProvider,

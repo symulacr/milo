@@ -24,7 +24,11 @@ const trail = (event, fields = {}) => {
 let stage = "configuration";
 const emit = (event, fields = {}) => trail(event, { stage, ...fields });
 const fail = (error) => {
-  emit("failed", { ...errorDiagnostics(error) });
+  emit("failed", {
+    ...errorDiagnostics(error),
+    message: (error && error.message) || String(error),
+    stack: error && error.stack ? error.stack.split("\n").slice(0, 8).join(" | ") : null,
+  });
   process.exit(1);
 };
 process.on("uncaughtException", fail);
@@ -365,7 +369,7 @@ async function main() {
           circuitId: item.circuit,
           contractAddress: address,
           privateStateId: item.pid,
-          args: item.args(),
+          args: [item.revision, ...item.args()],
         }),
         240_000,
         `submitCallTxAsync:${item.circuit}`,

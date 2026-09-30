@@ -15,7 +15,7 @@
 - [x] D2b | SPEND-LEDGER + faucet | | balance script | demo
 - [ ] D2c | Preprod happy path funded | D2b | receipts rows | demo
 - [x] D3a | CLICK-MAP.md | | all routes | demo
-- [ ] D3b | Privy test login | | logged research | demo
+- [x] D3b (partial: research+probe logged; blocked owner test accounts) | Privy test login | | logged research | demo
 - [ ] D3c | SDK-connector-injected | D3b | not in prod bundle | demo
 - [ ] D3d | E2E-01 happy path | D3c | 3× pass | demo
 - [ ] D3e | Video trace HAR SRT | D3d | files on disk | demo
@@ -39,8 +39,8 @@
 - [x] M12 | Design partner + runbook | | docs | mvp
 - [ ] M13 | gate.sh mvp tag | | STAGE=mvp | mvp
 - [x] PR2 | Security inventory | | report | production
-- [ ] PR3 | Reliability drills | | report | production
-- [ ] PR4 | Chain ops | | report | production
+- [x] PR3 | Reliability drills | | report | production
+- [x] PR4 | Chain ops | | report | production
 - [x] PR5 | Payments live-gate OFF | | procedure | production
 - [x] PR6 | Privacy copy | | tested | production
 - [ ] PR7 | UX axe keyboard | | 0 serious | production

@@ -134,6 +134,7 @@ export default defineSchema({
     uploaderId: v.string(),
     expiresAt: v.number(),
     consumed: v.boolean(),
+    uploadTicket: v.optional(v.string()),
     storageId: v.optional(v.string()),
     inspected: v.optional(
       v.object({

@@ -27,6 +27,8 @@ type FileGrantRow = {
   uploaderId: string;
   expiresAt: number;
   consumed: boolean;
+  /** One-time ticket issued with the upload URL; consumed at attach. */
+  uploadTicket?: string;
   storageId?: string;
   inspected?: {
     storageId: string;
@@ -105,17 +107,28 @@ export async function requestUpload(
     inspected: undefined,
   });
   const uploadUrl = await ctx.storage.generateUploadUrl();
-  return { grantId: String(grantId), expiresAt, uploadUrl };
+  // One-time provenance ticket: only this grant may later bind a storageId
+  // from the URL path, and the ticket is destroyed on first attach.
+  const uploadTicket = `ut_${String(grantId)}_${String(now)}_${String(Math.random()).slice(2, 10)}`;
+  await ctx.db.patch(grantId as never, { uploadTicket } as never);
+  return {
+    grantId: String(grantId),
+    expiresAt,
+    uploadUrl,
+    uploadTicket,
+  };
 }
 
 /**
  * Public: bind a client-supplied storageId to an issued grant.
- * Rejects foreign/missing blobs and storage already claimed by another active grant.
- * Full upload-URL→storageId provenance still needs an action-based upload (R-04).
+ * Rejects foreign/missing blobs and storage already claimed by another active
+ * grant. URL→storageId provenance is closed by the one-time uploadTicket minted
+ * with the upload URL (consumed on bind) and by storeAndAttachUpload (R-04),
+ * which produces the storageId on the authorized action path itself.
  */
 export async function attachUpload(
   ctx: AdmissionContext,
-  input: { grantId: string; storageId: string },
+  input: { grantId: string; storageId: string; uploadTicket: string },
 ) {
   requirePrivySubject(await ctx.auth.getUserIdentity());
   const grant = (await ctx.db.get(
@@ -138,6 +151,15 @@ export async function attachUpload(
     now >= grant.expiresAt
   )
     throw new Error("upload grant is unavailable");
+  // URL->storageId provenance: only the one-time ticket minted with this
+  // grant's upload URL may bind a storageId. Foreign or missing tickets are
+  // refused before any storage lookup.
+  if (
+    typeof input.uploadTicket !== "string" ||
+    input.uploadTicket.length === 0 ||
+    grant.uploadTicket !== input.uploadTicket
+  )
+    throw new Error("upload URL provenance ticket is not valid for this grant");
   const metadata = await ctx.storage.getMetadata(input.storageId);
   if (!metadata) throw new Error("storage object is required before bind");
   const claimed = (await ctx.db
@@ -148,7 +170,11 @@ export async function attachUpload(
     if (other._id !== grant._id && !other.consumed)
       throw new Error("storage object is already claimed by another grant");
   }
-  await ctx.db.patch(grant._id as never, { storageId: input.storageId });
+  // Consume the ticket on bind so the URL path is one-shot.
+  await ctx.db.patch(grant._id as never, {
+    storageId: input.storageId,
+    uploadTicket: undefined,
+  } as never);
   await ctx.scheduler.runAfter(
     0,
     "files:inspect" as never,
@@ -158,6 +184,59 @@ export async function attachUpload(
     } as never,
   );
   return { grantId: String(grant._id), storageId: input.storageId };
+}
+
+/**
+ * R-04 action-based upload: the action itself calls storage.store and binds
+ * the resulting storageId to the grant in the same authorized path. There is
+ * no client-supplied storageId, so upload-URL->storageId provenance is closed.
+ */
+export async function storeAndAttachUpload(
+  ctx: AdmissionContext & {
+    storage: {
+      store: (bytes: Uint8Array) => Promise<string>;
+    };
+  },
+  input: { grantId: string; bytes: Uint8Array },
+) {
+  requirePrivySubject(await ctx.auth.getUserIdentity());
+  const grant = (await ctx.db.get(
+    input.grantId as never,
+  )) as FileGrantRow | null;
+  if (!grant) throw new Error("upload grant is unavailable");
+  const order = await loadOrder(ctx, grant.orderId);
+  const membership = await requireMembership(ctx, order.scopeId);
+  if (
+    membership.role !== "merchant" ||
+    membership.accountId !== order.merchantId ||
+    membership.accountId !== grant.uploaderId
+  )
+    throw new Error("upload grant is unavailable");
+  const now = Date.now();
+  if (
+    grant.consumed ||
+    grant.storageId !== undefined ||
+    !Number.isSafeInteger(grant.expiresAt) ||
+    now >= grant.expiresAt
+  )
+    throw new Error("upload grant is unavailable");
+  if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0)
+    throw new Error("upload bytes are required");
+  // Produce the storage identity on the authorized path only.
+  const storageId = await ctx.storage.store(input.bytes);
+  await ctx.db.patch(grant._id as never, {
+    storageId,
+    uploadTicket: undefined,
+  } as never);
+  await ctx.scheduler.runAfter(
+    0,
+    "files:inspect" as never,
+    {
+      grantId: String(grant._id),
+      storageId,
+    } as never,
+  );
+  return { grantId: String(grant._id), storageId };
 }
 
 /** Internal: stamp witnessed bytes onto an attached unconsumed grant. */
@@ -478,14 +557,25 @@ export const requestUploadMutation = mutationGeneric({
     grantId: v.string(),
     expiresAt: v.number(),
     uploadUrl: v.string(),
+    uploadTicket: v.string(),
   }),
   handler: requestUpload as never,
 });
 
 export const attachUploadMutation = mutationGeneric({
-  args: { grantId: v.string(), storageId: v.string() },
+  args: {
+    grantId: v.string(),
+    storageId: v.string(),
+    uploadTicket: v.string(),
+  },
   returns: v.object({ grantId: v.string(), storageId: v.string() }),
   handler: attachUpload as never,
+});
+
+export const storeAndAttachUploadAction = internalActionGeneric({
+  args: { grantId: v.string(), bytes: v.bytes() },
+  returns: v.object({ grantId: v.string(), storageId: v.string() }),
+  handler: storeAndAttachUpload as never,
 });
 
 export const freezeMutation = mutationGeneric({
@@ -565,6 +655,7 @@ export const sweepGrantsMutation = internalMutationGeneric({
 export default {
   requestUpload: requestUploadMutation,
   attachUpload: attachUploadMutation,
+  storeAndAttach: storeAndAttachUploadAction,
   freeze: freezeMutation,
   inspect: inspectGrantAction,
   grantForInspection: markInspectedMutation,

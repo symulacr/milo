@@ -41,54 +41,74 @@ import {
 const NETWORK = "preprod";
 
 /**
- * SUPERSEDED (P3 A0-2 tree loss): packages/domain/src/recovery-kit.ts and
- * packages/midnight-client/src are GONE from this tree (BASELINE-P3). The
- * imports below and domain-tested claims are historical; this panel cannot
- * build until those sources are restored. Unavailable-list details also
- * predate the loss of convex/ (files/http transport sources absent, not merely
- * unwired).
- *
- * Recovery-kit domain operations that were implemented and unit-tested in
- * packages/domain/src/recovery-kit.ts but intentionally have NO browser UI
- * path in this build. Each is marked unused rather than simulated: the matching
- * chain/circuit or backup-import surface is absent. `beginOperation` /
- * `confirmOperation` are live only for the `reserve` operation; `deploy`,
- * `submit` and `approve` remain unused here for the same reason.
+ * The seven recovery-kit operations (packages/domain/src/recovery-kit.ts).
+ * Each row is either UI-wired on this panel or carries a written justification
+ * for staying out of the browser surface — nothing is silently dead or faked.
  */
-export const UNUSED_RECOVERY_KIT_OPS: { op: string; detail: string }[] = [
+export type RecoveryKitOpDisposition = "ui-wired" | "justified";
+export type RecoveryKitOpRow = {
+  op: string;
+  disposition: RecoveryKitOpDisposition;
+  detail: string;
+};
+
+export const RECOVERY_KIT_OPS: RecoveryKitOpRow[] = [
+  {
+    op: "beginOperation",
+    disposition: "ui-wired",
+    detail:
+      "UI-wired for the reserve operation via the in-flight tracker (Begin reserve operation), which records a real submission identity and leaves the kit unusable. deploy|submit|approve stay justified: only reserve is wired through midnight-client prepareReserveCall; deploy is the A1 ingest observation path (server-side); submit/approve are order.compact circuits with no browser call path.",
+  },
   {
     op: "resumeOperation",
+    disposition: "justified",
     detail:
-      "Unused in this browser UI. A pending operation is displayed for reconciliation, but resume is not offered because no browser order.compact call path can safely retry a submission.",
+      "Not wired in this browser UI. A pending operation is displayed for reconciliation, but resume is not offered because no browser order.compact call path can safely retry a submission. resumeOperation itself only re-reads the retained identity and never marks the order usable.",
+  },
+  {
+    op: "confirmOperation",
+    disposition: "ui-wired",
+    detail:
+      "UI-wired for reserve via Confirm from observation, which fails closed without a real chain observation and never invents a transition. deploy|submit|approve confirmation stay justified for the same missing call paths as beginOperation. A deploy confirmation alone never yields a usable order.",
   },
   {
     op: "abandonOperation",
+    disposition: "justified",
     detail:
-      "Unused in this browser UI. Abandon cannot cancel a possibly submitted transaction; the kit surfaces requiresReconciliation instead of a one-click abandon that might imply cancellation.",
+      "Not wired in this browser UI. Abandon cannot cancel a possibly submitted transaction; the kit surfaces requiresReconciliation instead of a one-click abandon that might imply cancellation. Domain-tested: abandon never yields a usable order.",
+  },
+  {
+    op: "loseCapability",
+    disposition: "ui-wired",
+    detail:
+      "UI-wired as the Mark capability lost control. The resulting LOST kit is read-only; signing in again cannot recreate the capability, and the panel never claims an email reset is a substitute.",
   },
   {
     op: "restoreKit",
+    disposition: "justified",
     detail:
-      "Unused in this browser UI. No backup-import flow is wired; a lost capability stays read-only until an explicit restore path exists.",
+      "Not wired in this browser UI. No backup-import flow is wired (gated UX per blueprint recovery kit); a lost capability stays read-only until an explicit restore path exists. Domain-tested: restore never re-grants a usable order by itself.",
   },
   {
     op: "adoptBackup",
+    disposition: "justified",
     detail:
-      "Unused in this browser UI. Same-scope backup adoption is domain-tested only; this panel never rolls kit state from an imported file.",
-  },
-  {
-    op: "beginOperation(deploy|submit|approve)",
-    detail:
-      "Unused. Only `reserve` is wired through midnight-client prepareReserveCall. Deploy is the A1 ingest observation path (server-side); submit/approve are order.compact circuits with no browser call path.",
+      "Not wired in this browser UI. Same-scope backup adoption is domain-tested only (gated UX); this panel never rolls kit state from an imported file. A stale backup that would roll back newer active state is refused in the domain layer.",
   },
 ];
+
+/** Back-compat alias: justifications for ops this UI does not call. */
+export const UNUSED_RECOVERY_KIT_OPS: { op: string; detail: string }[] =
+  RECOVERY_KIT_OPS.filter((row) => row.disposition === "justified").map(
+    (row) => ({ op: row.op, detail: row.detail }),
+  );
 
 /** Lifecycle steps still without a browser path; each names the missing piece. */
 const unavailableSteps: { step: string; detail: string }[] = [
   {
     step: "Merchant accepts and submits the delivery",
     detail:
-      "Requires a checkpointed recovery context and the immutable submit circuit. Blocked: no browser order.compact call path for accept/submit, and no private delivery-file storage in this build (SUPERSEDED P3 A0-2: convex/ files and http transport sources are gone from this tree, not merely unwired).",
+      "Requires a checkpointed recovery context and the immutable submit circuit. Blocked: no browser order.compact call path for accept/submit. Private delivery-file storage exists on the Convex surface (convex/files.ts) but is not wired through this browser panel.",
   },
   {
     step: "Buyer approves or opens a dispute",
@@ -277,19 +297,23 @@ export function RecoveryKitPanel() {
           </div>
         ))}
       </dl>
-      <h4>Recovery-kit operations marked unused</h4>
+      <h4>Recovery-kit operations: wired or justified</h4>
       <p>
-        These domain operations exist in the pure recovery-kit state machine and
-        are unit-tested there. This browser surface deliberately does not call
-        them; they are listed so nothing is silently dead or faked:
+        Every recovery-kit operation in the pure state machine is either called
+        from this browser surface or listed here with a written justification.
+        Nothing is silently dead or simulated:
       </p>
       <dl className="detail-grid">
-        {UNUSED_RECOVERY_KIT_OPS.map(({ op, detail }) => (
+        {RECOVERY_KIT_OPS.map(({ op, disposition, detail }) => (
           <div key={op}>
             <dt>
               <code>{op}</code>
             </dt>
-            <dd>Unused — {detail}</dd>
+            <dd>
+              {disposition === "ui-wired"
+                ? `UI-wired — ${detail}`
+                : `Justified (not wired) — ${detail}`}
+            </dd>
           </div>
         ))}
       </dl>

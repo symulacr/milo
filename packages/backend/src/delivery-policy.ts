@@ -285,6 +285,39 @@ export function deliveryCommitment(
   return bytesToHex(sha256(new TextEncoder().encode(joined)));
 }
 
+/**
+ * Hex64 deliveryCommitment digest to the on-chain Bytes<32> shape used as the
+ * `commitment` argument of submitDelivery(expectedRevision, commitment).
+ * The bytes are the raw SHA-256 digest, not a re-hash.
+ */
+export function deliveryCommitmentBytes32(manifest: string): Uint8Array {
+  if (typeof manifest !== "string" || !/^[0-9a-f]{64}$/.test(manifest))
+    throw new Error("delivery commitment must be 64-char lowercase hex");
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    out[i] = Number.parseInt(manifest.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+/**
+ * The exact argument pair of on-chain
+ * submitDelivery(expectedRevision: Uint<64>, commitment: Bytes<32>).
+ * deliveryCommitment(files) equals the hex form of `commitment`.
+ */
+export function submitDeliveryArgs(
+  expectedRevision: bigint | number,
+  files: readonly { sha256: string }[],
+): { expectedRevision: bigint; commitment: Uint8Array } {
+  const revision = BigInt(expectedRevision);
+  if (revision < 0n)
+    throw new Error("submitDelivery revision must be a non-negative Uint<64>");
+  return {
+    expectedRevision: revision,
+    commitment: deliveryCommitmentBytes32(deliveryCommitment(files)),
+  };
+}
+
 /** Per-serve re-check of retrieved bytes against the frozen inspected descriptor. */
 export function verifyRetrievedBytes(
   descriptor: {
