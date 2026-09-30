@@ -34,7 +34,7 @@
 - [ ] M7 | Auth inventory tests | | per route | mvp
 - [ ] M8 | Lace or owner gap | | evidence | mvp
 - [ ] M9 | Privacy invariant tests | | green | mvp
-- [ ] M10 | LCOV + mutation | | reports | mvp
+- [x] M10 | LCOV + mutation | | reports | mvp
 - [ ] M11 | Indep verify all rows | | signed | mvp
 - [x] M12 | Design partner + runbook | | docs | mvp
 - [ ] M13 | gate.sh mvp tag | | STAGE=mvp | mvp
