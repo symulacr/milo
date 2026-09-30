@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { run, providerIntent } from "./stripeSettlement";
+import { providerIntent, run } from "./stripeSettlement";
 
 describe("stripeSettlement:run provider action (D1d)", () => {
   test("exports a scheduler-runnable action and provider query", () => {
     expect(typeof run === "object" || typeof run === "function").toBe(true);
-    expect(typeof providerIntent === "object" || typeof providerIntent === "function").toBe(true);
+    expect(
+      typeof providerIntent === "object" ||
+        typeof providerIntent === "function",
+    ).toBe(true);
     expect((run as { isAction?: boolean }).isAction).toBe(true);
   });
 
@@ -27,7 +30,7 @@ describe("stripeSettlement:run provider action (D1d)", () => {
     expect(src).toContain("/capture");
     expect(src).toContain("/cancel");
     expect(src).toContain("idempotency_key");
-    expect(src).toContain("outcome: \"failed\"");
-    expect(src).toContain("outcome: \"ambiguous\"");
+    expect(src).toContain('outcome: "failed"');
+    expect(src).toContain('outcome: "ambiguous"');
   });
 });

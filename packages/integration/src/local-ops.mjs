@@ -291,9 +291,8 @@ async function main() {
     const { runStagedDeploy, loadOrCreateMaintenanceKey } = await import(
       "./staged-deploy.mjs"
     );
-    const { path: keyPath, key: signingKey } = await loadOrCreateMaintenanceKey(
-      "/tmp/d2a-ops-run",
-    );
+    const { path: keyPath, key: signingKey } =
+      await loadOrCreateMaintenanceKey("/tmp/d2a-ops-run");
     const stagedEmit = async (event, fields = {}) => {
       emit(event, { stage, ...fields });
     };

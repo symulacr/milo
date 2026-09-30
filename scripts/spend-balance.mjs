@@ -18,7 +18,7 @@
 // Exit codes: 0 ok, 1 usage/config error, 2 upstream query failure.
 
 import { spawn } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,7 +40,8 @@ function loadEnvFile(path) {
 }
 
 const fileEnv = loadEnvFile(resolve(REPO, ".env.preprod"));
-const SEED = process.env.MIDNIGHT_PREPROD_SEED ?? fileEnv.MIDNIGHT_PREPROD_SEED ?? "";
+const SEED =
+  process.env.MIDNIGHT_PREPROD_SEED ?? fileEnv.MIDNIGHT_PREPROD_SEED ?? "";
 const ADDRESS =
   process.env.MIDNIGHT_PREPROD_ADDRESS ??
   fileEnv.MIDNIGHT_PREPROD_ADDRESS ??
@@ -58,7 +59,9 @@ function redact(text) {
   }
   // belt and braces: any 64-lowerhex token that equals the seed is already covered;
   // also scrub a bare seed if it appears in mixed quoting.
-  s = s.replace(/\b[a-f0-9]{64}\b/g, (tok) => (tok === SEED ? "<redacted:seed>" : tok));
+  s = s.replace(/\b[a-f0-9]{64}\b/g, (tok) =>
+    tok === SEED ? "<redacted:seed>" : tok,
+  );
   return s;
 }
 
@@ -74,7 +77,9 @@ function seedPresence() {
   if (!SEED) return "absent";
   const ok = /^[a-f0-9]{64}$/.test(SEED);
   // length only — never the value
-  return ok ? `present (64-hex, length ${SEED.length}, value redacted)` : `present (unexpected format, length ${SEED.length}, value redacted)`;
+  return ok
+    ? `present (64-hex, length ${SEED.length}, value redacted)`
+    : `present (unexpected format, length ${SEED.length}, value redacted)`;
 }
 
 // --------------------------------------------------------------------------------------
@@ -113,7 +118,8 @@ async function preprodChainHeight() {
   try {
     const j = await postJson(PREPROD_GQL, { query: "{ block { height } }" });
     const height = j?.data?.block?.height;
-    if (typeof height !== "number") return { ok: false, error: JSON.stringify(j).slice(0, 200) };
+    if (typeof height !== "number")
+      return { ok: false, error: JSON.stringify(j).slice(0, 200) };
     return { ok: true, height };
   } catch (error) {
     return { ok: false, error: String(error?.message ?? error) };
@@ -205,9 +211,13 @@ async function modeAudit() {
   }
   say(`  total-staged-deploy-fee-estimate: ${total}`);
 
-  say("faucet: https://midnight-tmnight-preprod.nethermind.dev/ (1000 tNIGHT / request, unshielded only)");
+  say(
+    "faucet: https://midnight-tmnight-preprod.nethermind.dev/ (1000 tNIGHT / request, unshielded only)",
+  );
   say("faucet-address: " + (ADDRESS || "(unset)"));
-  say("balance-source: see SPEND-LEDGER.md and preprod-lane --check for live NIGHT/DUST");
+  say(
+    "balance-source: see SPEND-LEDGER.md and preprod-lane --check for live NIGHT/DUST",
+  );
   return 0;
 }
 
@@ -224,14 +234,18 @@ async function modeLocal() {
   for (const row of FEE_ESTIMATES) {
     say(`  ${row.purpose} | ${row.hash} | fee=${row.fee} | block=${row.block}`);
   }
-  say("local-funding-tx: 43506e61576418638c180984c0bb52ff571b7ce57c9947a52d2059a9ccb9d720 | block=691");
+  say(
+    "local-funding-tx: 43506e61576418638c180984c0bb52ff571b7ce57c9947a52d2059a9ccb9d720 | block=691",
+  );
   return 0;
 }
 
 function modeWallet() {
   return new Promise((resolvePromise) => {
     if (!SEED || !/^[a-f0-9]{64}$/.test(SEED)) {
-      sayErr("wallet-mode requires MIDNIGHT_PREPROD_SEED (64-hex) in env or .env.preprod");
+      sayErr(
+        "wallet-mode requires MIDNIGHT_PREPROD_SEED (64-hex) in env or .env.preprod",
+      );
       sayErr(`seed: ${seedPresence()}`);
       resolvePromise(1);
       return;
@@ -251,7 +265,8 @@ function modeWallet() {
           ...process.env,
           // seed is inherited via env, never argv
           MIDNIGHT_PREPROD_SEED: SEED,
-          MILO_PREPROD_ALLOW: process.env.MILO_PREPROD_ALLOW ?? "disposable-owned-preprod",
+          MILO_PREPROD_ALLOW:
+            process.env.MILO_PREPROD_ALLOW ?? "disposable-owned-preprod",
         },
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -285,7 +300,9 @@ async function main() {
   const mode = flags.find((f) => f.startsWith("--")) ?? "--audit";
   if (!["--audit", "--wallet", "--local", "--help"].includes(mode)) {
     sayErr(`unknown mode: ${mode}`);
-    sayErr("usage: node scripts/spend-balance.mjs [--audit|--wallet|--local|--help]");
+    sayErr(
+      "usage: node scripts/spend-balance.mjs [--audit|--wallet|--local|--help]",
+    );
     return 1;
   }
   if (mode === "--help") {
