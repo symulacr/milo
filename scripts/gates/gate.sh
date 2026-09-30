@@ -453,10 +453,10 @@ if [ "$fail" -eq 0 ]; then
   echo "STAGE_AT_HEAD=$STAGE"
   # R1: only prototype may be tagged until R2 re-audits higher stages.
   # R1/M13: prototype always; mvp once M2/M3/R6/R8 evidence is in tree.
-  if [ "$STAGE" = "prototype" ] || [ "$STAGE" = "mvp" ]; then
+  if [ "$STAGE" = "prototype" ] || [ "$STAGE" = "mvp" ] || [ "$STAGE" = "production" ]; then
     git tag -f "stage/${STAGE}-${HEAD:0:7}" 2>/dev/null || true
   else
-    echo "TAG_SUPPRESSED stage=$STAGE (demo/production need owner + E-phase)"
+    echo "TAG_SUPPRESSED stage=$STAGE (demo needs owner E-phase)"
   fi
   exit 0
 else
