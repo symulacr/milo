@@ -65,7 +65,7 @@
 
 - [x] U0 | PERF-BASELINE.md | | LOC deps bundle times | prototype
 - [x] U1 | Dependency research log | U0 | RESEARCH-LOG rows | prototype
-- [ ] U2 | Midnight cohort policy COHORT-UPGRADE.md | U1 | go/no-go | prototype
+- [x] U2 | Midnight cohort policy COHORT-UPGRADE.md | U1 | go/no-go | prototype
 - [ ] U3 | Bump non-cohort deps by risk group | U2 | outdated empty or justified | prototype
 - [ ] U4 | Reduce dependencies ROI | U3 | removals proven | prototype
 - [ ] U5 | Dead code / duplication | U4 | knip clean critical | prototype
