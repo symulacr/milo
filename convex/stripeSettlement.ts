@@ -68,14 +68,13 @@ export const run = internalActionGeneric({
     const beginRef = makeFunctionReference<
       "mutation",
       typeof args,
-      | {
-          action: "capture" | "void";
-          idempotencyKey: string;
-          payment: string;
-          amountMinor: number;
-          currency: string;
-        }
-      | null
+      {
+        action: "capture" | "void";
+        idempotencyKey: string;
+        payment: string;
+        amountMinor: number;
+        currency: string;
+      } | null
     >("settlement:begin");
     const started = await ctx.runMutation(beginRef, args);
     if (!started) return null;
@@ -105,10 +104,11 @@ export const run = internalActionGeneric({
           ? `/payment_intents/${pi}/capture`
           : `/payment_intents/${pi}/cancel`;
       const result = await stripeForm(path, {
-        "idempotency_key": started.idempotencyKey,
+        idempotency_key: started.idempotencyKey,
       });
       if (result.status >= 200 && result.status < 300) {
-        let providerStatus = started.action === "capture" ? "succeeded" : "canceled";
+        let providerStatus =
+          started.action === "capture" ? "succeeded" : "canceled";
         let amountCaptured = started.amountMinor;
         try {
           const parsed = JSON.parse(result.body) as {

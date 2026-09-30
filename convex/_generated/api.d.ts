@@ -8,6 +8,11 @@
  * @module
  */
 
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
 import type * as admission from "../admission.js";
 import type * as admissionContext from "../admissionContext.js";
 import type * as admissionValidators from "../admissionValidators.js";
@@ -27,12 +32,6 @@ import type * as stripeMonitoring from "../stripeMonitoring.js";
 import type * as stripeProvisioning from "../stripeProvisioning.js";
 import type * as stripeSettlement from "../stripeSettlement.js";
 import type * as trustedProvisioning from "../trustedProvisioning.js";
-
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 
 declare const fullApi: ApiFromModules<{
   admission: typeof admission;
