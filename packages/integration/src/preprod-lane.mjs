@@ -953,13 +953,27 @@ async function registerDust(config, session) {
   const unregistered = state.unshielded.availableCoins.filter(
     (coin) => coin.meta?.registeredForDustGeneration !== true,
   );
-  if (unregistered.length === 0) {
+  // Phase 0.3: if DUST is still zero after registration, self-spend ALL NIGHT
+  // UTXOs so they re-create as generating under the registration table
+  // (Midnight DUST architecture: respend restarts generation).
+  const dustNow = state.dust.balance(new Date());
+  const forceAll = dustNow === 0n && state.unshielded.availableCoins.length > 0;
+  const toRegister = forceAll ? state.unshielded.availableCoins : unregistered;
+  if (toRegister.length === 0) {
     await emit(config.runDir, {
       event: "dust-already-registered",
       address: session.address,
     });
     return;
   }
+  if (forceAll) {
+    await emit(config.runDir, {
+      event: "dust-force-respend",
+      address: session.address,
+      coins: toRegister.length,
+    });
+  }
+  const unregistered2 = toRegister;
   const { DustAddress, MidnightBech32m } = session.addressFormat;
   const target = String(
     DustAddress.encodePublicKey(
@@ -975,18 +989,18 @@ async function registerDust(config, session) {
   // dust the registration generates, which is the whole budget on a wallet with no dust
   // yet. 4.2.0 estimates and throws before submission rather than letting the chain
   // reject, so wait for the projection to cover the estimate first.
-  const estimate = await session.wallet.estimateRegistration(unregistered);
+  const estimate = await session.wallet.estimateRegistration(unregistered2);
   await emit(config.runDir, {
     event: "dust-registration-estimate",
     address: session.address,
     fee: estimate.fee.toString(),
   });
   if (estimate.fee > 0n)
-    await session.wallet.waitForGeneratedDust(unregistered, estimate.fee, {
+    await session.wallet.waitForGeneratedDust(unregistered2, estimate.fee, {
       timeoutMs: 900_000,
     });
   const recipe = await session.wallet.registerNightUtxosForDustGeneration(
-    unregistered,
+    unregistered2,
     session.unshieldedKeystore.getPublicKey(),
     (payload) => session.unshieldedKeystore.signData(payload),
     dustReceiver,
