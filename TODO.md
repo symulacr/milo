@@ -36,7 +36,7 @@
 - [ ] M9 | Privacy invariant tests | | green | mvp
 - [ ] M10 | LCOV + mutation | | reports | mvp
 - [ ] M11 | Indep verify all rows | | signed | mvp
-- [ ] M12 | Design partner + runbook | | docs | mvp
+- [x] M12 | Design partner + runbook | | docs | mvp
 - [ ] M13 | gate.sh mvp tag | | STAGE=mvp | mvp
 - [ ] PR2 | Security inventory | | report | production
 - [ ] PR3 | Reliability drills | | report | production
