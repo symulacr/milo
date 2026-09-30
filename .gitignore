@@ -153,3 +153,4 @@ gates/*.json
 !/HANDOFF.md
 !/JUDGE-STEPS.md
 !/DESIGN-PARTNER-GUIDE.md
+!/COVERAGE.md
