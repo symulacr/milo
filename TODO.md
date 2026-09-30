@@ -41,9 +41,9 @@
 - [ ] PR2 | Security inventory | | report | production
 - [ ] PR3 | Reliability drills | | report | production
 - [ ] PR4 | Chain ops | | report | production
-- [ ] PR5 | Payments live-gate OFF | | procedure | production
+- [x] PR5 | Payments live-gate OFF | | procedure | production
 - [ ] PR6 | Privacy copy | | tested | production
 - [ ] PR7 | UX axe keyboard | | 0 serious | production
-- [ ] PR8 | Ops runbooks | | docs | production
+- [x] PR8 | Ops runbooks | | docs | production
 - [ ] PR9 | Docs current | | dual-state | production
 - [ ] PR10 | gate.sh production tag | | final label | production
