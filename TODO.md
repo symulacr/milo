@@ -82,7 +82,7 @@
 - [ ] E-M3 | E2E-02..07 matrix | E-D3d | state: blocked | | matrix | mvp
 - [ ] E-M8 | Real Lace attempt | R7 | error or pass | mvp | state: owner-blocked | blocker: no Lace extension in CI
 - [x] E-M10 | Coverage + mutation | | scores (bun test --coverage 735/1/12/8 env-gated; mutation n/a) | mvp
-- [ ] E-PR2 | Auth inventory all routes | | signed | production
+- [x] E-PR2 | Auth inventory all routes | | signed obs_pr2_auth_inventory_1 | production
 - [x] E-PR5 | Live gate OFF procedure | | gated (release-flags + PAYMENTS-LIVE-GATE.md; no liveMode true) | production
 - [ ] E-PR6 | Privacy copy tested | | green | production
 - [ ] E-PR7 | Axe every route + keyboard + 375 | | 0 serious | production
