@@ -12,7 +12,9 @@ export function PublicShell() {
         Skip to content
       </a>
       <section className="public-notice" aria-label="Prototype notice">
-        Prototype — orders and artwork are samples. Preprod test network only. No live payments.</section>
+        Prototype — orders and artwork are samples. Preprod test network only.
+        No live payments.
+      </section>
       <header className="public-header">
         <a href="/" className="wordmark" aria-label="Milo home">
           milo
@@ -20,9 +22,15 @@ export function PublicShell() {
         </a>
         <nav aria-label="Main navigation">
           <a href="/how-it-works">How it works</a>
-          <a href="/privacy">Privacy</a>
+          <a href="/privacy" data-testid="public-header-privacy">
+            Privacy
+          </a>
           <a href="/sign-in">Sign in</a>
-          <a className="button small" href="/demo">
+          <a
+            className="button small"
+            href="/demo"
+            data-testid="public-header-demo-cta"
+          >
             Explore a sample order <span aria-hidden="true">↗</span>
           </a>
         </nav>
@@ -37,7 +45,9 @@ export function PublicShell() {
         </a>
         <p>Private agreements. Clear approvals.</p>
         <nav aria-label="Footer">
-          <a href="/privacy">Privacy</a>
+          <a href="/privacy" data-testid="public-footer-privacy">
+            Privacy
+          </a>
           <a href="/terms">Terms</a>
           <a href="/pilot">Pilot status</a>
         </nav>

@@ -23,7 +23,7 @@ export function InfoPage({ kind }: { kind: InfoKind }) {
             </a>
           </p>
         )}
-        <Link className="button" to="/demo">
+        <Link className="button" to="/demo" data-testid="public-body-demo-cta">
           Explore a sample order ↗
         </Link>
       </Panel>
