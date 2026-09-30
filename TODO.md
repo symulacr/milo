@@ -95,3 +95,39 @@
 
 - [ ] MK1 | map/remove 5 source markers | | rg markers; 2 ts-expect-error tests, 3 biome-ignore with reasons | prototype
 - [x] MK0 | marker scan run | | /tmp/markers.txt count 5 | prototype
+
+
+## MASTER-LEDGER map (L-id → TODO)
+
+| L-id | row summary | maps to |
+|---|---|---|
+| L-01 | blueprint/contract | G0 |
+| L-02 | P3 | G0 |
+| L-03 | P3 | G0 |
+| L-04 | http webhook | G0 |
+| L-05 | settlement | G0 |
+| L-06 | files+delivery | G0 |
+| L-07 | attachUpload provenance | G0 |
+| L-08 | observationIngest | G0 |
+| L-09 | release-flags | G0 |
+| L-10 | recovery-kit | G0 |
+| L-11 | recovery-kit UI ops | G0 |
+| L-12 | midnight-client | U2 |
+| L-13 | Stripe webhook endpoint | D1d |
+| L-14 | D3 browser E2E-01 | E-D3d |
+| L-15 | D4 negatives | G0 |
+| L-16 | unit 485/4/1 | G0 |
+| L-17 | typecheck 5 errors | G0 |
+| L-18 | lint errors | G0 |
+| L-19 | integration hash assert | G0 |
+| L-20 | RECEIPTS.md | G0 |
+| L-21 | SUBMISSION+CLAIMS | G0 |
+| L-22 | PITCH+deck+video | G0 |
+| L-23 | LCOV coverage | G0 |
+| L-24 | Privy real auth | M7 |
+| L-25 | stripeSettlement:run | D1d |
+| L-26 | F-22 escalate empty evidence | G0 |
+| L-27 | F-24 never-read digests | G0 |
+| L-28 | 14/14 one instance | G0 |
+| L-29 | clean-clone P5 | G0 |
+| L-30 | secret scan P6 | G0 |
