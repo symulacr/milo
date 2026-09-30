@@ -2,17 +2,24 @@
  * PR7 — axe-core on every route in route-table (public + workspace + prefix).
  * Acceptance: 0 serious/critical.
  */
-import { chromium } from "playwright";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { join, dirname } from "node:path";
+import { chromium } from "playwright";
 
 const ROOT = "/home/eya/milo/milo-main";
 const DIST = join(ROOT, "dist");
-const AXE = readFileSync(join(ROOT, "node_modules/axe-core/axe.min.js"), "utf8");
+const AXE = readFileSync(
+  join(ROOT, "node_modules/axe-core/axe.min.js"),
+  "utf8",
+);
 
 // Parse route-table.ts for route strings
-const routeTable = readFileSync(join(ROOT, "apps/web/src/route-table.ts"), "utf8");
+const routeTable = readFileSync(
+  join(ROOT, "apps/web/src/route-table.ts"),
+  "utf8",
+);
 const routes = [];
 for (const m of routeTable.matchAll(/"(\/[a-z0-9/_-]*)"/gi)) {
   routes.push(m[1]);
@@ -21,7 +28,15 @@ const unique = [...new Set(routes)];
 console.log("routes", unique.length, unique.join(","));
 
 const htmlFor = (route) => {
-  if (route.startsWith("/m/") || route.startsWith("/orders") || route.startsWith("/merchant") || route.startsWith("/operator") || route.startsWith("/account") || route.startsWith("/connections") || route.startsWith("/sign-in")) {
+  if (
+    route.startsWith("/m/") ||
+    route.startsWith("/orders") ||
+    route.startsWith("/merchant") ||
+    route.startsWith("/operator") ||
+    route.startsWith("/account") ||
+    route.startsWith("/connections") ||
+    route.startsWith("/sign-in")
+  ) {
     return "app.html";
   }
   return "public-app.html";
@@ -39,7 +54,9 @@ for (const route of unique) {
     results.push({ route, html, serious: ["missing-dist"], other: [] });
     continue;
   }
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 800 },
+  });
   const url = pathToFileURL(file).href + "#" + route;
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.addScriptTag({ content: AXE });
@@ -77,6 +94,8 @@ writeFileSync(
   join(ROOT, "audit/discovery/PR7-axe-all-routes.json"),
   JSON.stringify(report, null, 2),
 );
-console.log(`PR7_AXE_ALL seriousTotal=${seriousTotal} routes=${results.length}`);
+console.log(
+  `PR7_AXE_ALL seriousTotal=${seriousTotal} routes=${results.length}`,
+);
 if (seriousTotal > 0) process.exitCode = 1;
 else console.log("PR7_AXE_ALL_PASS");

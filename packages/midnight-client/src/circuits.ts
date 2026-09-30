@@ -13,20 +13,17 @@
  */
 
 import {
-  SUPPORTED_MIDNIGHT_NETWORK,
   assertSupportedNetwork,
+  SUPPORTED_MIDNIGHT_NETWORK,
   type SupportedMidnightNetwork,
 } from "./network.ts";
 import {
-  assembleProvidersFromSlots,
   type AssembledProviders,
+  assembleProvidersFromSlots,
   type MidnightProviderSlots,
 } from "./provider-factory.ts";
 import type { BuyerPrivateState, MerchantPrivateState } from "./types.ts";
-import {
-  assertWalletConnected,
-  type WalletConnectionState,
-} from "./wallet.ts";
+import { assertWalletConnected, type WalletConnectionState } from "./wallet.ts";
 
 /**
  * Runtime status of the wallet-signed reserve/accept path.
@@ -191,4 +188,3 @@ export function prepareAcceptCall(input: AcceptCallInput): PreparedAcceptCall {
     privateState: input.privateState,
   };
 }
-

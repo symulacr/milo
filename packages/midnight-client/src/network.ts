@@ -29,10 +29,7 @@ export type LocalDisposableNetwork = typeof LOCAL_DISPOSABLE_NETWORK;
  * Explicit network-guard switches. A guard is a policy, not a default:
  * callers must name which one they enforce.
  */
-export const NETWORK_GUARD_MODES = [
-  "preprod-only",
-  "undeployed-only",
-] as const;
+export const NETWORK_GUARD_MODES = ["preprod-only", "undeployed-only"] as const;
 export type NetworkGuardMode = (typeof NETWORK_GUARD_MODES)[number];
 
 /** Compile-time narrowing: the network id each guard mode allows. */
@@ -71,9 +68,12 @@ export function assertNetworkGuard<M extends NetworkGuardMode>(
   mode: M,
 ): asserts network is NetworkForGuard<M> {
   if (!isNetworkGuardMode(mode)) {
-    throw new WrongNetworkError(`Unknown network guard mode "${String(mode)}".`, {
-      mode: String(mode),
-    });
+    throw new WrongNetworkError(
+      `Unknown network guard mode "${String(mode)}".`,
+      {
+        mode: String(mode),
+      },
+    );
   }
   const allowed = NETWORK_GUARD_ALLOWED[mode];
   if (!allowed.has(network)) {

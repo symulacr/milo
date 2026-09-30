@@ -14,12 +14,12 @@ import type {
   ConnectedAPI,
   InitialAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
+import { LockedWalletError } from "./errors.ts";
 import {
   assertSupportedNetwork,
   SUPPORTED_MIDNIGHT_NETWORK,
   type SupportedMidnightNetwork,
 } from "./network.ts";
-import { LockedWalletError } from "./errors.ts";
 
 export type WalletRegistry = Window["midnight"] | undefined | null;
 

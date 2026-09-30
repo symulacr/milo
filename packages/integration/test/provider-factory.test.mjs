@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-
+import {
+  MIDNIGHT_CLIENT_ERROR_CODES,
+  MidnightClientError,
+} from "../../midnight-client/src/errors.ts";
+import {
+  assertLocalDisposableNetwork,
+  assertNetworkGuard,
+  assertSupportedNetwork,
+  encodeNetworkLabel,
+  LOCAL_DISPOSABLE_NETWORK,
+  NETWORK_GUARD_ALLOWED,
+  NETWORK_GUARD_MODES,
+} from "../../midnight-client/src/network.ts";
 import {
   assembleProviderFactory,
   assembleProvidersFromSlots,
@@ -15,23 +27,10 @@ import {
   isWrongNetworkError,
   LockedWalletError,
   missingProviderSlots,
-  rethrowAsMidnightClientError,
   RejectedSignatureError,
+  rethrowAsMidnightClientError,
   WrongNetworkError,
 } from "../../midnight-client/src/provider-factory.ts";
-import {
-  assertLocalDisposableNetwork,
-  assertNetworkGuard,
-  assertSupportedNetwork,
-  encodeNetworkLabel,
-  LOCAL_DISPOSABLE_NETWORK,
-  NETWORK_GUARD_ALLOWED,
-  NETWORK_GUARD_MODES,
-} from "../../midnight-client/src/network.ts";
-import {
-  MIDNIGHT_CLIENT_ERROR_CODES,
-  MidnightClientError,
-} from "../../midnight-client/src/errors.ts";
 
 const CONTRACT = "c".repeat(64);
 
@@ -81,12 +80,15 @@ function baseInput(overrides = {}) {
 // ── typed error taxonomy ────────────────────────────────────────────────
 
 test("U6 taxonomy: four codes, subclass instanceof base", () => {
-  assert.deepEqual([...MIDNIGHT_CLIENT_ERROR_CODES], [
-    "REJECTED_SIGNATURE",
-    "LOCKED_WALLET",
-    "WRONG_NETWORK",
-    "INSUFFICIENT_DUST",
-  ]);
+  assert.deepEqual(
+    [...MIDNIGHT_CLIENT_ERROR_CODES],
+    [
+      "REJECTED_SIGNATURE",
+      "LOCKED_WALLET",
+      "WRONG_NETWORK",
+      "INSUFFICIENT_DUST",
+    ],
+  );
   for (const err of [
     new RejectedSignatureError(),
     new LockedWalletError(),
@@ -153,7 +155,8 @@ test("U6 taxonomy: rethrowAsMidnightClientError wraps matching errors only", () 
         { _tag: "Wallet.InsufficientFunds", tokenType: "dust" },
         "fallback",
       ),
-    (err) => err instanceof InsufficientDustError && err.code === "INSUFFICIENT_DUST",
+    (err) =>
+      err instanceof InsufficientDustError && err.code === "INSUFFICIENT_DUST",
   );
   const original = new Error("weird");
   assert.throws(
@@ -165,10 +168,10 @@ test("U6 taxonomy: rethrowAsMidnightClientError wraps matching errors only", () 
 // ── network guard ───────────────────────────────────────────────────────
 
 test("U6 network guard: compile-time modes have runtime allow-lists", () => {
-  assert.deepEqual([...NETWORK_GUARD_MODES], [
-    "preprod-only",
-    "undeployed-only",
-  ]);
+  assert.deepEqual(
+    [...NETWORK_GUARD_MODES],
+    ["preprod-only", "undeployed-only"],
+  );
   assert([...NETWORK_GUARD_ALLOWED["preprod-only"]].includes("preprod"));
   assert(![...NETWORK_GUARD_ALLOWED["preprod-only"]].includes("undeployed"));
   assert([...NETWORK_GUARD_ALLOWED["undeployed-only"]].includes("undeployed"));
