@@ -25,6 +25,7 @@ import type * as settlement from "../settlement.js";
 import type * as stripeCustomerProvisioning from "../stripeCustomerProvisioning.js";
 import type * as stripeMonitoring from "../stripeMonitoring.js";
 import type * as stripeProvisioning from "../stripeProvisioning.js";
+import type * as stripeSettlement from "../stripeSettlement.js";
 import type * as trustedProvisioning from "../trustedProvisioning.js";
 
 import type {
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   stripeCustomerProvisioning: typeof stripeCustomerProvisioning;
   stripeMonitoring: typeof stripeMonitoring;
   stripeProvisioning: typeof stripeProvisioning;
+  stripeSettlement: typeof stripeSettlement;
   trustedProvisioning: typeof trustedProvisioning;
 }>;
 
