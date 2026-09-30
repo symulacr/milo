@@ -55,7 +55,7 @@
 - [x] R2 | TODO audit re-run every checked acceptance | R1 | unchecked-by-audit list | prototype
 - [x] R3 | Evidence scripts under evidence/scripts/ | R2 | cited IDs reproduce | prototype
 - [x] R4 | Stripe HMAC → WebCrypto/@noble + RFC4231 + differential | R1 | KATs + 10k diff | prototype
-- [ ] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
+- [x] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
 - [ ] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
 - [ ] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
 - [ ] R8 | feesWithMargin WASM spin root-cause | | repro + version matrix | prototype
