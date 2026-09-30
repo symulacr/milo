@@ -5,7 +5,7 @@ Sources: 5 parallel audits (blueprint/roadmap · UI/UX · backend/Midnight · wa
 
 ---
 
-**SUPERSEDED (P3 A0-2 tree loss):** paths and modules cited below that lived under convex/, scripts/, packages/{backend,contract,domain,integration}, and packages/midnight-client are **gone from this tree** (see audit/discovery/BASELINE-P3.md). Claims about those modules are historical receipts only and are not re-verified on this tree. Fresh suite counts are UNKNOWN until sources are restored.
+**SUPERSEDED (A0-2 tree loss):** paths and modules cited below that lived under convex/, scripts/, packages/{backend,contract,domain,integration}, and packages/midnight-client are **gone from this tree** (see audit/discovery/BASELINE-P3.md). Claims about those modules are historical receipts only and are not re-verified on this tree. Fresh suite counts are UNKNOWN until sources are restored.
 
 ## Executive verdict
 
@@ -51,7 +51,7 @@ Optional gated: Lumera Cascade, Browser Use QA, DUST sponsorship.
 | R3 / M-09–11 QA | **Missing** | axe-core only |
 | M-12–14 film/3D | **Deferred** | Per PROGRESS_MANIFEST |
 
-MID coverage: **all 14 operations executed on Preprod (test network, 2026-09-20; execution 14/14); the six provider acceptance rows remain partial (acceptance 0/6 provider / 0/14 operation)**. SUPERSEDED (P3 A0-2): the earlier word live implied product/live-chain readiness; Preprod is a test network and this is not a live service or mainnet deployment.
+MID coverage: **all 14 operations executed on Preprod (test network, 2026-09-20; execution 14/14); the six provider acceptance rows remain partial (acceptance 0/6 provider / 0/14 operation)**. SUPERSEDED (A0-2): the earlier word live implied product/live-chain readiness; Preprod is a test network and this is not a live service or mainnet deployment.
 
 ---
 

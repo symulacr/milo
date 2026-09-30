@@ -1,9 +1,9 @@
-import { chromium } from "/home/eya/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs";
+import { chromium } from "~/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs";
 
 const browser = await chromium.launch({
   headless: true,
   executablePath:
-    "/home/eya/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell",
+    "~/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell",
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 const page = await browser.newPage();

@@ -66,7 +66,7 @@ query {
 
 Explorer links: confirm before publishing. Indexer GraphQL is the source of truth used here.
 
-## Local Midnight lane (P2 D2a) — 2026-09-30
+## Local Midnight lane (D2a) — 2026-09-30
 
 | Fact | Value | Status |
 |---|---|---|
@@ -123,4 +123,4 @@ Fee estimates were taken **before** submission. Seed material is never printed; 
 | Label | SDK-connector / harness | — |
 | Seed | `.env.preprod` only — never printed | — |
 
-Full narrative + NOT DONE: [`audit/discovery/IMPLEMENTATION-P2-D2c-preprod.md`](./audit/discovery/IMPLEMENTATION-P2-D2c-preprod.md).
+Full narrative + NOT DONE: [`audit/discovery/IMPLEMENTATION-D2c-preprod.md`](./audit/discovery/IMPLEMENTATION-D2c-preprod.md).

@@ -5,7 +5,7 @@
 - [x] G2 | Integration exit 1→0 canonical hash | | test:integration exit 0 | prototype
 - [x] G3 | ContractState keys 14/14 table | | per-circuit table pasted | prototype
 - [x] G4 | Negative controls + indep signatures 7 modules | | N of 7 signed | prototype
-- [x] G5 | P5 clean-clone P6 secrets P8 staleness | | outputs pasted | prototype
+- [x] G5 | clean-clone secrets staleness | | outputs pasted | prototype
 - [x] G6 | gate.sh prototype full + tag | G0-G5 | STAGE_AT_HEAD=prototype | prototype
 - [x] D1a | Deploy convex to dev | | function-spec list | demo
 - [x] D1b | Webhook bad-sig reject cases | D1a | curl outputs | demo
@@ -102,8 +102,8 @@
 | L-id | row summary | maps to |
 |---|---|---|
 | L-01 | blueprint/contract | G0 |
-| L-02 | P3 | G0 |
-| L-03 | P3 | G0 |
+| L-02 | | G0 |
+| L-03 | | G0 |
 | L-04 | http webhook | G0 |
 | L-05 | settlement | G0 |
 | L-06 | files+delivery | G0 |
@@ -129,7 +129,7 @@
 | L-26 | F-22 escalate empty evidence | G0 |
 | L-27 | F-24 never-read digests | G0 |
 | L-28 | 14/14 one instance | G0 |
-| L-29 | clean-clone P5 | G0 |
-| L-30 | secret scan P6 | G0 |
+| L-29 | clean-clone | G0 |
+| L-30 | secret scan | G0 |
 
 - [x] CV1 | full coverage suite (env: canonical Node 24.20 via with-bun) | | bun test --coverage | prototype

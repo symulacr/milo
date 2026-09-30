@@ -23,8 +23,8 @@ Each sentence of the submitted AKINDO text against evidence.
 | release flags false without receipts | release-flags.mjs | TESTED | CONFIRMED |
 | midnight-client Lace v4 + SDK | package | TESTED | CONFIRMED |
 | recovery-kit no false usable order | recovery-kit tests | TESTED | CONFIRMED |
-| build exit 0 | BASELINE-P8 | RUNTIME local | CONFIRMED |
-| unit 485/4/1 | BASELINE-P8 | RUNTIME local | CONFIRMED |
+| build exit 0 | BASELINE-| RUNTIME local | CONFIRMED |
+| unit 485/4/1 | BASELINE-| RUNTIME local | CONFIRMED |
 | wallet-signed reserve/accept live | — | NONE | UNSUPPORTED (ongoing) |
 | live Stripe capture IDs | — | NONE | UNSUPPORTED (ongoing) |
 | full browser E2E video | — | NONE | UNSUPPORTED (ongoing) |
