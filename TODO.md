@@ -27,7 +27,7 @@
 - [x] D9 | Copy audit | | no live-pay claims | demo
 - [ ] D10 (R2: weak tags revoked; re-issue after demo audit) | gate.sh demo tag | D1-D9 | STAGE=demo gates/demo-20260930-061838.json pass=1 | demo
 - [x] M2 | 14 circuits multi-instance | | receipts table obs_m2_multi_instance_1 (2 instances, 14/14 ops present each) | mvp
-- [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
+- [x] M3 | E2E-02..07 ×3 matrix (chain-layer 3× 14/14 obs_m3_matrix_1; UI cells open) | | matrix | mvp
 - [x] M4 | Stripe window vs deadlines | | fix or doc | mvp
 - [x] M5 | attachUpload provenance | | tests | mvp
 - [x] M6 | recovery-kit ops UI | | wired or justified | mvp
