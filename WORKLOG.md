@@ -42,3 +42,4 @@ D7 | PITCH deck video submission | files
 - M3 chain-layer 3× matrix: 14/14 circuits each pass (obs_m3_matrix_1).
 - M11/D5-type: 40/40 receipt hashes re-queried on local indexer (obs_m11_indep_verify_2).
 - PR7: axe 16/16 routes 0 serious (obs_pr7_axe_all_routes_1).
+- R7 complete: SIWE reverted; option C test issuer in e2e/ (local-convex+test-issuer).
