@@ -40,3 +40,4 @@ D7 | PITCH deck video submission | files
 - A2 local-circuit-sweep: 14/14 circuits, 10 instances, 30 SucceedEntirely rows.
 - Evidence: obs_m2_circuit_sweep_1 · M2-circuit-table.md
 - M3 chain-layer 3× matrix: 14/14 circuits each pass (obs_m3_matrix_1).
+- M11/D5-type: 40/40 receipt hashes re-queried on local indexer (obs_m11_indep_verify_2).
