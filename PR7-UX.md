@@ -12,3 +12,10 @@
 - keyboard-only pass: unit-covered (dialog consent gating, focus return); full route keyboard map not re-run this pass
 - 375px: covered in CLICK-MAP (D3a)
 - reduced-motion: CSS partial
+
+
+## R2 residual (PR7 stays open)
+
+- axe `obs_pr7_axe_1` covered 3 HTML entries only (public-app, index, app).
+- Still open: every route × state, keyboard-only full map, 375px, Lighthouse budgets.
+- M3 UI cells also wait on auth (O-PRIVY-TEST / option C).
