@@ -57,7 +57,7 @@
 - [x] R4 | Stripe HMAC → WebCrypto/@noble + RFC4231 + differential | R1 | KATs + 10k diff | prototype
 - [x] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
 - [x] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
-- [ ] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
+- [x] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
 - [x] R8 | feesWithMargin WASM spin root-cause | | repro + version matrix | prototype
 - [x] R9 | M2/D2c claim corrections | R2 | honest scopes | prototype
 
