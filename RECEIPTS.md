@@ -65,3 +65,41 @@ query {
 ```
 
 Explorer links: confirm before publishing. Indexer GraphQL is the source of truth used here.
+
+## Local Midnight lane (P2 D2a) — 2026-09-30
+
+| Fact | Value | Status |
+|---|---|---|
+| Network | local undeployed compose | VERIFIED-ONCHAIN local |
+| Genesis | 0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846 | VERIFIED |
+| Contract address | b3088604c4d5a08cc48d8037614be5a9391dbbf7736e59374aba5f16a500bea8 | VERIFIED-ONCHAIN local |
+| staged-deploy txHash | 0746d21e488f46698910e6fd0bf016f6a0a0a3d54db91c0af080bf07e0e5205c block 701 | VERIFIED |
+| staged-install txHash | 8b59ea5be0e0101ed599ada21db7a1e837da9e1485db0c69c9e13698cbcaa48c block 704 | VERIFIED |
+| staged-lock txHash | 40ade7947a0f70cb78eaa715b10d422650f838cd00d16e95993ea85ccc2b6a39 block 707 | VERIFIED |
+| Operations installed | 14 | VERIFIED |
+| Phase | DEPLOYED rev 0 | VERIFIED |
+| Maintenance | locked | VERIFIED |
+| Label | SDK-connector / harness | — |
+
+## D5 re-query (2026-09-30)
+Preprod 0xb95c…e74586 still ContractUpdate tx 5ce74cb9… block 2639638. Chain height 2769087.
+
+## Spend ledger cross-ref (D2b)
+
+Full spend table (hash | purpose | fee | block | chain height) lives in [`SPEND-LEDGER.md`](./SPEND-LEDGER.md).
+Fee estimates were taken **before** submission. Seed material is never printed; balances via `scripts/spend-balance.mjs`.
+
+### Local staged-deploy (from `/tmp/d2a-local4.out`)
+
+| hash | purpose | fee (specks, est+margin) | block | chain height |
+|---|---|---|---|---|
+| `0746d21e488f46698910e6fd0bf016f6a0a0a3d54db91c0af080bf07e0e5205c` | MID-T01-staged-deploy | 30 | 701 | 701 |
+| `8b59ea5be0e0101ed599ada21db7a1e837da9e1485db0c69c9e13698cbcaa48c` | MID-T01-staged-install | 29 | 704 | 704 |
+| `40ade7947a0f70cb78eaa715b10d422650f838cd00d16e95993ea85ccc2b6a39` | MID-T01-staged-lock | 1 | 707 | 707 |
+| **Total** | 3 staged txs | **60** | | |
+
+### Preprod (this file, on-chain facts above)
+
+| hash | purpose | fee | block | chain height |
+|---|---|---|---|---|
+| `5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58` | ContractUpdate (replaceAuthority) | not captured | 2639638 | 2765910 (read) |
