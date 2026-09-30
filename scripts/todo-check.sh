@@ -18,7 +18,6 @@ fi
 python3 - <<'PY'
 from pathlib import Path
 import re
-head = Path(".git/HEAD").read_text().strip()
 ids = set()
 for p in Path(".").rglob("*.md"):
     if "node_modules" in str(p):
