@@ -162,3 +162,9 @@ gates/*.json
 # Evidence scripts are tracked (R3)
 !evidence/
 !evidence/**
+
+# Campaign harness dirs (R7C)
+!/e2e/
+!/e2e/**
+!/clickmap-harness/
+!/clickmap-harness/**
