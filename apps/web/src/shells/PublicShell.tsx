@@ -12,7 +12,7 @@ export function PublicShell() {
         Skip to content
       </a>
       <section className="public-notice" aria-label="Prototype notice">
-        Prototype — all orders and artwork are samples. No live payments or
+        Prototype — orders and artwork are samples. Preprod test network only. No live payments.
         blockchain activity.
       </section>
       <header className="public-header">

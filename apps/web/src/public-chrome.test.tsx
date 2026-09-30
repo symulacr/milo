@@ -47,7 +47,7 @@ describe("public chrome parity", () => {
     for (const source of [shell, landing]) {
       expect(source).toContain('class="skip-link" href="#main"');
       expect(source).toContain(
-        "Prototype — all orders and artwork are samples. No live payments or",
+        "Prototype — orders and artwork are samples. Preprod test network only. No live payments.",
       );
     }
   });
