@@ -1,7 +1,8 @@
 /**
  * D2a happy-path driver (fixed): reserve → accept → submitDelivery → approve.
  * Differences from local-ops.mjs:
- * - balanceTx skips wallet.estimateTransactionFee (hangs on call txs)
+ * - installs fee-math (eraseProofs before feesWithMargin) so proved call txs
+ *   do not spin in WASM; optional MILO_ALLOW_FIXED_LOCAL_FEE is local-only
  * - uses submitCallTxAsync + timed watchForTxData (avoids indefinite submitTx wait)
  * - appendFileSync trail so progress is never lost to stdout buffering
  */
@@ -12,6 +13,7 @@ import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 import { intentExpiry } from "./tx.mjs";
+import { installFeeMath, localFixedFeeConfig } from "./fee-math.mjs";
 
 const TRAIL = "/tmp/d2a-happy-trail.jsonl";
 mkdirSync("/tmp/d2a-happy-run", { recursive: true });
@@ -98,6 +100,18 @@ async function main() {
   );
   setNetworkId(env.networkId);
   const L = await import("@midnight-ntwrk/midnight-js-protocol/ledger");
+  // Product-side R8 fix: price feesWithMargin on eraseProofs() copies so proved
+  // call txs cannot spin the WASM fee path. Optional fixed fee is local-only.
+  const feeMath = installFeeMath({
+    env: process.env,
+    networkId: env.networkId,
+    Transaction: L.Transaction,
+  });
+  emit("fee-math-installed", {
+    mode: feeMath.mode,
+    fee: feeMath.fee ? feeMath.fee.toString() : null,
+    localFixed: localFixedFeeConfig(process.env, env.networkId).mode,
+  });
   const { CompiledContract } = await import(
     "@midnight-ntwrk/midnight-js-protocol/compact-js"
   );
