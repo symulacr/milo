@@ -88,7 +88,7 @@
 - [x] E-PR7 | Axe every route + keyboard + 375 | | 0 serious (obs_pr7_axe_all_routes_1 incl 375; keyboard residual) | production
 - [x] E-PR8 | Ops runbooks SBOM SLO | | docs (RUNBOOKS SBOM+SLO draft) | production
 - [x] E-D6 | Timed judge clone | | timed obs_d6_timed_1 | demo
-- [ ] E-D7 | PITCH refresh | U8 | files | demo
+- [x] E-D7 | PITCH refresh | U8 | files | demo
 
 
 ## Marker scan (§2.3) 2026-09-30
