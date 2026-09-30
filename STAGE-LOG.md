@@ -36,3 +36,34 @@ Higher-stage tags remain revoked until R2 re-audits checked TODO items and
 owner-acceptance rows (acceptance dual-state 0/6 · 0/14 unchanged).
 
 **Honest stage label at HEAD `3f5770d`: PROTOTYPE.**
+
+## 2026-09-30 — Phase 0 false-positive revocation
+
+Demo/mvp/production gates passed without E2E-01 3× evidence, Preprod real-fee
+happy path, or an observer service. Those tags are mis-issued.
+
+| Tag | Verdict | Action |
+|---|---|---|
+| stage/demo-* (none currently) | — | — |
+| stage/mvp-0cdeb04 | REVOCATION | delete |
+| stage/mvp-105c27b | REVOCATION | delete |
+| stage/mvp-5f760ca | REVOCATION | delete |
+| stage/mvp-ff4bdd3 | REVOCATION | delete |
+| stage/production-0cdeb04 | REVOCATION | delete |
+| stage/production-5f760ca | REVOCATION | delete |
+| stage/production-ff4bdd3 | REVOCATION | delete |
+| stage/prototype-* | retained | prototype only |
+
+True stage recomputed after gate substance tightening: **PROTOTYPE**.
+
+
+## 2026-09-30 — Phase 0.1 true stage
+
+| Stage | Result | Label |
+|---|---|---|
+| prototype | 8/8 | **PROTOTYPE** |
+| demo | 8/9 (D9 needs E2E-01 3x or Preprod 4/4) | NONE |
+| mvp | 11/14 (browser matrix, observer) | NONE |
+| production | 8/9 (Preprod real fees + observer) | NONE |
+
+ONE label at HEAD: **PROTOTYPE**.
