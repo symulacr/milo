@@ -1,14 +1,15 @@
 # HANDOFF.md
 
 ## State
-- D1a-D1d complete on Convex dev.
-- stripeSettlement:run Action live.
+- Local Midnight stack UP (node/indexer/proof healthy).
+- Compiler artifacts validated.
+- genesis-wallet-sync BLOCKED B-D2A-01.
 
 ## Next 5 IDs
-1. D2a local Midnight happy path
+1. Fix indexer WS URL for wallet sync (D2a)
 2. D2b SPEND-LEDGER
 3. D2c Preprod happy path
 4. D3a CLICK-MAP
-5. D3b Privy test login
+5. D1b/D1c already done; D3b Privy
 
 CONTINUE: D2a
