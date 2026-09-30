@@ -13,18 +13,18 @@ order rules. stripe handles payment off chain.
 
 ## Status
 
-R0. SUPERSEDED (P3 A0-2 tree loss): product sources under convex/, scripts/, packages/{backend,contract,domain,integration} and packages/midnight-client are gone from this tree (see audit/discovery/BASELINE-P3.md); fresh suite counts are UNKNOWN. Historical claims below are receipts only. the contract is deployed on preprod. the browser workspace is a real read-only console rather
+R0. SUPERSEDED (A0-2 tree loss): product sources under convex/, scripts/, packages/{backend,contract,domain,integration} and packages/midnight-client are gone from this tree (see audit/discovery/BASELINE-P3.md); fresh suite counts are UNKNOWN. Historical claims below are receipts only. the contract is deployed on preprod. the browser workspace is a real read-only console rather
 than a simulator, but no order is connected end to end: there is no hosted Convex deployment, no
 Privy app id, and no browser circuit-call path, so the wallet, backend and chain lanes never meet.
-*(P2-W3-C3: the earlier blanket “no Convex” claim is superseded — local Convex observation ingest
+*(W3-C3: the earlier blanket “no Convex” claim is superseded — local Convex observation ingest
 now has runtime proof (A1); hosted Convex remains unprovisioned.)*
 
 | layer | where | status |
 | --- | --- | --- |
 | browser workspace | browser, read-only console | renders wallet status and Convex payment observation; no circuit call |
 | contract | preprod | deployed, 14 proof circuits exercised (execution 14/14 ≠ acceptance 0/14) |
-| observer ingest | local Convex | SUPERSEDED (P3 A0-2): `convex/observationIngest.ts` gone from tree; historical A1 RUNTIME receipt only |
-| midnight client / wallet | SDK | **TESTED SDK only** (historical) — SUPERSEDED (P3 A0-2 tree loss) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
+| observer ingest | local Convex | SUPERSEDED (A0-2): `convex/observationIngest.ts` gone from tree; historical A1 RUNTIME receipt only |
+| midnight client / wallet | SDK | **TESTED SDK only** (historical) — SUPERSEDED (A0-2 tree loss) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
 | native and backend | local node, prover, backend | staged deploy, test doubles; F-21 settlement fix TESTED |
 | stripe | — | **no keys** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` missing); F-30 files **partial** |
 | providers | preprod | exercised by the run, acceptance rows partial |
@@ -35,7 +35,7 @@ the canonical criteria are met. **R1 is not complete** (`r1Complete` stays false
 new modules since the reconciliation pass, none
 of which close an acceptance row.
 
-SUPERSEDED (P3 A0-2 tree loss): `packages/midnight-client` (browser Lace
+SUPERSEDED (A0-2 tree loss): `packages/midnight-client` (browser Lace
 transport + reserve/accept prepare gates; wallet-signed reserve still unknown),
 `convex/observationIngest.ts` (durable deployment-observation writer — **local
 Convex RUNTIME (A1)**; not a hosted-provider row),

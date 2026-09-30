@@ -36,7 +36,7 @@
 
 ## PR3/PR4 addendum (Reliability + Chain ops)
 
-Full report with evidence IDs: ../audit/discovery/IMPLEMENTATION-P2-PR3PR4.md
+Full report with evidence IDs: ../audit/discovery/IMPLEMENTATION-PR3PR4.md
 
 ### Reliability ops
 - Idempotency keys: settlement milo-ACTION:orderId:contractRevision; inbox provider|accountId|eventId. Never mint a new key for a retry of the same business action.
