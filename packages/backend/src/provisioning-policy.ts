@@ -110,6 +110,10 @@ export function usableObservation(
     authorization.usableUntil >= authorization.usableFrom &&
     authorization.usableUntil - authorization.usableFrom <=
       PAYMENT_AUTHORIZATION_WINDOW_MS &&
+    // Usable half-open window: capture/observation must land before usableUntil
+    // (which is already min(captureBeforeMs, observation TTL)). Age < 60s alone
+    // would still accept a hold whose provider expiry has already passed.
+    now < authorization.usableUntil &&
     /^[a-f0-9]{64}$/.test(authorization.providerReceiptFingerprint)
   );
 }

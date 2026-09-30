@@ -699,6 +699,43 @@ describe("Trusted provisioning — explicit doubles", () => {
       ),
     ).toBe(false);
   });
+  test("usableObservation refuses past usableUntil even inside the 60s age window", () => {
+    const startedAt = 1_000_000;
+    const authorization = {
+      id: "pi",
+      quoteId: "quote",
+      quoteVersion: 1,
+      buyerAccountId: "buyer",
+      amountMinor: 1200,
+      currency: "USD",
+      usableFrom: startedAt,
+      usableUntil: startedAt + 30_000,
+      captureBeforeMs: startedAt + 600_000,
+      source: "payment-observer",
+      status: "authorized",
+      providerReceiptFingerprint: "a".repeat(64),
+    } as PaymentAuthorization;
+    // Inside both the 60s age budget and the usable window.
+    expect(usableObservation(authorization, startedAt + 29_999, startedAt)).toBe(
+      true,
+    );
+    // Half-open: usableUntil itself is already expired.
+    expect(usableObservation(authorization, startedAt + 30_000, startedAt)).toBe(
+      false,
+    );
+    // Still younger than 60s, but past usableUntil (provider expiry / session cap).
+    expect(usableObservation(authorization, startedAt + 45_000, startedAt)).toBe(
+      false,
+    );
+    // captureBeforeMs alone does not extend the usable observation window.
+    expect(
+      usableObservation(
+        { ...authorization, usableUntil: startedAt + 10_000 },
+        startedAt + 20_000,
+        startedAt,
+      ),
+    ).toBe(false);
+  });
   test("official SDK boundary uses stable idempotency, exact trusted money and never confirms", async () => {
     const db = await queued();
     const calls: unknown[][] = [];
