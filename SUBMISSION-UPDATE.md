@@ -1,58 +1,102 @@
 # SUBMISSION-UPDATE.md
 
-Paste-ready. Every claim has a receipt.
+**Version.** v2 · D7 package  
+**Evidence rule.** Every sentence in the paste-ready block has a claims-check row below. The **Evidence** column cites **`RECEIPTS.md` only**. Sentences without a receipt-backed factual claim are marked `DEFINITION` or `UNSUPPORTED` and must not be read as performance, traction, or live-payment claims.  
+**Do not** paste v1 kernel/test counts into a form that requires receipts-only evidence (unit 485 and Stripe HMAC results are not in `RECEIPTS.md`).
 
-## Updates in this Wave
+---
 
-```text
-Milo. Private commissioning workspace. One buyer. One merchant. One fixed-price three-image deal. Commercial terms stay off-chain. Midnight Compact proves the order lifecycle only. That split is the product. Private price and brief. Public integrity of delivery and approval. No public marketplace leak.
-
-Wave 2 shipped the product kernel and real receipts.
-
-ON-CHAIN (Midnight Preprod, indexer-verified 2026-09-29)
-- Contract: b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586
-- Latest state tx: 5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58
-- State block: 2639638. Chain height at read: 2765910
-- Contract state names all 14 order circuits: reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed
-- Canonical contract source hash 0bede3fb… (sealed ledger fields). Full receipts in repo: RECEIPTS.md
-- Dual-state, both published: execution 14/14. Acceptance 0/14 until provider sign-off.
-
-KERNEL (reconstructed and tested after a local incident)
-- Stripe test-mode webhook endpoint we_1UL7TWIDa2vgC4L9PfUE2ZAl → Convex site /webhooks/stripe. HMAC, replay window, body cap, livemode refused. Capture only on APPROVED. Void only on CANCELLED.
-- File delivery. Magic-byte inspect PNG/JPEG/WebP under 5MB. Freeze. deliveryCommitment is the hash of ordered file digests. No random placeholders.
-- Chain observation ingest. Verdicts bind, replay, stale, contradictory, address-claimed.
-- Release gates. immutableOrderAdmission and r1Complete stay false until stored receipts exist.
-- packages/midnight-client. Preprod lock. Lace dapp-connector v4. SDK connector. Fail-closed reserve and accept preparation.
-- recovery-kit. A buyer cannot recover into a usable order by accident.
-
-MEASURED
-- Production build exit 0
-- Unit 485 pass / 4 fail / 1 error
-- ~57k LOC tracked text. ~42k code LOC
-
-ROI
-Private terms for 1:1 commissions where a public listing leaks leverage. Public lifecycle so delivery and approval are auditable. Fits illustration, photography, studio packs.
-
-Repo: https://github.com/symulacr/milo
-Receipts: RECEIPTS.md in repo root
-Docs: 01-08 design corpus, contract SPEC
-
-Still ongoing. Wallet-signed reserve and accept on local Midnight. Connected Stripe capture with object IDs. Browser E2E. Coverage gate.
-```
-
-## Milestone 3rd Wave
+## Paste-ready (v2)
 
 ```text
-Trust kernel plus on-chain receipts. Compact 14-circuit lifecycle live on Preprod. Stripe-aligned settlement. File delivery integrity. Observation ingest. Release flags. Build green. Dual-state metrics published. Uniqueness is private terms plus public lifecycle integrity. Next wave is one signed deal end to end with video.
+Milo is a private commissioning workspace for one buyer, one merchant, and one fixed-price three-image deal.
+
+The product keeps commercial terms off-chain and exposes order lifecycle integrity on Midnight.
+
+ON-CHAIN (Midnight Preprod; verified via indexer GraphQL 2026-09-29)
+- Network: Midnight Preprod.
+- Contract address: b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586.
+- Latest action type: ContractUpdate.
+- Latest tx hash: 5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58.
+- Block height (state): 2639638.
+- Chain height at read: 2765910.
+- Network label in state: preprod.
+- Contract state names 14 order circuits: reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed.
+- Canonical contract source hash: 0bede3fbadbda00410db4888394f430fd327f89dd868714fb93f23da12096fe0.
+- Dual-state, both published: execution 14/14. Provider acceptance 0/6. Operation acceptance 0/14.
+
+STRIPE (test-mode)
+- Webhook endpoint id: we_1UL7TWIDa2vgC4L9PfUE2ZAl.
+- Endpoint URL: https://tremendous-rooster-473.convex.site/webhooks/stripe (configured).
+- PaymentIntents / capture: not yet.
+
+CONVEX (dev)
+- Cloud: https://tremendous-rooster-473.convex.cloud.
+- Site: https://tremendous-rooster-473.convex.site.
+
+PITCH (D7)
+- One buyer persona and one studio GTM step are in PITCH.md.
+- One measurable ROI claim is defined as pilot metrics (independent re-query pass/fail and minutes-to-evidence). No ROI percentage is claimed.
+
+Full receipts table: RECEIPTS.md. Primary sources for the pitch: audit/discovery/RESEARCH-LOG.md.
+
+Still ongoing: wallet-signed reserve and accept; connected Stripe capture with object IDs; browser E2E; full acceptance rows.
 ```
 
-## 4th Wave
+---
 
-```text
-One real deal. No shortcuts.
-1. Wallet-signed reserve, accept, submitDelivery, approve. SDK connector first. Lace in Chromium second.
-2. Connected Stripe capture on APPROVED and void on CANCELLED with pasted object IDs.
-3. Order console shows chain-backed phase and checkpoint address. No phase label without a record.
-4. Browser E2E video plus negative paths. Cancel, dispute, wrong network, stale revision, forged webhook.
-5. Coverage report. Pitch with one buyer persona and one studio GTM step.
-```
+## Claims-check (one row per sentence)
+
+| # | Sentence | Evidence (RECEIPTS.md only) | Verdict |
+|---|---|---|---|
+| 1 | Milo is a private commissioning workspace for one buyer, one merchant, and one fixed-price three-image deal. | — (product definition; no RECEIPTS row) | DEFINITION |
+| 2 | The product keeps commercial terms off-chain and exposes order lifecycle integrity on Midnight. | Contract state carries phase/circuit names; price/brief are not in the on-chain fact table | DEFINITION + consistent with state contents |
+| 3 | Network: Midnight Preprod. | On-chain facts → Network | CONFIRMED |
+| 4 | Contract address: b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586. | On-chain facts → Contract address | CONFIRMED |
+| 5 | Latest action type: ContractUpdate. | On-chain facts → Latest action type | CONFIRMED |
+| 6 | Latest tx hash: 5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58. | On-chain facts → Latest tx hash | CONFIRMED |
+| 7 | Block height (state): 2639638. | On-chain facts → Block height (state) | CONFIRMED |
+| 8 | Chain height at read: 2765910. | On-chain facts → Chain height at read | CONFIRMED |
+| 9 | Network label in state: preprod. | On-chain facts → Network label in state | CONFIRMED |
+| 10 | Contract state names 14 order circuits: reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed. | On-chain facts → Circuit names in state | CONFIRMED |
+| 11 | Canonical contract source hash: 0bede3fbadbda00410db4888394f430fd327f89dd868714fb93f23da12096fe0. | Contract identity → canonical SHA256 | CONFIRMED |
+| 12 | Dual-state, both published: execution 14/14. | Execution vs acceptance → Circuits exercised on Preprod | CONFIRMED |
+| 13 | Provider acceptance 0/6. | Execution vs acceptance → Provider acceptance | CONFIRMED |
+| 14 | Operation acceptance 0/14. | Execution vs acceptance → Operation acceptance | CONFIRMED |
+| 15 | Webhook endpoint id: we_1UL7TWIDa2vgC4L9PfUE2ZAl. | Stripe (test-mode) → Webhook endpoint id | CONFIRMED |
+| 16 | Endpoint URL: https://tremendous-rooster-473.convex.site/webhooks/stripe (configured). | Stripe (test-mode) → Endpoint URL | CONFIRMED |
+| 17 | PaymentIntents / capture: not yet. | Stripe (test-mode) → PaymentIntents / capture | CONFIRMED |
+| 18 | Cloud: https://tremendous-rooster-473.convex.cloud. | Convex dev → URL | CONFIRMED |
+| 19 | Site: https://tremendous-rooster-473.convex.site. | Convex dev → Site | CONFIRMED |
+| 20 | One buyer persona and one studio GTM step are in PITCH.md. | — (artifact pointer, not a world fact) | ARTIFACT |
+| 21 | One measurable ROI claim is defined as pilot metrics (independent re-query pass/fail and minutes-to-evidence). | — (measurement protocol; no ROI number in RECEIPTS) | PROTOCOL (no figure claimed) |
+| 22 | No ROI percentage is claimed. | — (absence of claim) | CONFIRMED (negative) |
+| 23 | Full receipts table: RECEIPTS.md. | Self-reference | ARTIFACT |
+| 24 | Primary sources for the pitch: audit/discovery/RESEARCH-LOG.md. | Self-reference | ARTIFACT |
+| 25 | Still ongoing: wallet-signed reserve and accept; connected Stripe capture with object IDs; browser E2E; full acceptance rows. | Stripe capture “not yet”; acceptance 0/6 and 0/14 | CONFIRMED as incomplete |
+
+### Counts (v2)
+
+| Bucket | N |
+|---|---:|
+| CONFIRMED (receipt-backed fact) | 17 |
+| CONFIRMED (explicit negative) | 1 |
+| DEFINITION | 2 |
+| ARTIFACT | 3 |
+| PROTOCOL (no figure) | 1 |
+| UNSUPPORTED overclaim | 0 |
+| OVERSTATED | 0 |
+
+### Explicit non-claims (must not appear in the form)
+
+- Unit test totals (485/4/1, 582, etc.) — not in `RECEIPTS.md`.
+- “Stripe signed webhooks tested”, HMAC, livemode refusal — not in `RECEIPTS.md` as executed results.
+- File delivery magic-byte tests, recovery-kit tests, release-flag tests — not in `RECEIPTS.md`.
+- Wallet-signed reserve/accept live — unsupported.
+- Live Stripe capture object IDs — unsupported (`not yet`).
+- Full browser E2E video — unsupported.
+- ROI %, time saved, revenue, users, design-partner commitment — unsupported.
+
+### Repo tip
+
+If a form asks for a commit SHA, read the current git tip at submit time. Do not paste a stale SHA from older notes.
