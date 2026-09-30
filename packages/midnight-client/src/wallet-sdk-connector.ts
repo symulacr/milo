@@ -30,12 +30,13 @@ import type {
   InitialAPI,
   WalletConnectedAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import { assertSupportedNetwork, SUPPORTED_MIDNIGHT_NETWORK } from "./network";
+import { assertSupportedNetwork, SUPPORTED_MIDNIGHT_NETWORK } from "./network.ts";
 import type {
   WalletAccount,
   WalletConnectionState,
   WalletConnector,
-} from "./wallet";
+} from "./wallet.ts";
+import { LockedWalletError, RejectedSignatureError } from "./errors.ts";
 
 /**
  * Minimal wallet-SDK session shape. Structural so testkit's
@@ -83,7 +84,7 @@ export function walletSdkStatusApi(
   session: WalletSdkSession,
 ): WalletSdkStatusAPI {
   if (!session || typeof session.unshieldedAddress !== "string") {
-    throw new Error(UNSUPPORTED_SDK_SESSION);
+    throw new LockedWalletError(UNSUPPORTED_SDK_SESSION);
   }
   return {
     async getConnectionStatus() {
@@ -113,8 +114,8 @@ export function walletSdkStatusApi(
 }
 
 function unsupported(methodName: keyof WalletConnectedAPI): never {
-  throw new Error(
-    `Midnight Wallet SDK connector does not expose ${methodName}. Signing, balancing, and submission belong to the wallet's own ConnectedAPI.`,
+  throw new RejectedSignatureError(
+    `Midnight Wallet SDK connector does not expose ${String(methodName)}. Signing, balancing, and submission belong to the wallet's own ConnectedAPI.`,
   );
 }
 
@@ -225,7 +226,7 @@ export class MidnightWalletSdkConnector
       // Same two-check fail-closed gate as LaceWalletConnector.
       const status = await api.getConnectionStatus();
       if (status.status !== "connected") {
-        throw new Error("Wallet is not connected");
+        throw new LockedWalletError("Wallet is not connected");
       }
       assertSupportedNetwork(status.networkId);
       const configuration = await api.getConfiguration();
@@ -236,7 +237,7 @@ export class MidnightWalletSdkConnector
         typeof unshieldedAddress !== "string" ||
         unshieldedAddress.length === 0
       ) {
-        throw new Error("Wallet returned no unshielded address");
+        throw new LockedWalletError("Wallet returned no unshielded address");
       }
       if (revision !== this.revision) return this.current;
       const account: WalletAccount = { unshieldedAddress };
@@ -259,7 +260,7 @@ export class MidnightWalletSdkConnector
       const api = walletSdkStatusApi(this.session);
       const status = await api.getConnectionStatus();
       if (status.status !== "connected") {
-        throw new Error("Wallet is not connected");
+        throw new LockedWalletError("Wallet is not connected");
       }
       assertSupportedNetwork(status.networkId);
       const configuration = await api.getConfiguration();
@@ -269,7 +270,7 @@ export class MidnightWalletSdkConnector
         typeof unshieldedAddress !== "string" ||
         unshieldedAddress.length === 0
       ) {
-        throw new Error("Wallet returned no unshielded address");
+        throw new LockedWalletError("Wallet returned no unshielded address");
       }
       if (revision !== this.revision) return this.current;
       return this.update({
@@ -308,7 +309,7 @@ function assertSdkSessionShape(
     session.unshieldedAddress.length === 0 ||
     typeof session.networkId !== "string"
   ) {
-    throw new Error(UNSUPPORTED_SDK_SESSION);
+    throw new LockedWalletError(UNSUPPORTED_SDK_SESSION);
   }
   // A window.midnight InitialAPI is the wrong handle for this connector.
   if (
