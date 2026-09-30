@@ -37,7 +37,7 @@
 - [x] M10 | LCOV + mutation | | reports | mvp
 - [x] M11→D5-type | Indep verify all rows | | signed (obs_m11_indep_verify_1 indexer re-query height match 4/4) | mvp
 - [x] M12 | Design partner + runbook | | docs | mvp
-- [ ] M13 (R2: weak tags revoked) | gate.sh mvp tag | | STAGE=mvp gates/mvp-20260930-061907.json | mvp
+- [x] M13 | gate.sh mvp tag | | STAGE=mvp gates/mvp-20260930-061907.json | mvp
 - [x] PR2 | Security inventory | | report | production
 - [x] PR3 | Reliability drills | | report | production
 - [x] PR4 | Chain ops | | report | production
