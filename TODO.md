@@ -24,7 +24,7 @@
 - [ ] D6 | Judge clone ≤10 steps | | timed | demo
 - [x] D7 | PITCH deck video submission | | files (PITCH.md, pitch/deck 10 SVG + PDF, VIDEO-SCRIPT-90S.md, SUBMISSION-UPDATE v2) | demo
 - [x] D8 | PUSH-READINESS hosting | | files | demo
-- [ ] D9 | Copy audit | | no live-pay claims | demo
+- [x] D9 | Copy audit | | no live-pay claims | demo
 - [ ] D10 | gate.sh demo tag | D1-D9 | STAGE=demo | demo
 - [ ] M2 | 14 circuits multi-instance | | receipts table | mvp
 - [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
