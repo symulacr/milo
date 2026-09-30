@@ -90,7 +90,7 @@ def cmd_next():
     items = parse_items()
     by_id = {i["id"]: i for i in items}
     for i in items:
-        if i["state"] != "checked" and is_unblocked(i, by_id):
+        if i["state"] == "todo" and is_unblocked(i, by_id):
             print(i["id"])
             print(f"claim: {i['title']}")
             print(f"depends: {','.join(i['depends']) or '(none)'}")
