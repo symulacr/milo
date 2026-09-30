@@ -28,12 +28,12 @@
 - [ ] D10 | gate.sh demo tag | D1-D9 | STAGE=demo | demo
 - [ ] M2 | 14 circuits multi-instance | | receipts table | mvp
 - [ ] M3 | E2E-02..07 ×3 matrix | | matrix | mvp
-- [ ] M4 | Stripe window vs deadlines | | fix or doc | mvp
+- [x] M4 | Stripe window vs deadlines | | fix or doc | mvp
 - [ ] M5 | attachUpload provenance | | tests | mvp
 - [ ] M6 | recovery-kit ops UI | | wired or justified | mvp
-- [ ] M7 | Auth inventory tests | | per route | mvp
+- [x] M7 | Auth inventory tests | | per route | mvp
 - [ ] M8 | Lace or owner gap | | evidence | mvp
-- [ ] M9 | Privacy invariant tests | | green | mvp
+- [x] M9 | Privacy invariant tests | | green | mvp
 - [x] M10 | LCOV + mutation | | reports | mvp
 - [ ] M11 | Indep verify all rows | | signed | mvp
 - [x] M12 | Design partner + runbook | | docs | mvp
