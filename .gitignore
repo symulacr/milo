@@ -171,3 +171,23 @@ gates/*.json
 # Audit discovery tables are tracked (R9/M2)
 !/audit/
 !/audit/**
+
+# release hygiene (generic build artifacts)
+node_modules/
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+.convex/
+*.tgz
+*.log
+*.webm
+.DS_Store
+.env
+.env.*
+!.env.example
+.tools/
+midnight-level-db/
+hardening/
+.hoplite/
