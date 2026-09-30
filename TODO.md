@@ -13,7 +13,7 @@
 - [x] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
 - [x] D2a | Local Midnight happy path | | tx hashes obs_d2a_local_happy_complete_1 (reserve/accept/submitDelivery/approve SucceedEntirely) | demo
 - [x] D2b | SPEND-LEDGER + faucet | | balance script | demo
-- [ ] D2c (R2: needs full Preprod happy-path tx hashes + read-back; funded is not complete) | Preprod happy path funded | D2b | receipts rows | demo
+- [ ] D2c | Preprod happy path funded | D2b | receipts rows | demo | evidence: none | state: blocked | blocker: B-D2C-01 DUST=0 Wallet.InsufficientFunds obs_d2c_preprod_dust_blocker_1
 - [x] D3a | CLICK-MAP.md | | all routes | demo
 - [x] D3b (partial: research+probe logged; blocked owner test accounts) | Privy test login | | logged research | demo
 - [x] D3c | SDK-connector-injected | D3b | not in prod bundle (dist/app 0 matches, public 0 matches; apps/web/src/sdk-connector-inject.ts + sdk-connector-prod-boundary.test.ts) | demo
@@ -56,7 +56,7 @@
 - [x] R3 | Evidence scripts under evidence/scripts/ | R2 | cited IDs reproduce | prototype
 - [x] R4 | Stripe HMAC → WebCrypto/@noble + RFC4231 + differential | R1 | KATs + 10k diff | prototype
 - [x] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
-- [ ] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
+- [x] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
 - [ ] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
 - [x] R8 | feesWithMargin WASM spin root-cause | | repro + version matrix | prototype
 - [x] R9 | M2/D2c claim corrections | R2 | honest scopes | prototype
