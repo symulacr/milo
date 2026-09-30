@@ -297,10 +297,12 @@ async function main() {
         return typeof raw === "string" && !raw.startsWith("0x") ? `0x${raw}` : raw;
       },
       observe: (address, blockHash) =>
-        publicDataProvider.queryContractState(address, {
-          type: "blockHash",
-          blockHash,
-        }),
+        blockHash
+          ? publicDataProvider.queryContractState(address, {
+              type: "blockHash",
+              blockHash,
+            })
+          : publicDataProvider.queryContractState(address),
       emit: async (event, fields = {}) => emit(event, fields),
       receiptPath,
       onDeployed: async ({ address: landed }) => {

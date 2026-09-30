@@ -13,7 +13,7 @@
 - [x] D1d | stripeSettlement:run rebuild | D1c | tests green | demo
 - [ ] D2a (partial: stack up)| Local Midnight happy path | | tx hashes | demo
 - [x] D2b | SPEND-LEDGER + faucet | | balance script | demo
-- [ ] D2c | Preprod happy path funded | D2b | receipts rows | demo
+- [x] D2c | Preprod happy path funded | D2b | receipts rows | demo
 - [x] D3a | CLICK-MAP.md | | all routes | demo
 - [x] D3b (partial: research+probe logged; blocked owner test accounts) | Privy test login | | logged research | demo
 - [ ] D3c | SDK-connector-injected | D3b | not in prod bundle | demo
