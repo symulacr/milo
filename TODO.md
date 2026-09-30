@@ -58,8 +58,8 @@
 - [x] R5 | stripeSettlement.test.ts diff review | R4 | removed assertions accounted | prototype
 - [ ] R6 | G3 per-circuit table re-derived signed | R1 | independent table | prototype
 - [ ] R7 | Auth model: SIWE reverted; option C local issuer | | DRIFT-CHECK + OWNER-QUEUE | prototype
-- [ ] R8 | feesWithMargin WASM spin root-cause | | repro + version matrix | prototype
-- [ ] R9 | M2/D2c claim corrections | R2 | honest scopes | prototype
+- [x] R8 | feesWithMargin WASM spin root-cause | | repro + version matrix | prototype
+- [x] R9 | M2/D2c claim corrections | R2 | honest scopes | prototype
 
 ## Phase U — dependency / dead-code / LOC (start after R2 baseline)
 
