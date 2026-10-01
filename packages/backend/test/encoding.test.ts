@@ -7,7 +7,10 @@ describe("encoding hex round-trip", () => {
   });
   test("round-trip even hex", () => {
     for (let i = 0; i < 100; i++) {
-      const h = i.toString(16).padStart(2, "0").repeat(1 + (i % 8));
+      const h = i
+        .toString(16)
+        .padStart(2, "0")
+        .repeat(1 + (i % 8));
       expect(bytesToHex(hexToBytes(h))).toBe(h);
     }
   });
@@ -20,7 +23,6 @@ describe("encoding hex round-trip", () => {
     expect(() => hexToBytes("zz")).toThrow();
   });
 });
-
 
 describe("convex http.ts hex parity (CVG1 guard)", () => {
   test("bytesToHex implementation matches canonical encoder", async () => {

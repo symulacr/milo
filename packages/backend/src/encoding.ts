@@ -15,6 +15,6 @@ export function hexToBytes(hex: string): Uint8Array {
 
 export function bytesToHex(b: Uint8Array | ArrayLike<number>): string {
   let s = "";
-  for (const x of b) s += x.toString(16).padStart(2, "0");
+  for (let i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, "0");
   return s;
 }
