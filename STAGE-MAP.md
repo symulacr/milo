@@ -18,3 +18,13 @@ Roadmap release levels mapped to campaign stages. Defaults until OWNER ratifies.
 | PRODUCTION-READY PENDING OWNER ACTIONS | PR1–PR9 agent-controllable gates pass |
 
 Conflicts with 02-roadmap labels: OWNER item until ratified.
+
+
+## Fixed gate denominators (change only with owner-ratified note)
+
+| Stage | Checks | Note |
+|---|---|---|
+| prototype | 8 | P1–P6 substance |
+| demo | 9 | D1–D9 |
+| mvp | **12** | M1–M12 (M13/M14 folded into M12 after unauthorized expansion to 14) |
+| production | 9 | PR1–PR9 |

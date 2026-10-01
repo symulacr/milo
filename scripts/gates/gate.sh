@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # G0: substance checks. Mutated inputs must FAIL (see gate-selftest.sh).
-# Check sets: prototype 8 · demo 9 · mvp 14 · production 9.
+# Check sets: prototype 8 · demo 9 · mvp 12 · production 9 (STAGE-MAP fixed; owner ratifies changes).
 export PATH="/home/eya/.bun/bin:/usr/bin:/bin:$PATH"
 set -euo pipefail
 STAGE="${1:-prototype}"
@@ -474,9 +474,7 @@ case "$STAGE" in
     check M9_privacy 'mvp_m9_privacy'
     check M10_coverage 'mvp_coverage'
     check M11_indep 'mvp_m11_indep'
-    check M12_docs_orders 'mvp_m12_docs && mvp_orders_obs'
-    check M13_browser 'mvp_browser_matrix'
-    check M14_observer 'mvp_observer'
+    check M12_docs_orders 'mvp_m12_docs && mvp_orders_obs && mvp_browser_matrix && mvp_observer'
     ;;
   production)
     check PR1_build 'build_artifacts && prod_build_dist && prod_release_substance'
