@@ -133,3 +133,13 @@
 | L-30 | secret scan | G0 |
 
 - [x] CV1 | full coverage suite (env: canonical Node 24.20 via with-bun) | | bun test --coverage | prototype
+
+
+## Convergence / dead-code / flow (2026-10-01)
+
+- [x] CVG1 | hex/encoding one encoder + property tests | | packages + convex | prototype
+- [ ] CVG2 | indexer typed client consolidate | | scripts + convex | prototype
+- [ ] CVG3 | one lockfile (bun) or document Node harness need | | package-lock | prototype
+- [ ] DC1 | three-signal dead-code removal pass | CVG1 | DEAD-CODE-REPORT | prototype
+- [ ] FL-W0 | W0 connector matrix cells | | WALLET-MATRIX | demo
+- [ ] FL-BROWSER | FL-01..12 browser flows 3× | FL-W0 | FLOW-READINESS | demo
