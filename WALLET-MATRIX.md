@@ -4,11 +4,11 @@ Tiers: W0 injected test connector · W1 SDK-backed · W2 real Lace · W3 second 
 
 | cell | W0 | W1 | W2 | evidence |
 |---|---|---|---|---|
-| not installed | TODO | TODO | TODO | — |
+| not installed | TESTED | TODO | TODO | W0 unit: empty registry discover |
 | locked | TODO | TODO | TODO | — |
-| wrong network | TODO | TODO | TODO | — |
+| wrong network | TESTED | TODO | TODO | W0 unit: mainnet fails closed |
 | connect rejected | TODO | TODO | TODO | — |
-| connect approved | TODO | TODO | TODO | — |
+| connect approved | TESTED | TODO | TODO | W0 unit: status+address via connector |
 | address change | TODO | TODO | TODO | — |
 | disconnect | TODO | TODO | TODO | — |
 | network switch | TODO | TODO | TODO | — |
