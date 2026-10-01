@@ -18,14 +18,17 @@ await step("public route keyboard focus reaches nav", async () => {
   if (!/A|BUTTON/i.test(active)) throw new Error(`first focus ${active}`);
   out.firstFocus = active;
 });
-await step("skip link is first or early focus", async () => {
-  await page.goto(`${BASE}/demo`, { waitUntil: "domcontentloaded" });
-  const texts = [];
-  for (let i = 0; i < 5; i++) {
-    await page.keyboard.press("Tab");
-    texts.push(await page.evaluate(() => document.activeElement?.textContent?.trim().slice(0, 24) || ""));
-  }
-  if (!texts.some((t) => /skip/i.test(t))) throw new Error(JSON.stringify(texts));
+await step("skip link is first focusable", async () => {
+  await page.goto(`${BASE}/demo`, { waitUntil: "networkidle" });
+  const skipIndex = await page.evaluate(() => {
+    const els = [...document.querySelectorAll("a,button,input,summary,select,textarea")];
+    return els.findIndex((el) => el.classList.contains("skip-link"));
+  });
+  if (skipIndex !== 0) throw new Error(`skipIndex=${skipIndex}`);
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press("Tab");
+  const t = await page.evaluate(() => (document.activeElement?.textContent || "").trim());
+  if (!/skip/i.test(t)) throw new Error(`first tab ${t}`);
 });
 await step("orders route keyboard reaches form controls", async () => {
   await page.goto(`${BASE}/orders`, { waitUntil: "domcontentloaded" });

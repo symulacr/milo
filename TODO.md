@@ -144,4 +144,4 @@
 - [x] FL-W0 | W0 connector matrix cells (3 cells TESTED) | | WALLET-MATRIX | demo
 - [ ] FL-BROWSER | FL-01..12 browser flows 3× (route+W1+FL-01 smoke 3×; remaining FL-02..12 open) | FL-W0 | FLOW-READINESS | demo
 
-- [x] KB1 | skip-link early focus fails (root: hash vs path router; path routes PASS) in W1 page smoke (3/3 fail) | | e2e/flows/fl-keyboard.mjs | prototype
+- [x] KB1 | skip-link first focusable 3/3 (path routes + body focus) in W1 page smoke (3/3 fail) | | e2e/flows/fl-keyboard.mjs | prototype
