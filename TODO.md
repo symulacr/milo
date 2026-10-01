@@ -141,5 +141,5 @@
 - [x] CVG2 | indexer typed client consolidate | | scripts + convex | prototype
 - [x] CVG3 | one lockfile (bun) or document Node harness need (dual kept: node --test needs package-lock) | | package-lock | prototype
 - [x] DC1 | three-signal dead-code removal pass (no 3-signal deletions; KEEP-WITH-REASON recorded) | CVG1 | DEAD-CODE-REPORT | prototype
-- [ ] FL-W0 | W0 connector matrix cells | | WALLET-MATRIX | demo
+- [x] FL-W0 | W0 connector matrix cells (3 cells TESTED) | | WALLET-MATRIX | demo
 - [ ] FL-BROWSER | FL-01..12 browser flows 3× | FL-W0 | FLOW-READINESS | demo
