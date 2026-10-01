@@ -30,5 +30,6 @@
   "overrides": {
     "@midnight-ntwrk/ledger-v8": "$@midnight-ntwrk/ledger-v8",
     "@midnight-ntwrk/onchain-runtime-v3": "$@midnight-ntwrk/onchain-runtime-v3"
-  }
+  },
+  "license": "Apache-2.0"
 }
