@@ -9,7 +9,7 @@ async function step(name, fn) {
   catch (e) { out.fails.push(`${name}: ${String(e).slice(0,120)}`); console.log("FAIL", name); }
 }
 await step("public route keyboard focus reaches nav", async () => {
-  await page.goto(`${BASE}/public-app.html#/demo`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/demo`, { waitUntil: "domcontentloaded" });
   await page.keyboard.press("Tab");
   const active = await page.evaluate(() => {
     const el = document.activeElement;
@@ -19,7 +19,7 @@ await step("public route keyboard focus reaches nav", async () => {
   out.firstFocus = active;
 });
 await step("skip link is first or early focus", async () => {
-  await page.goto(`${BASE}/public-app.html#/demo`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/demo`, { waitUntil: "domcontentloaded" });
   const texts = [];
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press("Tab");
@@ -28,7 +28,7 @@ await step("skip link is first or early focus", async () => {
   if (!texts.some((t) => /skip/i.test(t))) throw new Error(JSON.stringify(texts));
 });
 await step("orders route keyboard reaches form controls", async () => {
-  await page.goto(`${BASE}/app.html#/orders`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/orders`, { waitUntil: "domcontentloaded" });
   let hits = 0;
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press("Tab");
