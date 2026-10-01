@@ -139,7 +139,7 @@
 
 - [x] CVG1 | hex/encoding one encoder + property tests | | packages + convex | prototype
 - [x] CVG2 | indexer typed client consolidate | | scripts + convex | prototype
-- [ ] CVG3 | one lockfile (bun) or document Node harness need | | package-lock | prototype
+- [x] CVG3 | one lockfile (bun) or document Node harness need (dual kept: node --test needs package-lock) | | package-lock | prototype
 - [ ] DC1 | three-signal dead-code removal pass | CVG1 | DEAD-CODE-REPORT | prototype
 - [ ] FL-W0 | W0 connector matrix cells | | WALLET-MATRIX | demo
 - [ ] FL-BROWSER | FL-01..12 browser flows 3× | FL-W0 | FLOW-READINESS | demo
