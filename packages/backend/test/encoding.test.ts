@@ -24,7 +24,7 @@ describe("encoding hex round-trip", () => {
 
 describe("convex http.ts hex parity (CVG1 guard)", () => {
   test("bytesToHex implementation matches canonical encoder", async () => {
-    const http = await import("../../convex/http");
+    const http = await import("../../../convex/http");
     // http exports verifyStripeSignature; hex helpers are internal.
     // Guard: re-implement using same algorithm and compare on samples.
     const { bytesToHex, hexToBytes } = await import("../src/encoding");
