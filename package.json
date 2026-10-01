@@ -2,7 +2,7 @@
   "name": "milo",
   "version": "0.0.3",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "packageManager": "bun@1.4.2",
   "scripts": {
     "setup:native-node": "sh scripts/with-bun.sh scripts/setup-native-node.ts",
