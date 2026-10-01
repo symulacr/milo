@@ -143,3 +143,5 @@
 - [x] DC1 | three-signal dead-code removal pass (no 3-signal deletions; KEEP-WITH-REASON recorded) | CVG1 | DEAD-CODE-REPORT | prototype
 - [x] FL-W0 | W0 connector matrix cells (3 cells TESTED) | | WALLET-MATRIX | demo
 - [ ] FL-BROWSER | FL-01..12 browser flows 3× (route+W1+FL-01 smoke 3×; remaining FL-02..12 open) | FL-W0 | FLOW-READINESS | demo
+
+- [ ] KB1 | skip-link early focus fails in W1 page smoke (3/3 fail) | | e2e/flows/fl-keyboard.mjs | prototype
