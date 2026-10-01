@@ -6,7 +6,7 @@
 | Engineering — private-state mgmt | 40% | witnesses/capability secrets doc + tests | docs/MIDNIGHT-INTEGRATION.md | OPEN | agent |
 | Engineering — dual-ledger model | 40% | docs/MIDNIGHT-INTEGRATION.md diagrams | — | OPEN | agent |
 | Engineering — repo + README | 40% | README setup/architecture/Midnight/test | b286865 verify-readme 5/5 | MET | agent |
-| QA — simulation tests pass | 15% | contract semantic simulator suite | — | OPEN | agent |
+| QA — simulation tests pass | 15% | semantic-sim 8/8 (phase, capability, revision, deadline) | obs_semantic_sim_1 | MET | agent |
 | QA — soak / stability | 15% | N-order soak, no stuck states | obs_m2_circuit_sweep_1 partial | PARTIAL | agent |
 | Product — vision + roadmap | 15% | ROADMAP-LIVE.md | — | OPEN | agent |
 | UX — hosted staging E2E | 15% | owner-hosted Preprod staging URL | — | OWNER | owner |
