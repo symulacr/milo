@@ -10,10 +10,20 @@ import { join } from "node:path";
 const SRC = readFileSync(join(import.meta.dir, "../src/order.compact"), "utf8");
 
 const CIRCUITS = [
-  "reserve", "accept", "submitDelivery", "approve",
-  "cancelReserved", "decline", "disputeBuyer", "disputeMerchant",
-  "escalateUnreviewed", "expireBootstrap", "expireDispute", "expireReserved",
-  "expireUndelivered", "resolve",
+  "reserve",
+  "accept",
+  "submitDelivery",
+  "approve",
+  "cancelReserved",
+  "decline",
+  "disputeBuyer",
+  "disputeMerchant",
+  "escalateUnreviewed",
+  "expireBootstrap",
+  "expireDispute",
+  "expireReserved",
+  "expireUndelivered",
+  "resolve",
 ] as const;
 
 describe("order.compact semantic surface", () => {
@@ -29,7 +39,9 @@ describe("order.compact semantic surface", () => {
   });
 
   test("capability / role secrets gate operations", () => {
-    expect(SRC).toMatch(/capability|Role\.(BUYER|MERCHANT|OPERATOR)|requireCapability/);
+    expect(SRC).toMatch(
+      /capability|Role\.(BUYER|MERCHANT|OPERATOR)|requireCapability/,
+    );
   });
 
   test("delivery is set-once (submitDelivery then approve match)", () => {
@@ -40,7 +52,9 @@ describe("order.compact semantic surface", () => {
 
   test("deadlines enforce t < d vs t >= d", () => {
     expect(SRC).toMatch(/deadline/);
-    expect(SRC).toMatch(/acceptance deadline|delivery deadline|review deadline|resolution deadline/);
+    expect(SRC).toMatch(
+      /acceptance deadline|delivery deadline|review deadline|resolution deadline/,
+    );
   });
 
   test("terminal states cannot advance", () => {
