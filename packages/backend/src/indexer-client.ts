@@ -11,7 +11,10 @@ export async function indexerQuery<T>(
   endpoints: IndexerEndpoints,
   query: string,
   variables?: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (
+    input: string,
+    init?: RequestInit,
+  ) => Promise<Response> = fetch as never,
 ): Promise<T> {
   const res = await fetchImpl(endpoints.http, {
     method: "POST",
