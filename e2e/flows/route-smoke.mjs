@@ -27,7 +27,7 @@ for (const width of out.widths) {
     page.on("requestfailed", (r) => {
       out.failedRequests.push(`${route}@${width}: ${r.url().slice(0, 80)}`);
     });
-    await page.goto(`file://${file}#${route}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${process.env.MILO_SMOKE_BASE || "http://127.0.0.1:3180"}${isApp ? "/app.html" : "/public-app.html"}#${route}`, { waitUntil: "domcontentloaded" });
     await page.screenshot({ path: `${ROOT}/test-results/flow-${route.replace(/\//g, "_")}-${width}.png` });
     await page.close();
   }
