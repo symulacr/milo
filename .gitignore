@@ -71,6 +71,10 @@ VERIFICATION.md
 !/07-video-design.md
 !/08-midnight-core-audit.md
 !/package.json
+# The Convex CLI reads convex.json from the project root beside package.json and uses its
+# `functions` key to find the Convex functions directory. It is tracked, so the deny-by-
+# default `*` above needs an explicit re-include or the next `git clean -xdf` drops it.
+!/convex.json
 !/tsconfig.json
 !/biome.json
 !/bun.lock
@@ -168,6 +172,11 @@ gates/*.json
 !/e2e/**
 !/clickmap-harness/
 !/clickmap-harness/**
+# Push/release tooling. push-kit/ci.yml is the tracked CI definition; .github/ is ignored
+# above, so this directory is the only place CI is defined. A directory must be
+# re-included before its contents can be.
+!/push-kit/
+!/push-kit/**
 # Audit discovery tables are tracked (R9/M2)
 !/audit/
 !/audit/**
