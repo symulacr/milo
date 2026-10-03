@@ -13,9 +13,20 @@ order rules. stripe handles payment off chain.
 
 ## Status
 
-R0. SUPERSEDED (A0-2 tree loss): product sources under convex/, scripts/, packages/{backend,contract,domain,integration} and packages/midnight-client are gone from this tree (see audit/discovery/BASELINE-P3.md); fresh suite counts are UNKNOWN. Historical claims below are receipts only. the contract is deployed on preprod. the browser workspace is a real read-only console rather
-than a simulator, but no order is connected end to end: there is no hosted Convex deployment, no
-Privy app id, and no browser circuit-call path, so the wallet, backend and chain lanes never meet.
+R0. the contract is deployed on preprod and every circuit in it has run there; the
+application around it is not deployed. a fresh clone builds and checks green with the
+commands under [Run it](#run-it): 700 unit tests across 61 files with 0 failures,
+`bun run typecheck` and `bun run lint` clean, and `bash scripts/gates/gate.sh prototype`
+passing 8 of 8. the contract is compiled before any of that, because the generated
+artifacts it needs live in the gitignored `packages/contract/generated/`.
+
+the browser workspace is a real read-only console rather than a simulator, but no order
+is connected end to end. the public browser configuration is three allowlisted fields,
+`privyAppId`, `convexUrl` and `midnightNetwork: "preprod"` (`scripts/public-config.ts`),
+and none of the three is provisioned in this tree, so the wallet, backend and chain lanes
+never meet. the release flags stay frozen false: `immutableOrderAdmission` and
+`r1Complete` flip only when a stored receipt is supplied
+(`packages/backend/src/release-flags.mjs`).
 *(W3-C3: the earlier blanket “no Convex” claim is superseded — local Convex observation ingest
 now has runtime proof (A1); hosted Convex remains unprovisioned.)*
 
@@ -23,8 +34,8 @@ now has runtime proof (A1); hosted Convex remains unprovisioned.)*
 | --- | --- | --- |
 | browser workspace | browser, read-only console | renders wallet status and Convex payment observation; no circuit call |
 | contract | preprod | deployed, 14 proof circuits exercised (execution 14/14 ≠ acceptance 0/14) |
-| observer ingest | local Convex | SUPERSEDED (A0-2): `convex/observationIngest.ts` gone from tree; historical A1 RUNTIME receipt only |
-| midnight client / wallet | SDK | **TESTED SDK only** (historical) — SUPERSEDED (A0-2 tree loss) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
+| observer ingest | local Convex | `convex/observationIngest.ts` is in the tree and covered by `convex/observationIngest.test.ts`; the A1 RUNTIME receipt is local only, not a hosted-provider row |
+| midnight client / wallet | SDK | `packages/midnight-client` is in the tree (Lace connector + prepare gates, `packages/midnight-client/test/wallet-connector-w0.test.ts`); **TESTED SDK only**, `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
 | native and backend | local node, prover, backend | staged deploy, test doubles; F-21 settlement fix TESTED |
 | stripe | — | **no keys** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` missing); F-30 files **partial** |
 | providers | preprod | exercised by the run, acceptance rows partial |
@@ -32,16 +43,14 @@ now has runtime proof (A1); hosted Convex remains unprovisioned.)*
 acceptance dual-state (see IMPLEMENTATION-DECISIONS D2): execution is 14/14 on
 preprod (2026-09-20) while acceptance stays 0/6 provider · 0/14 operation until
 the canonical criteria are met. **R1 is not complete** (`r1Complete` stays false).
-new modules since the reconciliation pass, none
-of which close an acceptance row.
 
-SUPERSEDED (A0-2 tree loss): `packages/midnight-client` (browser Lace
-transport + reserve/accept prepare gates; wallet-signed reserve still unknown),
-`convex/observationIngest.ts` (durable deployment-observation writer — **local
-Convex RUNTIME (A1)**; not a hosted-provider row),
+four foundation modules are present in this tree and none of them closes an acceptance
+row. `packages/midnight-client` (browser Lace transport + reserve/accept prepare gates;
+wallet-signed reserve still unknown), `convex/observationIngest.ts` (durable
+deployment-observation writer — **local Convex RUNTIME (A1)**; not a hosted-provider row),
 `packages/backend/src/release-flags.mjs` (evidence-gated R1 flag single source of
 truth), and `packages/backend/src/delivery-commitment.mjs` (digest-bound
-delivery commitment). Those modules are GONE from this tree (BASELINE-P3); historical receipts only.
+delivery commitment).
 
 the contract address is
 [`0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586)
@@ -171,9 +180,9 @@ any wallet whose seed was disclosed. sample receipts are not proofs.
 
 ## License
 
-mit, see [LICENSE](LICENSE). third-party material keeps its own license, see
+Apache License 2.0, see [LICENSE](LICENSE); `package.json` carries the same
+`Apache-2.0` identifier. third-party material keeps its own license, see
 [third-party notices](THIRD_PARTY_NOTICES.md). the spec corpus is unpublished.
-
 
 ## Quick start (verified)
 
@@ -195,8 +204,3 @@ the browser flows in `e2e/flows/` take two environment variables.
 is what `node e2e/flows/serve-dist.mjs` serves from `dist/`). `MILO_CHROME_PATH` is the
 browser to drive; unset, each flow uses the Chromium that Playwright resolves for itself,
 so no machine's absolute path is baked into the tree.
-
-
-## License
-
-Apache License 2.0 — see [LICENSE](LICENSE).
