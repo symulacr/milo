@@ -12,8 +12,8 @@ const appHtml = `${ROOT}/dist/app.html`;
 const pubHtml = `${ROOT}/dist/public-app.html`;
 
 const browser = await chromium.launch({
-  executablePath: "/usr/bin/google-chrome",
   headless: true,
+  ...(process.env.MILO_CHROME_PATH ? { executablePath: process.env.MILO_CHROME_PATH } : {}),
 });
 const out = { routes: routes.length, consoleErrors: [], failedRequests: [], widths: [1440, 375] };
 for (const width of out.widths) {

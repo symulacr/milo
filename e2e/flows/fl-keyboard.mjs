@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { writeFileSync } from "node:fs";
 const BASE = process.env.MILO_SMOKE_BASE || "http://127.0.0.1:3180";
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.MILO_CHROME_PATH ? { executablePath: process.env.MILO_CHROME_PATH } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const out = { flow: "keyboard", passes: [], fails: [] };
 async function step(name, fn) {

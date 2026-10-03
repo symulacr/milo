@@ -190,6 +190,12 @@ bun install --frozen-lockfile
 bun run typecheck
 ```
 
+the browser flows in `e2e/flows/` take two environment variables.
+`MILO_SMOKE_BASE` is the server they drive (`http://127.0.0.1:3180` by default, which
+is what `node e2e/flows/serve-dist.mjs` serves from `dist/`). `MILO_CHROME_PATH` is the
+browser to drive; unset, each flow uses the Chromium that Playwright resolves for itself,
+so no machine's absolute path is baked into the tree.
+
 
 ## License
 
