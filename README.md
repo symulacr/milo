@@ -204,3 +204,8 @@ the browser flows in `e2e/flows/` take two environment variables.
 is what `node e2e/flows/serve-dist.mjs` serves from `dist/`). `MILO_CHROME_PATH` is the
 browser to drive; unset, each flow uses the Chromium that Playwright resolves for itself,
 so no machine's absolute path is baked into the tree.
+
+one flow is already failing and is not a regression from that change:
+`e2e/flows/fl-keyboard.mjs` fails its "skip link is first focusable" step against a freshly
+built `dist/`, identically at commit `297f128` with its own hardcoded browser and with
+either browser binary.
