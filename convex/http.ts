@@ -15,6 +15,7 @@ import {
   makeFunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
+import { readServerEnv } from "../packages/backend/src/public-config";
 
 function utf8Bytes(s: string): Uint8Array {
   return new TextEncoder().encode(s);
@@ -189,11 +190,8 @@ export function verifyStripeSignature(input: {
   return refuse("No matching v1 signature");
 }
 
-function env(name: string): string | undefined {
-  const value = process.env[name];
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+function env(name: "STRIPE_WEBHOOK_SECRET" | "STRIPE_ACCOUNT_ID") {
+  return readServerEnv(name);
 }
 
 type StripeEventEnvelope = {
