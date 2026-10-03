@@ -78,19 +78,49 @@ function ctxDouble(identity: Identity, tables = emptyTables()) {
           _name: string,
           range: (q: {
             eq: (field: string, value: unknown) => unknown;
+            lt: (field: string, value: unknown) => unknown;
+            lte: (field: string, value: unknown) => unknown;
+            gt: (field: string, value: unknown) => unknown;
+            gte: (field: string, value: unknown) => unknown;
           }) => unknown,
         ) => {
           const conditions: [string, unknown][] = [];
+          const bounds: [string, "lt" | "lte" | "gt" | "gte", unknown][] = [];
           const q = {
             eq: (field: string, value: unknown) => {
               conditions.push([field, value]);
               return q;
             },
+            lt: (field: string, value: unknown) => {
+              bounds.push([field, "lt", value]);
+              return q;
+            },
+            lte: (field: string, value: unknown) => {
+              bounds.push([field, "lte", value]);
+              return q;
+            },
+            gt: (field: string, value: unknown) => {
+              bounds.push([field, "gt", value]);
+              return q;
+            },
+            gte: (field: string, value: unknown) => {
+              bounds.push([field, "gte", value]);
+              return q;
+            },
           };
           range(q);
           const matched = () =>
-            (tables[table] ?? []).filter((row) =>
-              conditions.every(([field, value]) => row[field] === value),
+            (tables[table] ?? []).filter(
+              (row) =>
+                conditions.every(([field, value]) => row[field] === value) &&
+                bounds.every(([field, op, value]) => {
+                  const actual = Number(row[field]);
+                  const bound = Number(value);
+                  if (op === "lt") return actual < bound;
+                  if (op === "lte") return actual <= bound;
+                  if (op === "gt") return actual > bound;
+                  return actual >= bound;
+                }),
             );
           return {
             unique: async () => {
@@ -919,5 +949,110 @@ describe("DECISION Q1/Q2: orders:read is membership-gated", () => {
       quoteId: "quote-1",
     });
     expect(status).toHaveProperty("state");
+  });
+});
+
+describe("F19 sweepGrants and freeze use indexed reads", () => {
+  const TTL = 5 * 60 * 1000;
+  const GRACE = 60 * 60 * 1000;
+
+  function grantCtx() {
+    const f = ctxDouble(null);
+    const deleted: string[] = [];
+    const base = f.ctx as unknown as { db: Record<string, unknown> };
+    const g = {
+      ...base,
+      db: {
+        ...base.db,
+        delete: async (id: string) => {
+          deleted.push(id);
+        },
+      },
+    };
+    return { ctx: g as never, tables: f.tables, deleted: () => deleted };
+  }
+
+  const grant = (id: string, consumed: boolean, ageMs: number) => ({
+    _id: id,
+    orderId: "order-1",
+    uploaderId: "merchant-1",
+    expiresAt: Date.now() - ageMs,
+    consumed,
+    storageId: `blob-${id}`,
+  });
+
+  test("sweepGrants removes only expired unconsumed grants", async () => {
+    const f = grantCtx();
+    f.tables.fileGrants.push(
+      grant("old-unconsumed", false, TTL + GRACE + 1000),
+      grant("old-consumed", true, TTL + GRACE + 1000),
+      grant("young-unconsumed", false, 1000),
+    );
+    const result = await files.sweepGrants(f.ctx);
+    expect(result).toEqual({ removed: 1, remaining: 0 });
+    expect(f.deleted()).toEqual(["old-unconsumed"]);
+  });
+
+  test("sweepGrants is bounded by SWEEP_LIMIT per call", async () => {
+    const f = grantCtx();
+    const total = files.SWEEP_LIMIT + 25;
+    for (let i = 0; i < total; i++)
+      f.tables.fileGrants.push(
+        grant(`expired-${i}`, false, TTL + GRACE + 1000),
+      );
+    const result = await files.sweepGrants(f.ctx);
+    expect(result.removed).toBe(files.SWEEP_LIMIT);
+    expect(f.deleted()).toHaveLength(files.SWEEP_LIMIT);
+    expect(files.SWEEP_LIMIT).toBe(64);
+  });
+
+  test("sweepGrants reads through an index range, never the whole table", async () => {
+    const f = grantCtx();
+    const queried: string[] = [];
+    let fullScans = 0;
+    const base = f.ctx as unknown as { db: Record<string, unknown> };
+    const g = {
+      ...base,
+      db: {
+        get: base.db.get,
+        insert: base.db.insert,
+        patch: base.db.patch,
+        delete: base.db.delete,
+        query: (table: string) => {
+          queried.push(table);
+          return {
+            withIndex: (_name: string, range: (q: unknown) => unknown) => {
+              const captured: [string, unknown][] = [];
+              const q = {
+                eq: (field: string, value: unknown) => {
+                  captured.push([field, value]);
+                  return q;
+                },
+                lt: (field: string, value: unknown) => {
+                  captured.push([field, value]);
+                  return q;
+                },
+              };
+              range(q);
+              const matched = () =>
+                (f.tables[table as "fileGrants"] ?? []).filter((row) =>
+                  captured.every(([field, value]) => row[field] === value),
+                );
+              return {
+                take: async (n: number) => matched().slice(0, n),
+                collect: async () => matched(),
+              };
+            },
+            fullTableScan: () => {
+              fullScans += 1;
+              return { collect: async () => [], take: async () => [] };
+            },
+          };
+        },
+      },
+    };
+    await files.sweepGrants(g as never).catch(() => undefined);
+    expect(queried).toEqual(["fileGrants"]);
+    expect(fullScans).toBe(0);
   });
 });

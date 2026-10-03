@@ -26,6 +26,9 @@ export { GRANT_GRACE_MS, GRANT_TTL_MS };
 // not walk: only `export const NAME = <kind>Generic(...)` registers module:NAME.
 const INSPECT_REF = "files:inspectGrantAction" as never;
 
+/** Rows one sweepGrants call may reclaim; keeps the read inside Convex's budget. */
+export const SWEEP_LIMIT = 64;
+
 type FileGrantRow = {
   _id: string;
   orderId: string;
@@ -336,13 +339,6 @@ export async function freeze(
       byteLength: number;
     }>;
   } | null;
-  const attached = new Set<string>();
-  for (const row of (await ctx.db
-    .query("fileGrants")
-    .fullTableScan()
-    .collect()) as FileGrantRow[]) {
-    if (row.storageId && row.consumed) attached.add(row.storageId);
-  }
   const grants = new Map(
     (
       (await ctx.db
@@ -351,6 +347,24 @@ export async function freeze(
         .collect()) as FileGrantRow[]
     ).map((grant) => [grant._id, grant]),
   );
+  // A storage object is "attached" when some consumed grant already claims it.
+  // The proposed grants are unconsumed (freezeDelivery rejects a consumed one),
+  // so any consumed grant holding one of these storageIds is necessarily a
+  // different grant. Resolve each proposed id through the by_storage index
+  // instead of materialising every consumed row in the table on each freeze:
+  // 3 indexed lookups, not one full table scan.
+  const attached = new Set<string>();
+  for (const entry of input.files) {
+    const grant = grants.get(entry.grantId);
+    const storageId = grant?.storageId;
+    if (!storageId) continue;
+    const claimed = (await ctx.db
+      .query("fileGrants")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .collect()) as FileGrantRow[];
+    if (claimed.some((row) => row.consumed && row._id !== grant._id))
+      attached.add(storageId);
+  }
   const repository: AtomicDeliveryRepository = {
     transact: (operation) =>
       operation({
@@ -432,7 +446,6 @@ export async function freeze(
   for (const entry of frozen.files) {
     const grant = grants.get(entry.grantId);
     if (grant) await ctx.db.patch(grant._id as never, { consumed: true });
-    attached.add(entry.storageId);
   }
   return { deliveryId: String(deliveryId), manifest };
 }
@@ -545,22 +558,25 @@ export async function serveFile(
 /** Internal: drop expired unconsumed grants after TTL + grace. */
 export async function sweepGrants(ctx: AdmissionContext) {
   const cutoff = Date.now() - GRANT_TTL_MS - GRANT_GRACE_MS;
+  // Bounded reclaim sweep (the same MAX_SWEEP discipline settlement:sweep uses).
+  // The by_unconsumed_expiry index range is exactly the rows to consider:
+  // consumed === false AND expiresAt < cutoff. Convex still has a per-mutation
+  // read budget, so one call removes at most SWEEP_LIMIT rows and the
+  // scheduler runs it again.
   const expired = (await ctx.db
     .query("fileGrants")
-    .fullTableScan()
-    .collect()) as FileGrantRow[];
+    .withIndex("by_unconsumed_expiry", (q) =>
+      q.eq("consumed", false).lt("expiresAt", cutoff),
+    )
+    .take(SWEEP_LIMIT)) as FileGrantRow[];
   let removed = 0;
   for (const grant of expired) {
-    if (
-      !grant.consumed &&
-      Number.isSafeInteger(grant.expiresAt) &&
-      grant.expiresAt < cutoff
-    ) {
+    if (Number.isSafeInteger(grant.expiresAt) && grant.expiresAt < cutoff) {
       await ctx.db.delete(grant._id as never);
       removed += 1;
     }
   }
-  return { removed };
+  return { removed, remaining: expired.length - removed };
 }
 
 export const requestUploadMutation = mutationGeneric({
@@ -656,7 +672,7 @@ export const serveFileAction = internalActionGeneric({
 
 export const sweepGrantsMutation = internalMutationGeneric({
   args: {},
-  returns: v.object({ removed: v.number() }),
+  returns: v.object({ removed: v.number(), remaining: v.number() }),
   handler: sweepGrants as never,
 });
 

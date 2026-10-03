@@ -180,7 +180,11 @@ export default defineSchema({
     ),
   })
     .index("by_order", ["orderId"])
-    .index("by_storage", ["storageId"]),
+    .index("by_storage", ["storageId"])
+    // sweepGrants: the unconsumed grants that expired before a cutoff, in one
+    // index range. `consumed` is always present on this table, so the equality
+    // is total and no post-filter is needed.
+    .index("by_unconsumed_expiry", ["consumed", "expiresAt"]),
   // Immutable frozen delivery manifest; manifest is the digest-bound commitment.
   deliveries: defineTable({
     orderId: v.string(),
