@@ -437,17 +437,22 @@ export async function freeze(
   return { deliveryId: String(deliveryId), manifest };
 }
 
-/** Internal: authorize a read and return a byte-transport descriptor (never a URL). */
+/**
+ * Internal: authorize a read and return a byte-transport descriptor (never a
+ * URL). Identity comes from ctx.auth, never from an argument: the caller's Privy
+ * subject is resolved to a Milo account through an active membership, and the
+ * confirmed-delivery fact is read from the ingested chain observation, not from
+ * a caller-supplied boolean.
+ */
 export async function resolveRead(
   ctx: AdmissionContext,
   input: {
     orderId: string;
     fileIndex: number;
-    accountId: string;
-    confirmed: boolean;
   },
 ) {
   const order = await loadOrder(ctx, input.orderId);
+  const membership = await requireMembership(ctx, order.scopeId);
   const existing = (await ctx.db
     .query("deliveries")
     .withIndex("by_order", (q) => q.eq("orderId", order.id))
@@ -463,11 +468,15 @@ export async function resolveRead(
       byteLength: number;
     }>;
   } | null;
+  const observation = (await ctx.db
+    .query("chainOrders")
+    .withIndex("by_order", (q) => q.eq("orderId", order.id))
+    .unique()) as { deliveryManifest?: string | null } | null;
   const repository: AtomicDeliveryRepository = {
     transact: (operation) =>
       operation({
         authenticatedAccount: () => ({
-          id: input.accountId,
+          id: membership.accountId,
           enabled: true,
           invited: true,
         }),
@@ -485,7 +494,7 @@ export async function resolveRead(
                 revision: order.revision,
               }
             : undefined,
-        membershipActive: () => true,
+        membershipActive: (accountId) => accountId === membership.accountId,
         getUploadGrant: () => undefined,
         getFrozenDelivery: () =>
           existing
@@ -496,7 +505,9 @@ export async function resolveRead(
                 files: existing.files,
               }
             : undefined,
-        confirmedDeliveryMatches: () => input.confirmed,
+        confirmedDeliveryMatches: (delivery) =>
+          observation?.deliveryManifest != null &&
+          observation.deliveryManifest === deliveryCommitment(delivery.files),
         storageAttached: () => true,
         insertDeliveryAndConsumeGrants: () => {
           throw new Error("read path is immutable");
@@ -521,8 +532,6 @@ export async function serveFile(
   input: {
     orderId: string;
     fileIndex: number;
-    accountId: string;
-    confirmed: boolean;
   },
 ) {
   const descriptor = await resolveRead(ctx, input);
@@ -625,8 +634,6 @@ export const resolveReadMutation = internalMutationGeneric({
   args: {
     orderId: v.string(),
     fileIndex: v.number(),
-    accountId: v.string(),
-    confirmed: v.boolean(),
   },
   returns: v.object({
     grantId: v.string(),
@@ -642,8 +649,6 @@ export const serveFileAction = internalActionGeneric({
   args: {
     orderId: v.string(),
     fileIndex: v.number(),
-    accountId: v.string(),
-    confirmed: v.boolean(),
   },
   returns: v.bytes(),
   handler: serveFile as never,

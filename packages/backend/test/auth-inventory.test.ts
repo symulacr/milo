@@ -14,6 +14,7 @@ import * as files from "../../../convex/files";
 import httpRouterDefault, { stripeWebhookHandler } from "../../../convex/http";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
+import { deliveryCommitment } from "../src/delivery-policy";
 import { requirePrivySubject } from "../src/privy-identity";
 
 const CONVEX_DIR = new URL("../../../convex", import.meta.url).pathname;
@@ -50,6 +51,7 @@ function emptyTables(): Record<string, Row[]> {
       "deploymentObservations",
       "canonicalBindings",
       "admissionTimingPolicies",
+      "chainOrders",
     ].map((name) => [name, [] as Row[]]),
   );
 }
@@ -551,5 +553,183 @@ describe("M7 auth inventory — completeness vs source exports", () => {
         .map((d) => `${d.ref} at ${d.site}`)
         .join(", ")}`,
     ).toEqual([]);
+  });
+});
+
+const READ_DIGESTS = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
+
+function readDouble(options: {
+  identity?: Identity;
+  membershipStatus?: "active" | "revoked";
+  accountId?: string;
+  orderPhase?: "ACCEPTED" | "SUBMITTED" | "DISPUTED" | "TERMINAL";
+  manifest?: string | null;
+  observed?: boolean;
+  fileCount?: number;
+}) {
+  const f = ctxDouble(
+    options.identity === undefined ? BUYER : options.identity,
+  );
+  f.tables.orders.push({
+    _id: "o1",
+    id: "order-1",
+    buyerId: "buyer-1",
+    merchantId: "merchant-1",
+    disputeOperatorId: "operator-1",
+    scopeId: "order-1",
+    profile: "image-pack-v1",
+    outputCount: 3,
+    phase: options.orderPhase ?? "SUBMITTED",
+    revision: 1,
+  });
+  f.tables.memberships.push({
+    _id: "m1",
+    privySubject: "did:privy:buyer",
+    scopeId: "order-1",
+    accountId: options.accountId ?? "buyer-1",
+    role: "buyer",
+    status: options.membershipStatus ?? "active",
+  });
+  const files = READ_DIGESTS.slice(0, options.fileCount ?? 3).map(
+    (sha256, index) => ({
+      grantId: `grant-${index}`,
+      storageId: `blob-${index}`,
+      sha256,
+      contentType: "image/png" as const,
+      byteLength: 32,
+    }),
+  );
+  f.tables.deliveries.push({
+    _id: "d1",
+    orderId: "order-1",
+    merchantId: "merchant-1",
+    revision: 1,
+    files,
+  });
+  if (options.observed !== false) {
+    f.tables.chainOrders.push({
+      _id: "c1",
+      orderId: "order-1",
+      deliveryManifest:
+        "manifest" in options
+          ? options.manifest
+          : files.length === 3
+            ? deliveryCommitment(files)
+            : "e".repeat(64),
+    });
+  }
+  return f;
+}
+
+describe("DEAD-14 private read derives identity from ctx.auth", () => {
+  const READ = { orderId: "order-1", fileIndex: 1 };
+
+  test("allowed: the buyer reads a file the chain observation confirms", async () => {
+    const f = readDouble({});
+    const descriptor = await files.resolveRead(f.ctx, READ);
+    expect(descriptor).toMatchObject({
+      grantId: "grant-1",
+      storageId: "blob-1",
+      sha256: READ_DIGESTS[1],
+    });
+  });
+
+  test("allowed: the merchant reads without a confirmed observation", async () => {
+    const f = readDouble({ accountId: "merchant-1", observed: false });
+    const descriptor = await files.resolveRead(f.ctx, {
+      orderId: "order-1",
+      fileIndex: 0,
+    });
+    expect(descriptor.storageId).toBe("blob-0");
+  });
+
+  test("allowed: the dispute operator reads once the order is DISPUTED", async () => {
+    const f = readDouble({ accountId: "operator-1", orderPhase: "DISPUTED" });
+    const descriptor = await files.resolveRead(f.ctx, {
+      orderId: "order-1",
+      fileIndex: 2,
+    });
+    expect(descriptor.storageId).toBe("blob-2");
+  });
+
+  test("denied: an unauthenticated caller", async () => {
+    const f = readDouble({ identity: ANON });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "Authenticated Privy identity required",
+    );
+  });
+
+  test("denied: a revoked membership", async () => {
+    const f = readDouble({ membershipStatus: "revoked" });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "Active membership required",
+    );
+  });
+
+  test("denied: an active member who is not a party to the order", async () => {
+    const f = readDouble({ accountId: "stranger-1" });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "delivery access is not permitted",
+    );
+  });
+
+  test("denied: the dispute operator before the order is DISPUTED", async () => {
+    const f = readDouble({ accountId: "operator-1", orderPhase: "SUBMITTED" });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "delivery access is not permitted",
+    );
+  });
+
+  test("denied: the buyer when the observed manifest differs from the frozen one", async () => {
+    const f = readDouble({ manifest: "d".repeat(64) });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "delivery is not bound to the confirmed chain submission",
+    );
+  });
+
+  test("denied: the buyer when no chain observation exists", async () => {
+    const f = readDouble({ observed: false });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "delivery is not bound to the confirmed chain submission",
+    );
+  });
+
+  test("denied: a frozen delivery that is not exactly three files", async () => {
+    const f = readDouble({ fileCount: 2, accountId: "merchant-1" });
+    await expect(files.resolveRead(f.ctx, READ)).rejects.toThrow(
+      "delivery is unavailable",
+    );
+  });
+
+  test("denied: an out-of-range fileIndex", async () => {
+    const f = readDouble({});
+    await expect(
+      files.resolveRead(f.ctx, { orderId: "order-1", fileIndex: 3 }),
+    ).rejects.toThrow();
+  });
+
+  test("denied: identity is not selectable by the caller", async () => {
+    // The pre-fix signature took {accountId, confirmed}. Passing a foreign
+    // accountId and confirmed:true must no longer widen access.
+    const supplied = { ...READ, accountId: "buyer-1", confirmed: true };
+    const outsider = readDouble({ accountId: "stranger-1" });
+    await expect(files.resolveRead(outsider.ctx, supplied)).rejects.toThrow(
+      "delivery access is not permitted",
+    );
+    const unconfirmed = readDouble({});
+    unconfirmed.setIdentity({
+      issuer: "privy.io",
+      subject: "did:privy:stranger",
+    });
+    await expect(files.resolveRead(unconfirmed.ctx, supplied)).rejects.toThrow(
+      "Active membership required",
+    );
+  });
+
+  test("serveFile: the unauthorized reader gets no bytes", async () => {
+    const f = readDouble({ accountId: "stranger-1" });
+    await expect(files.serveFile(f.ctx as never, READ)).rejects.toThrow(
+      "delivery access is not permitted",
+    );
   });
 });
