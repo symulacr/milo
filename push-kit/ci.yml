@@ -7,5 +7,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: bun run contract:compile
       - run: bun run typecheck
+      - run: bun run lint
       - run: bun run test:unit
+      - run: bun run build
+      - run: bun test apps/web/src/route-parity.test.ts
