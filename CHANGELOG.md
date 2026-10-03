@@ -2,12 +2,25 @@
 
 ## v0.0.4 - 2026-09-25
 
+> **Corrected 2026-10-03.** This entry was written against a different tree. The `hardening/`
+> and `.hoplite/` directories it leans on were never tracked, and several of the
+> `packages/integration/src/` modules it names were later consolidated and removed. Of the
+> paths it cites, `packages/integration/src/{preprod-lane,preprod-actions,resources,dust-seed,wallet-state-verify}.mjs`
+> and `scripts/native-services-health.ts` are still here; `batch-proving.mjs`, `bench.mjs`,
+> `bench.test.mjs`, `batch-calls.mjs`, `batch-capacity.mjs`, `submit-batch.mjs`,
+> `dependency-footprint.test.mjs`, `packages/integration/tsconfig.json` and
+> `hardening/v6/run-gates.sh` are not. **Any bullet below that names one of those removed
+> modules, or that asserts one of their symbols (`boundedProvingProvider`, `deriveFence`,
+> `raisedFeeBound`, `batchCeiling`, `submitOrRevert`, `proverSpawnPlan`), describes a tree that
+> is not this one**; none of those symbols resolves anywhere in it. Every measurement below
+> therefore stays a dated receipt, not a claim a fresh clone can reproduce. Corrections to
+> specific bullets are marked inline.
+
 the concurrency wave: the adversarial audit converged, and the Preprod lane learned to batch,
 pipeline and burst, with each capability measured on the real chain before it was claimed. every
-claim below is backed by the code under `packages/integration/src/`, the analysis under
-`hardening/v6/`, and the retained receipts under `.hoplite/artifacts/preprod/`; `hardening/` and
-`.hoplite/` are gitignored, so the conclusions are recorded here for the tracked tree, as the
-Preprod deployment entry below already does.
+claim below is backed by the code under `packages/integration/src/` and the analysis under
+`hardening/v6/`; `hardening/` and `.hoplite/` are gitignored, so the conclusions are recorded
+here for the tracked tree, as the Preprod deployment entry below already does.
 
 ### implemented and proven
 
@@ -24,12 +37,19 @@ Preprod deployment entry below already does.
   compares the retrieved manifest against `deliveryCommitment(delivery.files)` in
   `convex/files.ts`, closing H-01, where a 64-hex write was compared as 192 hex and made every
   protected read unsatisfiable.
-- **the `check:plan` gate is real and CI can call it.** `scripts/check-plan.ts` is tracked and
-  `package.json` carries the script again (H-02); both workflows invoke it.
+- **the `check:plan` gate is real and CI can call it.** `scripts/check-plan.ts` is tracked, but
+  **corrected 2026-10-03: `package.json` carries no `check:plan` script and no workflow invokes
+  it.** run it as `bun run scripts/check-plan.ts`.
 - **the stale hardcoded review deadline is deleted** (H-06, `apps/web/src/reviewDeadline.ts`), the
   dead `HTTP_SUBMIT_MODULE` export is gone (M-04), and the lane is wired for typing rather than
   excluded from it (`packages/integration/tsconfig.json` plus a package typecheck script, H-04's
   structural half).
+  **Corrected 2026-10-03: none of the three holds in this tree.**
+  `apps/web/src/reviewDeadline.ts` is present and load-bearing: it is the boundary-clean carrier
+  for the sample review deadline and `apps/web/src/public-chrome.test.tsx` asserts parity with
+  the static landing frame. `HTTP_SUBMIT_MODULE` is still exported at
+  `packages/integration/src/http-submit.mjs:215`. `packages/integration/tsconfig.json` does not
+  exist, so the integration lane is still outside the root `tsc --noEmit` scope.
 - **a 24-intent batched transaction finalized on Preprod.** 24 `reserve` intents across 24 freshly
   deployed order contracts landed as one transaction in block 2709384, tx
   `00bf1bd7c80b37330efd72da8f1cf7b28b80f5e8b713eeb757de61c611f476ee39`, outcome `SucceedEntirely`,
@@ -47,6 +67,10 @@ Preprod deployment entry below already does.
   landed in four blocks, because each submit completed 9.4 to 10.9 s apart, beyond the 6 s block
   cadence - client-side serialization, not admission (`protocol-limits.md` section 5).
 - **the prover's efficiency win is applied where the server is spawned.**
+  **corrected 2026-10-03: `scripts/native-services-health.ts` no longer sets
+  `RAYON_NUM_THREADS`, `MALLOC_MMAP_THRESHOLD_` or `MALLOC_ARENA_MAX`, and no `proverSpawnPlan`
+  exists anywhere in the tree.** the spawn code passes only `PATH` and `HOME`. the measurements
+  that follow are receipts from the 2026-09-25 run, not a property of this tree.
   `scripts/native-services-health.ts` now starts the proof server with `RAYON_NUM_THREADS=4`,
   `MALLOC_MMAP_THRESHOLD_=131072` and `MALLOC_ARENA_MAX=2` (`proverSpawnPlan`). measured against
   the default spawn on the same byte-for-byte `reserve` payload: steady RSS 514.8 to about 289 MB
@@ -87,6 +111,8 @@ Preprod deployment entry below already does.
   and fails if any of 24 runtime-critical packages gains a second copy; 6 packages already
   duplicated for recorded reasons are ratchets that may not grow; a second test fails if a guarded
   package disappears from the tree.
+  **corrected 2026-10-03: `dependency-footprint.test.mjs` is not in this tree; `packages/integration/test/`
+  holds 28 files and none of them is that ratchet.**
 - **one gate entry point.** `hardening/v6/run-gates.sh` runs the four workflow gates (biome,
   types, unit, integration) from anywhere, with the integration gate on the pinned Node 24.20.0
   runtime.
@@ -121,8 +147,12 @@ Preprod deployment entry below already does.
 514.8 to about 289 MB and CPU-seconds per heavy proof 19.00 to 15.12-16.48 under the applied spawn
 environment; dust fence capacity 166 to 318,448 transactions at the measured fee; audit findings
 37 (3 critical, 12 high, 15 medium, 5 low, 2 cosmetic); dependency ratchet 24 single-copy packages
-and 6 recorded ratchets; 443 integration tests passing as recorded on 2026-09-25. no dependency
-was added, removed or changed by this round.
+and 6 recorded ratchets; 443 integration tests passing as recorded on 2026-09-25.
+**corrected 2026-10-03: that count cannot be reproduced here. `bun run test:integration`
+provisions the pinned Node runtime and reinstalls the integration dependency set, so the
+28 files under `packages/integration/test/` are not runnable from a fresh clone without a
+provisioned native lane, and the tree carries no record of how many tests they held on
+2026-09-25.** no dependency was added, removed or changed by this round.
 
 ### known limits
 
@@ -138,12 +168,15 @@ was added, removed or changed by this round.
   (`packages/integration/tsconfig.json`, `checkJs`, `npm run typecheck` in the package), but the
   backlog is not worked off: 2,792 errors as measured on 2026-09-25. the root `tsc --noEmit` gate
   still does not cover the lane (its include is `packages/**/*.ts` only).
+  **corrected 2026-10-03: `packages/integration/tsconfig.json` and a package-level typecheck
+  script are both absent, so the lane is not typecheckable in this tree and the 2,792 figure
+  cannot be reproduced.** the root `tsc --noEmit` gate excludes the lane because it is `.mjs`.
 - the receipts cited above live under `.hoplite/artifacts/preprod/` and the analysis under
-  `hardening/`; both are gitignored, so the claims are checkable locally but not from a fresh
-  clone.
+  `hardening/`; both are gitignored and neither is present, so these claims are not checkable
+  from a fresh clone at all.
 
 Changes are grouped by verified scope. “Added” does not mean a live service or a passed
-integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+integration gate. Execution status lives in `audit/discovery/MASTER-LEDGER.md`.
 
 ## Preprod deployment - 2026-09-20
 
@@ -215,7 +248,7 @@ payment acceptance remain open. the off-chain half is prototyped, not deployed: 
 exists, Privy is not configured, and the browser has no circuit-call path.
 
 Changes are grouped by verified scope. “Added” does not mean a live service or a passed
-integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+integration gate. Execution status lives in `PROGRESS_MANIFEST.md`.
 
 ## v0.0.3 - 2026-09-20
 
@@ -306,7 +339,7 @@ written. the fast path is wired and gated but has not yet restored a real Prepro
 to end.
 
 Changes are grouped by verified scope. “Added” does not mean a live service or a passed
-integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+integration gate. Execution status lives in `PROGRESS_MANIFEST.md`.
 
 ## v0.0.2 - 2026-09-20
 
@@ -335,7 +368,7 @@ production 17,051 to 17,057 lines (v5 to v6: +3 for the predicate export and +3 
 
 the local lane needs network access and about 450 MB on first provisioning. preprod deployment is one user action away (faucet tNIGHT plus DUST registration; procedure in `hardening/v6/deployment/preprod-disposition.md`). the sample workspace remains a simulator, admits no order, and no preprod transaction has run.
 
-Changes are grouped by verified scope. “Added” does not mean a live service or a passed integration gate. Execution status lives in [PROGRESS_MANIFEST.md](PROGRESS_MANIFEST.md).
+Changes are grouped by verified scope. “Added” does not mean a live service or a passed integration gate. Execution status lives in `PROGRESS_MANIFEST.md`.
 
 ## Unreleased — native local execution, protocol work ongoing
 
@@ -402,7 +435,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   hygiene, PublicApp extracted so public headings are truly tested).
 - 370 unit tests, strict typecheck, lint and build pass; merchant and buyer
   perspectives browser-verified. Escalations recorded in
-  [docs/drift-audit-2026-09-14.md](docs/drift-audit-2026-09-14.md) Addendum 4.
+  `docs/drift-audit-2026-09-14.md` Addendum 4.
 
 ### 15 September 2026 — blueprint framing refactor (public bundle split, consent surfaces)
 
@@ -437,7 +470,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   claim qualified (no real Lace connection evidence yet); Lace copy treats
   wallet names as unauthenticated metadata with a late-injection reload note.
 - Second four-critic round and resolutions recorded in
-  [docs/drift-audit-2026-09-14.md](docs/drift-audit-2026-09-14.md) (Addendum 3).
+  `docs/drift-audit-2026-09-14.md` (Addendum 3).
   370 unit tests, strict typecheck, lint and build pass; key flows
   browser-verified.
 
@@ -446,7 +479,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Four evidence-only critics audited the Compact contract, integration
   runtime, admission/binding backend and UI/wallet boundary against the
   read-only blueprint; consolidated report with citations in
-  [docs/midnight-integration-audit-2026-09-15.md](docs/midnight-integration-audit-2026-09-15.md).
+  `docs/midnight-integration-audit-2026-09-15.md`.
   Verdict: honest and fail-closed — the 0/6 and 0/14 gates hold consistently
   across code and receipts; no hidden overclaims found.
 - Fix the audit's actionable findings: landing FAQ no longer implies a
@@ -491,7 +524,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 
 - Reconcile the synthetic UI against the concept documents (01/04/05) in a
   cited drift audit; full register and escalations in
-  [docs/drift-audit-2026-09-14.md](docs/drift-audit-2026-09-14.md).
+  `docs/drift-audit-2026-09-14.md`.
 - Copy now matches documented sentences: hero subhead and CTA labels (04:98,
   04:205), payment hold/expiry wording (05:197, 04:325), file-check vocabulary
   (04:335), evidence sections (04:369), approval dialog with explicit back
@@ -558,8 +591,8 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   admission independently rejects expired or revoked monitoring evidence.
 - Invalidate observations before refresh, cap freshness at consent expiry and
   preserve later independently consented one-shot results during stale cleanup.
-- See the [monitoring boundary](docs/payment-monitoring.md) and
-  [live verification ledger](EXECUTION_MANIFEST.md). No confirmation, capture,
+- See the `monitoring boundary` and
+  `live verification ledger`. No confirmation, capture,
   settlement, connected UI or actual Stripe effects are claimed. Release gates
   remain R0 / 0-of-6 / 0-of-14.
 
@@ -588,13 +621,13 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Twenty-four concurrent revocation calls produce three revocation audit records
   and 21 replays. Internal-only access, allowlist, stale-version, request-conflict
   and immutable-target checks remain enforced. Existing admission regression passes.
-- Preserve [source-bound local evidence](docs/receipts/provisioning-persistence-2026-09-11.json).
+- Preserve `source-bound local evidence`.
   Synthetic fixture labels do not verify source authenticity, customer ownership,
   hosted authorization or connected-provider acceptance. R0 / 0-of-6 / 0-of-14 unchanged.
 
 ### 11 September 2026 — tracked repairs and internal provisioning
 
-- Added a [working task list](TASKS.md) and [live execution manifest](EXECUTION_MANIFEST.md)
+- Added a `working task list` and `live execution manifest`
   with explicit completion criteria, dependencies and remaining work.
 - Reconciled stale backend/provider setup and handoff instructions without erasing
   historical receipts or changing acceptance gates.
@@ -604,7 +637,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Added internal-only audited immutable membership/catalog/customer provisioning
   and revocation. Recheck revocation across admission/payment paths and consenting
   membership after provider I/O. External source verification remains required;
-  [internal audit labels are not authentication or attestation](docs/trusted-provisioning.md).
+  `internal audit labels are not authentication or attestation`.
 - Final local checks: 264 unit tests / 1,233 assertions, 104 pinned-Node SDK tests,
   both typechecks, lint, build and plan validation. Local Convex admission again
   passed concurrency and restart regression with synthetic fixtures.
@@ -624,7 +657,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Added all-entrypoint revision-exhaustion regression. 215 unit tests / 1,068
   assertions, 104 SDK tests, static/build checks and real local Convex admission
   concurrency/restart regression passed. R0/0-of-6/0-of-14 unchanged.
-- [Exact implementation limits and next work](docs/connected-implementation.md).
+- `Exact implementation limits and next work`.
 
 ### 11 September 2026 — read-only Preprod block observation
 
@@ -645,7 +678,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Real isolated native Convex passed 16 concurrent requests: one binding, seven
   idempotent replays and eight rejected conflicts; the binding survived restart.
   Fixtures use local admin identities and synthetic observations, not verified
-  Privy, Stripe or preprod state. [Receipt](docs/receipts/convex-atomic-admission-2026-09-10.json).
+  Privy, Stripe or preprod state. `Receipt`.
 - Pinned binary verification precedes execution. Tamper, cold-download,
   SIGINT/SIGTERM cleanup, unowned-process preservation and full retry passed.
   Root environment remained unchanged. Fixed a lifecycle-test ownership race;
@@ -672,7 +705,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   wallet recovery material were imported.
 - Added MIT for original project material, preserved third-party notices, and
   shortened README with a Mermaid sequence diagram separating local and target
-  flows. See [provider setup](docs/provider-setup.md).
+  flows. See `provider setup`.
 - Verified 128 unit tests / 705 assertions, 63 isolated Midnight SDK tests,
   root/Convex typechecks, lint, build and planning links. Static config passed an
   HTTP read and secret-canary exclusion check. Browser checks opened the genuine
@@ -696,7 +729,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Fresh native `run-zYY0XT`: three staged transactions finalized, 14 operations
   installed, lock/state observation at block 32, supervisor/driver exit 0 and all
   16 captured integration source hashes unchanged. See the
-  [sanitized receipt](docs/receipts/observation-coordinator-2026-09-10.json).
+  `sanitized receipt`.
 - Verified full 14-circuit compilation, 63 unit tests / 586 assertions, 63
   pinned-Node tests, lint, typecheck and build. Independent review prompted
   stronger semantic-rejection fixtures with recomputed IDs, plus correction of
@@ -721,7 +754,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Fresh native `run-xr5c1B` passed with supervisor/driver exit 0, all three staged
   transactions finalized, and the version-2 observation verified at block 32.
   All 18 pre-run source hashes remained unchanged; the
-  [sanitized receipt](docs/receipts/admission-timing-2026-09-10.json) excludes
+  `sanitized receipt` excludes
   deadline values and private inputs. Maintenance/recovery were not rerun.
 
 ### 10 September 2026 — native admission observation bridge
@@ -733,7 +766,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   to migrate.
 - Fresh native `run-k1ERXP` passed with supervisor and driver exit 0. Observation
   at block 33 matched the complete expected ledger, 14 verifier keys and locked
-  authority. The [sanitized receipt](docs/receipts/admission-observation-2026-09-10.json)
+  authority. The `sanitized receipt`
   binds all 18 pre-run implementation hashes, unchanged after execution.
 - Added observer-to-backend compatibility and rejection tests, including explicit
   missing auth/payment refusal, input mutation, controls-mode counter 3, legacy
@@ -741,7 +774,7 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 - Verification passed: 57 pinned-Node integration tests, 57 Bun unit tests /
   531 assertions, lint, typecheck, build and canonical plan checks. Independent
   review's nonblocking coverage suggestions were added and verified.
-- Added the [SDK → chain → Milo map](docs/midnight-integration-map.md), separating
+- Added the `SDK → chain → Milo map`, separating
   native execution from the synthetic web UI and unimplemented provider adapters.
 - This is not canonical admission, real payment authorization, persisted binding,
   a reservation proof or a browser connection. **R0, 0/6 and 0/14 remain unchanged.**
@@ -759,9 +792,9 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
   three bootstrap submissions, zero duplicates. The wallet broker and recovery
   key survived; this is not browser/device/full-wallet or provider-outage recovery.
 - Recorded final native runs `run-f5Chw8` and `run-jOvW0R` in strict
-  [maintenance](docs/receipts/maintenance-controls-2026-09-10.json) and
-  [recovery](docs/receipts/actor-recovery-2026-09-10.json) receipt allowlists.
-  [Pre-run implementation hashes](docs/receipts/final-native-source-2026-09-10.json)
+  `maintenance` and
+  `recovery` receipt allowlists.
+  `Pre-run implementation hashes`
   cover all 16 listed files, verified unchanged after both runs. Earlier
   `run-9Q08JL` / `run-oyoIbg` had only post-run provenance and are superseded,
   not retroactively source-attested. Both durable driver exits are 0;
@@ -875,7 +908,7 @@ Implementation checkpoint: `6acd3a4531a851f8fea836f31149de6621a4425e`. This is a
 - Exact dependency setup, static build, typechecking and lint; 14 tests / 79 assertions pass.
 - Actual browser checks for quote data, SHA-256 byte equality, approval consent, separate capture/void, disputes, unknown outcomes, synthetic recovery and failed rechecks.
 - Stable component identities and explicit dialog focus return; named landmarks and task-first 320px layout. Axe reports zero automatic violations on sampled views, with incomplete contrast results—not an accessibility certification.
-- Source-controlled progress/deferred/reactivated-state rules and [verification limitations](VERIFICATION.md). Live flow recording failed to reproduce the otherwise passing interaction reliably; failed captures are not presented as successful evidence.
+- Source-controlled progress/deferred/reactivated-state rules and `verification limitations`. Live flow recording failed to reproduce the otherwise passing interaction reliably; failed captures are not presented as successful evidence.
 
 ### Not included
 
