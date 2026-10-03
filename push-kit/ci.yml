@@ -1,3 +1,7 @@
+# This file is the tracked CI definition. `.github/` is gitignored (.gitignore:21), so
+# `push-kit/PUSH.md`'s "copy push-kit/ci.yml to .github/workflows/ci.yml" produces a
+# workflow that is never committed and never runs; this file is what a reviewer reads.
+# Revert: git revert <this commit>   (DECISION: where tracked CI lives, I078)
 name: ci
 on: [push, pull_request]
 jobs:
