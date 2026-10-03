@@ -67,7 +67,7 @@ Use real work as the visual centerpiece. Sample pack imagery should share lighti
 
 ## 3. Navigation and page inventory
 
-These routes specify the target inventory. The synthetic prototype implements sample-only views; [progress](PROGRESS_MANIFEST.md) separates those from real authenticated endpoints. `:quoteId`, `:orderId` and `:caseId` are identifiers, **not access credentials**. Server-side membership and independent circuit authorization remain mandatory. A deep link resumes the named record after sign-in without embedding OTPs, JWTs, capabilities, backup passwords or signing material in the URL.
+These routes specify the target inventory. The synthetic prototype implements sample-only views; [the tracked status ledger](audit/discovery/MASTER-LEDGER.md) separates those from real authenticated endpoints. `:quoteId`, `:orderId` and `:caseId` are identifiers, **not access credentials**. Server-side membership and independent circuit authorization remain mandatory. A deep link resumes the named record after sign-in without embedding OTPs, JWTs, capabilities, backup passwords or signing material in the URL.
 
 | Surface / proposed route | Audience and main task | Primary action / key boundary |
 | --- | --- | --- |
