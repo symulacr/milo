@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # G0: substance checks. Mutated inputs must FAIL (see gate-selftest.sh).
 # Check sets: prototype 8 · demo 9 · mvp 12 · production 9 (STAGE-MAP fixed; owner ratifies changes).
-export PATH="/home/eya/.bun/bin:/usr/bin:/bin:$PATH"
+# Every path is repo-relative or TMPDIR-relative, so a fresh clone is the only requirement.
+# The pass path writes a local git tag; CI sets CI=true, which suppresses it, so a CI run cannot
+# tag or push anything.
+if [ -d "${HOME:-}/.bun/bin" ]; then PATH="${HOME}/.bun/bin:$PATH"; fi
+export PATH
 set -euo pipefail
 STAGE="${1:-prototype}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+TMP="${TMPDIR:-/tmp}"
 HEAD=$(git rev-parse HEAD)
 TS=$(date +%Y%m%d-%H%M%S)
 mkdir -p gates
@@ -16,7 +21,7 @@ results=()
 check() {
   local id="$1" cmd="$2"
   local ok=0
-  if eval "$cmd" >/tmp/gate-$id.out 2>&1; then ok=1; fi
+  if eval "$cmd" >"$TMP/gate-$id.out" 2>&1; then ok=1; fi
   if [ "$ok" -eq 1 ]; then
     results+=("{\"id\":\"$id\",\"status\":\"PASS\"}")
     pass=$((pass+1))
@@ -24,13 +29,13 @@ check() {
     results+=("{\"id\":\"$id\",\"status\":\"FAIL\"}")
     fail=$((fail+1))
     echo "FAIL $id" >&2
-    tail -8 /tmp/gate-$id.out >&2 || true
+    tail -8 $TMP/gate-$id.out >&2 || true
   fi
 }
 
 # --- substance helpers (every one can fail) ---
 unit_counts() {
-  local out=/tmp/gate-unit-raw.out
+  local out=$TMP/gate-unit-raw.out
   bun run test:unit >"$out" 2>&1 || true
   local p f e
   p=$(grep -oE '^ *[0-9]+ pass' "$out" | tail -1 | grep -oE '[0-9]+' || echo 0)
@@ -65,9 +70,9 @@ security_modules() {
 }
 
 ledger_script() {
-  [ -f ../audit/discovery/MASTER-LEDGER.md ] || return 1
-  grep -q '| ID |' ../audit/discovery/MASTER-LEDGER.md
-  rows=$(grep -c 'L-' ../audit/discovery/MASTER-LEDGER.md || echo 0)
+  [ -f audit/discovery/MASTER-LEDGER.md ] || { echo "missing audit/discovery/MASTER-LEDGER.md"; return 1; }
+  grep -q '| ID |' audit/discovery/MASTER-LEDGER.md
+  rows=$(grep -c 'L-' audit/discovery/MASTER-LEDGER.md || echo 0)
   echo rows=$rows
   [ "$rows" -ge 20 ]
 }
@@ -86,13 +91,13 @@ secret_scan() {
 }
 
 typecheck_clean() {
-  bun run typecheck >/tmp/gate-tc.out 2>&1
-  ! grep -qE 'error TS[0-9]+' /tmp/gate-tc.out
+  bun run typecheck >$TMP/gate-tc.out 2>&1
+  ! grep -qE 'error TS[0-9]+' $TMP/gate-tc.out
 }
 
 lint_no_errors() {
   # Biome: exit 0 or only warnings/infos; any "error TS" style or biome errors fail.
-  local out=/tmp/gate-lint.out
+  local out=$TMP/gate-lint.out
   bun run lint >"$out" 2>&1 || true
   if grep -qE 'Found [1-9][0-9]* errors' "$out"; then
     grep -E 'Found [0-9]+ errors' "$out"; return 1
@@ -105,7 +110,7 @@ lint_no_errors() {
 }
 
 build_artifacts() {
-  bun run build >/tmp/gate-build.out 2>&1
+  bun run build >$TMP/gate-build.out 2>&1
   ls dist/*.js >/dev/null 2>&1 || ls dist/index.html >/dev/null 2>&1
   # real size, not empty
   find dist -name '*.js' -size +1k | head -1 | grep -q .
@@ -142,10 +147,10 @@ demo_contract_14() {
 
 demo_webhook_negatives() {
   bun test convex/http.test.ts packages/backend/test/auth-inventory.test.ts \
-    >/tmp/gate-wh.out 2>&1 || true
+    >$TMP/gate-wh.out 2>&1 || true
   local p f
-  p=$(grep -oE '^ *[0-9]+ pass' /tmp/gate-wh.out | tail -1 | grep -oE '[0-9]+' || echo 0)
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-wh.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  p=$(grep -oE '^ *[0-9]+ pass' $TMP/gate-wh.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-wh.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo "webhook/auth pass=$p fail=$f"
   [ "$f" -eq 0 ] && [ "$p" -ge 5 ]
 }
@@ -173,7 +178,7 @@ demo_clickmap() {
 }
 
 demo_sdk_not_prod() {
-  bun run build >/tmp/gate-b2.out 2>&1
+  bun run build >$TMP/gate-b2.out 2>&1
   # connector strings must not appear in production JS
   if grep -R "walletSdkInitialApi\|__MILO_SDK_CONNECTOR__\|MidnightWalletSdkConnector" dist/ 2>/dev/null | head -1 | grep -q .; then
     echo "sdk connector leaked into dist"; return 1
@@ -203,8 +208,8 @@ demo_neg_controls() {
   rg -l 'rejects|must fail|negative|bad.sig|fail.closed' \
     --glob '*.test.ts' --glob '*.test.mjs' convex packages 2>/dev/null | head -5 | grep -q .
   bun test packages/backend/test/auth-inventory.test.ts convex/http.test.ts \
-    >/tmp/gate-nc.out 2>&1 || true
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-nc.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+    >$TMP/gate-nc.out 2>&1 || true
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-nc.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo neg-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -212,8 +217,8 @@ demo_neg_controls() {
 mvp_todo_m() {
   # every M4-M12 that is claimed done must still pass its acceptance command
   # M7 auth inventory completeness
-  bun test packages/backend/test/auth-inventory.test.ts >/tmp/gate-m7.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-m7.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/backend/test/auth-inventory.test.ts >$TMP/gate-m7.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-m7.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo m7-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -221,16 +226,16 @@ mvp_todo_m() {
 mvp_m4_stripe_window() {
   # M4: capture_before / usableUntil policy present and tested
   rg -n 'capture_before|captureBefore|usableUntil' packages/backend/src --glob '*.ts' | head -3 | grep -q .
-  bun test packages/backend/test --timeout 20000 >/tmp/gate-m4.out 2>&1 || true
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-m4.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/backend/test --timeout 20000 >$TMP/gate-m4.out 2>&1 || true
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-m4.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo m4-fail=$f
   [ "$f" -eq 0 ]
 }
 
 mvp_m5_upload() {
   rg -n 'attachUpload|provenance|sha256' convex/files.ts | head -3 | grep -q .
-  bun test convex/files.test.ts >/tmp/gate-m5.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-m5.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test convex/files.test.ts >$TMP/gate-m5.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-m5.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo m5-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -238,15 +243,15 @@ mvp_m5_upload() {
 mvp_m6_recovery() {
   [ -s packages/domain/src/recovery-kit.ts ]
   rg -n 'recovery|RecoveryKit' apps/web/src packages/domain/src --glob '*.ts' --glob '*.tsx' | head -3 | grep -q .
-  bun test packages/domain --timeout 20000 >/tmp/gate-m6.out 2>&1 || true
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-m6.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/domain --timeout 20000 >$TMP/gate-m6.out 2>&1 || true
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-m6.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo m6-fail=$f
   [ "$f" -eq 0 ]
 }
 
 mvp_m9_privacy() {
-  bun test packages/backend/test/privacy-invariants.test.ts >/tmp/gate-m9.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-m9.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/backend/test/privacy-invariants.test.ts >$TMP/gate-m9.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-m9.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo m9-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -265,7 +270,7 @@ mvp_m12_docs() {
 mvp_integration() {
   # integration suite exit 0 if present
   if grep -q '"test:integration"' package.json; then
-    bun run test:integration >/tmp/gate-int.out 2>&1
+    bun run test:integration >$TMP/gate-int.out 2>&1
   else
     echo no-integration-script
     # require at least integration tests to exist
@@ -277,7 +282,7 @@ mvp_coverage() {
   # M10: produce a non-trivial coverage artifact
   if [ ! -f coverage/lcov.info ]; then
     if grep -q 'test:coverage|coverage' package.json; then
-      bun run test:coverage >/tmp/gate-cov.out 2>&1 || true
+      bun run test:coverage >$TMP/gate-cov.out 2>&1 || true
     fi
   fi
   if [ -f coverage/lcov.info ]; then
@@ -285,7 +290,7 @@ mvp_coverage() {
     echo lcov-lines=$lines
     [ "$lines" -gt 50 ]
   else
-    bun test --coverage >/tmp/gate-cov2.out 2>&1 || true
+    bun test --coverage >$TMP/gate-cov2.out 2>&1 || true
     find . -name 'lcov.info' -not -path './node_modules/*' | head -1 | grep -q .
   fi
 }
@@ -309,15 +314,15 @@ mvp_orders_obs() {
   if ! grep -q 'applyChainObservation' convex/observationIngest.ts; then
     echo "observationIngest missing applyChainObservation"; return 1
   fi
-  bun test convex/observationIngest.test.ts >/tmp/gate-oi.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-oi.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test convex/observationIngest.test.ts >$TMP/gate-oi.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-oi.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo oi-fail=$f
   [ "$f" -eq 0 ]
 }
 
 prod_pr2_auth() {
-  bun test packages/backend/test/auth-inventory.test.ts >/tmp/gate-pr2.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-pr2.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/backend/test/auth-inventory.test.ts >$TMP/gate-pr2.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-pr2.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo pr2-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -330,8 +335,8 @@ prod_pr5_livegate() {
 }
 
 prod_pr6_privacy() {
-  bun test packages/backend/test/privacy-invariants.test.ts apps/web/src --timeout 20000 >/tmp/gate-pr6.out 2>&1 || true
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-pr6.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test packages/backend/test/privacy-invariants.test.ts apps/web/src --timeout 20000 >$TMP/gate-pr6.out 2>&1 || true
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-pr6.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo pr6-fail=$f
   [ "$f" -eq 0 ]
   rg -n 'privacy|Privacy' apps/web/src/routes apps/web/src/shells --glob '*.ts*' | head -2 | grep -q .
@@ -361,16 +366,16 @@ prod_secrets_and_lint() {
 prod_build_dist() {
   build_artifacts
   # public entry has no privy/convex/midnight in forbidden way — reuse boundary test
-  bun test apps/web/src/demo-boundary.test.tsx >/tmp/gate-db.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-db.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test apps/web/src/demo-boundary.test.tsx >$TMP/gate-db.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-db.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo boundary-fail=$f
   [ "$f" -eq 0 ]
 }
 
 prod_security() {
   security_modules
-  bun test convex/http.test.ts convex/settlement.test.ts >/tmp/gate-sec.out 2>&1 || true
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-sec.out | tail -1 | grep -oE '[0-9]+' || echo 0)
+  bun test convex/http.test.ts convex/settlement.test.ts >$TMP/gate-sec.out 2>&1 || true
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-sec.out | tail -1 | grep -oE '[0-9]+' || echo 0)
   echo sec-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -413,8 +418,8 @@ observer_service_tests() {
   [ -f packages/integration/src/observer-service.mjs ] || [ -f packages/integration/src/observer.mjs ] \
     || { echo "no observer service module"; return 1; }
   ls packages/integration/test/*observer* >/dev/null 2>&1 || { echo "no observer tests"; return 1; }
-  bun test packages/integration/test/*observer* >/tmp/gate-obs.out 2>&1
-  f=$(grep -oE '^ *[0-9]+ fail' /tmp/gate-obs.out | tail -1 | grep -oE '[0-9]+' || echo 1)
+  bun test packages/integration/test/*observer* >$TMP/gate-obs.out 2>&1
+  f=$(grep -oE '^ *[0-9]+ fail' $TMP/gate-obs.out | tail -1 | grep -oE '[0-9]+' || echo 1)
   echo observer-fail=$f
   [ "$f" -eq 0 ]
 }
@@ -511,8 +516,10 @@ if [ "$fail" -eq 0 ]; then
   # R1: only prototype may be tagged until R2 re-audits higher stages.
   # R1/M13: prototype always; mvp once M2/M3/R6/R8 evidence is in tree.
   # Phase 0: only prototype may be tagged until E2E/Preprod/observer exist.
-  if [ "$STAGE" = "prototype" ]; then
+  if [ "$STAGE" = "prototype" ] && [ -z "${CI:-}" ]; then
     git tag -f "stage/${STAGE}-${HEAD:0:7}" 2>/dev/null || true
+  elif [ "$STAGE" = "prototype" ]; then
+    echo "TAG_SUPPRESSED stage=$STAGE reason=CI"
   else
     echo "TAG_SUPPRESSED stage=$STAGE (needs E2E 3x + Preprod real fees + observer)"
   fi
