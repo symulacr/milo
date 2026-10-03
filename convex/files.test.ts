@@ -166,7 +166,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
       uploadTicket: "ut_grant-1_test",
     });
     expect(f.grant.storageId).toBe("blob-1");
-    expect(f.scheduled).toContain("files:inspect");
+    expect(f.scheduled).toContain("files:inspectGrantAction");
   });
 
   test("refuses missing grant, unauthenticated, non-merchant, wrong owner, revoked membership", async () => {

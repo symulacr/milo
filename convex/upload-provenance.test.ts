@@ -222,7 +222,9 @@ describe("upload URL to storageId provenance is closed", () => {
       }),
     ).rejects.toThrow();
     expect(f.tables.fileGrants[0].storageId).toBe("blob-1");
-    expect(f.scheduled.map((s) => s.name)).toContain("files:inspect");
+    expect(f.scheduled.map((s) => s.name)).toContain(
+      "files:inspectGrantAction",
+    );
   });
 
   test("action-based storeAndAttachUpload produces and binds the storageId itself", async () => {
@@ -237,7 +239,9 @@ describe("upload URL to storageId provenance is closed", () => {
     expect(result.storageId).toMatch(/^blob-stored-/);
     expect(f.tables.fileGrants[0].storageId).toBe(result.storageId);
     expect(result.grantId).toBe(issued.grantId);
-    expect(f.scheduled.map((s) => s.name)).toContain("files:inspect");
+    expect(f.scheduled.map((s) => s.name)).toContain(
+      "files:inspectGrantAction",
+    );
     // The action path is one-shot too: the grant cannot accept another bind.
     await expect(
       attachUpload(f.ctx, {

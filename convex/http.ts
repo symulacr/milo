@@ -336,73 +336,21 @@ export async function stripeWebhookHandler(
 }
 
 /**
- * GET /files — Privy JWT re-auth per request, resolve membership delivery,
- * re-verify retrieved bytes, stream with no-store. Never a storage bearer URL.
+ * GET /files was removed. It referenced a Convex function that is not
+ * registered (`files:resolveRead`; the real export is `files:resolveReadMutation`,
+ * an internal *mutation* taking {orderId, fileIndex} and returning a byte
+ * descriptor, not bytes) and it bound itself to `globalThis.__miloRunQuery`,
+ * which nothing in the tree ever assigns, so it answered 503 to every caller.
+ * The private-file transport is deliberately not built (02-roadmap.md B-04);
+ * it must not be reconstructed against a function that does not exist.
  */
-export async function filesGetHandler(
-  _ctx: unknown,
-  request: Request,
-): Promise<Response> {
-  const url = new URL(request.url);
-  const deliveryId = url.searchParams.get("deliveryId");
-  if (!deliveryId) {
-    return new Response("deliveryId is required", { status: 400 });
-  }
-  const resolve = makeFunctionReference<
-    "query",
-    { deliveryId: string },
-    {
-      bytes: Uint8Array | null;
-      contentType: string;
-      membershipScopeId: string;
-    } | null
-  >("files:resolveRead");
-  const runQuery = (
-    globalThis as {
-      __miloRunQuery?: (ref: unknown, args: unknown) => Promise<unknown>;
-    }
-  ).__miloRunQuery;
-  if (!runQuery) {
-    return new Response("File transport is not bound to an action runtime", {
-      status: 503,
-    });
-  }
-  const resolved = (await runQuery(resolve, {
-    deliveryId,
-    authorization: request.headers.get("authorization"),
-  })) as {
-    bytes: Uint8Array | null;
-    contentType: string;
-    membershipScopeId: string;
-  } | null;
-  if (!resolved?.bytes) {
-    return new Response("Not found", { status: 404 });
-  }
-  return new Response(
-    new Blob([new Uint8Array(resolved.bytes)] as BlobPart[]),
-    {
-      status: 200,
-      headers: {
-        "content-type": resolved.contentType || "application/octet-stream",
-        "cache-control": "private, no-store",
-      },
-    },
-  );
-}
-
 export const stripeWebhook = httpActionGeneric(stripeWebhookHandler);
-export const filesGet = httpActionGeneric(filesGetHandler);
 
 const http = httpRouter();
 http.route({
   path: "/webhooks/stripe",
   method: "POST",
   handler: stripeWebhook,
-});
-http.route({
-  path: "/files",
-  method: "GET",
-  handler: filesGet,
 });
 export default http;
 

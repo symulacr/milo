@@ -11,10 +11,7 @@ import { requireMembership } from "../../../convex/auth/identity";
 import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
 import * as files from "../../../convex/files";
-import httpRouterDefault, {
-  filesGetHandler,
-  stripeWebhookHandler,
-} from "../../../convex/http";
+import httpRouterDefault, { stripeWebhookHandler } from "../../../convex/http";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
 import { requirePrivySubject } from "../src/privy-identity";
@@ -415,31 +412,11 @@ describe("M7 auth inventory — HTTP routes", () => {
     }
   });
 
-  test("GET /files refuses unbound transport and missing deliveryId", async () => {
-    const missing = await filesGetHandler({}, new Request("https://x/files"));
-    expect(missing.status).toBe(400);
-    const unbound = await filesGetHandler(
-      {},
-      new Request("https://x/files?deliveryId=d1"),
-    );
-    expect(unbound.status).toBe(503);
-  });
-
-  test("GET /files 404s when resolve denies the read (no storage leak)", async () => {
-    const prev = (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery;
-    (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery = async () =>
-      null;
-    try {
-      const res = await filesGetHandler(
-        {},
-        new Request("https://x/files?deliveryId=d1", {
-          headers: { authorization: "Bearer forged" },
-        }),
-      );
-      expect(res.status).toBe(404);
-    } finally {
-      (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery = prev;
-    }
+  test("GET /files is not routed; the private-file transport is not built", async () => {
+    expect(httpRouterDefault.lookup("/files", "GET")).toBeNull();
+    expect(httpRouterDefault.lookup("/files", "HEAD")).toBeNull();
+    const text = await readFile(join(CONVEX_DIR, "http.ts"), "utf8");
+    expect(text).not.toContain('path: "/files"');
   });
 
   test("public-config HTTP surface is GET-only and secret-free", async () => {
@@ -492,7 +469,6 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       "files.attachUploadMutation": "files.attachUpload",
       "files.freezeMutation": "files.freeze",
       "http.stripeWebhook": "http.stripeWebhook",
-      "http.filesGet": "http.filesGet",
       // Public chain-projection read (B3): no identity required; never a write.
       "orders.read": "orders.read",
     };
@@ -531,11 +507,9 @@ describe("M7 auth inventory — completeness vs source exports", () => {
     ).rejects.toThrow("Authenticated Privy identity required");
   });
 
-  test("HTTP route table includes stripe webhook and files, and no debug endpoints", async () => {
+  test("HTTP route table is the stripe webhook only, and no debug endpoints", async () => {
     const text = await readFile(join(CONVEX_DIR, "http.ts"), "utf8");
-    for (const path of ["/webhooks/stripe", "/files"]) {
-      expect(text).toContain(`path: "${path}"`);
-    }
+    expect(text).toContain('path: "/webhooks/stripe"');
     // R-M7-01: /debug-verify returned 12 hex chars of an HMAC computed with the
     // deployment's real STRIPE_WEBHOOK_SECRET over a caller-chosen payload.
     // Assert absence here so a re-added debug route fails the suite.
@@ -543,8 +517,39 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       expect(text).not.toContain(`path: "${path}"`);
     }
     expect(httpRouterDefault.getRoutes().map(([path]) => path)).toEqual([
-      "/files",
       "/webhooks/stripe",
     ]);
+  });
+
+  test("every Convex function reference resolves to a registered function", async () => {
+    // Convex registers module:NAME only for `export const NAME = <kind>Generic`.
+    // A default-export OBJECT (convex/files.ts) registers nothing under its
+    // keys, so a reference written against such a key is dangling.
+    const entries = await readdir(CONVEX_DIR, { withFileTypes: true });
+    const names = new Set<string>();
+    const refs: { ref: string; site: string }[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      if (entry.name.endsWith(".test.ts")) continue;
+      const text = await readFile(join(CONVEX_DIR, entry.name), "utf8");
+      const moduleName = entry.name.replace(/\.ts$/, "");
+      for (const m of text.matchAll(/export const (\w+) = \w+Generic\(/g))
+        names.add(`${moduleName}:${m[1]}`);
+      text.split("\n").forEach((line, i) => {
+        for (const m of line.matchAll(
+          /"([a-zA-Z][\w]*(?:\/[\w]+)?):([a-zA-Z]\w*)"/g,
+        ))
+          refs.push({ ref: m[0].slice(1, -1), site: `${entry.name}:${i + 1}` });
+      });
+    }
+    expect(names.size).toBeGreaterThan(0);
+    expect(refs.length).toBeGreaterThan(0);
+    const dangling = refs.filter((r) => !names.has(r.ref));
+    expect(
+      dangling,
+      `dangling Convex function references: ${dangling
+        .map((d) => `${d.ref} at ${d.site}`)
+        .join(", ")}`,
+    ).toEqual([]);
   });
 });

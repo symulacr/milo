@@ -21,6 +21,11 @@ import { requireMembership } from "./auth/identity";
 
 export { GRANT_GRACE_MS, GRANT_TTL_MS };
 
+// Registered name of inspectGrantAction below. The `files:inspect` spelling came
+// from the default-export object at the bottom of this file, which Convex does
+// not walk: only `export const NAME = <kind>Generic(...)` registers module:NAME.
+const INSPECT_REF = "files:inspectGrantAction" as never;
+
 type FileGrantRow = {
   _id: string;
   orderId: string;
@@ -178,14 +183,10 @@ export async function attachUpload(
       uploadTicket: undefined,
     } as never,
   );
-  await ctx.scheduler.runAfter(
-    0,
-    "files:inspect" as never,
-    {
-      grantId: String(grant._id),
-      storageId: input.storageId,
-    } as never,
-  );
+  await ctx.scheduler.runAfter(0, INSPECT_REF, {
+    grantId: String(grant._id),
+    storageId: input.storageId,
+  } as never);
   return { grantId: String(grant._id), storageId: input.storageId };
 }
 
@@ -234,14 +235,10 @@ export async function storeAndAttachUpload(
       uploadTicket: undefined,
     } as never,
   );
-  await ctx.scheduler.runAfter(
-    0,
-    "files:inspect" as never,
-    {
-      grantId: String(grant._id),
-      storageId,
-    } as never,
-  );
+  await ctx.scheduler.runAfter(0, INSPECT_REF, {
+    grantId: String(grant._id),
+    storageId,
+  } as never);
   return { grantId: String(grant._id), storageId };
 }
 
