@@ -404,51 +404,6 @@ http.route({
   method: "GET",
   handler: filesGet,
 });
-http.route({
-  path: "/debug-hmac",
-  method: "GET",
-  handler: {
-    isHttp: true,
-    invokeHttpAction: async () => {
-      const mac = await hmacSha256HexWeb(
-        "Jefe",
-        "what do ya want for nothing?",
-      );
-      return new Response(JSON.stringify({ mac }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    },
-    _handler: async () => new Response("ok"),
-  } as never,
-});
-http.route({
-  path: "/debug-verify",
-  method: "POST",
-  handler: httpActionGeneric(async (_ctx, request) => {
-    const raw = await request.text();
-    const header = request.headers.get("stripe-signature");
-    const secret = env("STRIPE_WEBHOOK_SECRET") ?? "";
-    const parsed = parseStripeSignatureHeader(header);
-    let expected = "";
-    if (parsed) {
-      expected = await hmacSha256HexWeb(secret, `${parsed.timestamp}.${raw}`);
-    }
-    return new Response(
-      JSON.stringify({
-        rawLen: raw.length,
-        parsedTs: parsed?.timestamp ?? null,
-        candCount: parsed?.v1.length ?? 0,
-        expectedLen: expected.length,
-        secretLen: secret.length,
-        expectedHead: expected.slice(0, 12),
-        candHead: (parsed?.v1[0] ?? "").slice(0, 12),
-        signedLen: parsed ? `${parsed.timestamp}.${raw}`.length : 0,
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  }),
-});
 export default http;
 
 // Keep validators referenced so schema consumers stay aligned.

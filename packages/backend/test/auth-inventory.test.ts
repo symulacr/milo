@@ -11,7 +11,10 @@ import { requireMembership } from "../../../convex/auth/identity";
 import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
 import * as files from "../../../convex/files";
-import { filesGetHandler, stripeWebhookHandler } from "../../../convex/http";
+import httpRouterDefault, {
+  filesGetHandler,
+  stripeWebhookHandler,
+} from "../../../convex/http";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
 import { requirePrivySubject } from "../src/privy-identity";
@@ -528,15 +531,20 @@ describe("M7 auth inventory — completeness vs source exports", () => {
     ).rejects.toThrow("Authenticated Privy identity required");
   });
 
-  test("HTTP route table includes stripe webhook, files, and debug endpoints", async () => {
+  test("HTTP route table includes stripe webhook and files, and no debug endpoints", async () => {
     const text = await readFile(join(CONVEX_DIR, "http.ts"), "utf8");
-    for (const path of [
-      "/webhooks/stripe",
-      "/files",
-      "/debug-hmac",
-      "/debug-verify",
-    ]) {
+    for (const path of ["/webhooks/stripe", "/files"]) {
       expect(text).toContain(`path: "${path}"`);
     }
+    // R-M7-01: /debug-verify returned 12 hex chars of an HMAC computed with the
+    // deployment's real STRIPE_WEBHOOK_SECRET over a caller-chosen payload.
+    // Assert absence here so a re-added debug route fails the suite.
+    for (const path of ["/debug-hmac", "/debug-verify"]) {
+      expect(text).not.toContain(`path: "${path}"`);
+    }
+    expect(httpRouterDefault.getRoutes().map(([path]) => path)).toEqual([
+      "/files",
+      "/webhooks/stripe",
+    ]);
   });
 });
