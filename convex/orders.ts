@@ -16,6 +16,7 @@ import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
 } from "../packages/backend/src/admission-policy";
+import { requireMembership } from "./auth/identity";
 import {
   applyChainObservation,
   type ChainObservationDb,
@@ -181,6 +182,11 @@ export const recordObservation = internalMutationGeneric({
 /**
  * Read-model projection for the console. A phase is present only when a
  * backing `chainOrders` row exists; missing quote or missing order is null.
+ *
+ * Gated on an authenticated Privy subject holding an active membership in the
+ * quote's scope, the same guard `diagnostics.read` and `provisioning.freeze`
+ * use. Nothing here is a bearer of authority: the query is read-only and the
+ * membership proves only that the caller may see this quote's projection.
  */
 export const read = queryGeneric({
   args: { quoteId: v.string() },
@@ -188,6 +194,14 @@ export const read = queryGeneric({
   handler: async (ctx, args) => {
     const quoteId = args.quoteId.trim();
     if (!quoteId) return null;
+    const quote = (await ctx.db
+      .query("approvedQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", quoteId))
+      .unique()) as { id: string; scopeId: string } | null;
+    if (!quote) return null;
+    // The shared gate: an authenticated Privy subject with an active membership
+    // in this quote's scope. It runs requirePrivySubject itself.
+    await requireMembership(ctx as never, quote.scopeId);
     const doc = (await ctx.db
       .query("chainOrders")
       .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))

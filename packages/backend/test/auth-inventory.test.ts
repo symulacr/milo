@@ -12,6 +12,7 @@ import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
 import * as files from "../../../convex/files";
 import httpRouterDefault, { stripeWebhookHandler } from "../../../convex/http";
+import * as orders from "../../../convex/orders";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
 import { deliveryCommitment } from "../src/delivery-policy";
@@ -471,7 +472,7 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       "files.attachUploadMutation": "files.attachUpload",
       "files.freezeMutation": "files.freeze",
       "http.stripeWebhook": "http.stripeWebhook",
-      // Public chain-projection read (B3): no identity required; never a write.
+      // Membership-gated chain-projection read (Q1/Q2); never a write.
       "orders.read": "orders.read",
     };
     const missing: string[] = [];
@@ -731,5 +732,192 @@ describe("DEAD-14 private read derives identity from ctx.auth", () => {
     await expect(files.serveFile(f.ctx as never, READ)).rejects.toThrow(
       "delivery access is not permitted",
     );
+  });
+});
+
+function orderDouble(options: {
+  identity?: Identity;
+  membershipStatus?: "active" | "revoked";
+  approved?: boolean;
+  chainOrder?: boolean;
+  subject?: string;
+  observedAt?: number | null;
+}) {
+  const f = ctxDouble(
+    options.identity === undefined
+      ? { issuer: "privy.io", subject: options.subject ?? "did:privy:buyer" }
+      : options.identity,
+  );
+  if (options.approved !== false) {
+    f.tables.approvedQuotes.push({
+      _id: "aq",
+      id: "quote-1",
+      scopeId: "scope-1",
+      buyerAccountId: "buyer-1",
+      version: 1,
+      expiresAt: Date.now() + 600_000,
+    });
+  }
+  if (options.chainOrder !== false) {
+    f.tables.chainOrders.push({
+      _id: "c1",
+      orderId: "order-1",
+      quoteId: "quote-1",
+      network: "preprod",
+      address: "mn_addr_preprod1example",
+      nonce: "n1",
+      artifactFingerprint: "fp",
+      phase: "SUBMITTED",
+      revision: 3,
+      deliveryManifest: "f".repeat(64),
+      terminal: false,
+      merchantActive: true,
+      observedAt: options.observedAt ?? Date.now(),
+    });
+    f.tables.deliveries.push({
+      _id: "d1",
+      orderId: "order-1",
+      files: [{}, {}, {}],
+    });
+  }
+  f.tables.memberships.push({
+    _id: "m1",
+    privySubject: options.subject ?? "did:privy:buyer",
+    scopeId: "scope-1",
+    accountId: "buyer-1",
+    role: "buyer",
+    status: options.membershipStatus ?? "active",
+  });
+  return f;
+}
+
+const READ_ORDER = { quoteId: "quote-1" };
+
+describe("DECISION Q1/Q2: orders:read is membership-gated", () => {
+  test("denied: an anonymous caller", async () => {
+    const f = orderDouble({ identity: ANON });
+    await expect(handlerOf(orders.read)(f.ctx, READ_ORDER)).rejects.toThrow(
+      "Authenticated Privy identity required",
+    );
+  });
+
+  test("denied: a non-Privy issuer", async () => {
+    const f = orderDouble({
+      identity: { issuer: "evil.example", subject: "did:privy:buyer" },
+    });
+    await expect(handlerOf(orders.read)(f.ctx, READ_ORDER)).rejects.toThrow(
+      "Authenticated Privy identity required",
+    );
+  });
+
+  test("denied: an authenticated subject with no membership in the quote scope", async () => {
+    const f = orderDouble({ subject: "did:privy:stranger" });
+    f.tables.memberships[0].privySubject = "did:privy:buyer";
+    await expect(handlerOf(orders.read)(f.ctx, READ_ORDER)).rejects.toThrow(
+      "Active membership required",
+    );
+  });
+
+  test("denied: a revoked membership", async () => {
+    const f = orderDouble({ membershipStatus: "revoked" });
+    await expect(handlerOf(orders.read)(f.ctx, READ_ORDER)).rejects.toThrow(
+      "Active membership required",
+    );
+  });
+
+  test("allowed: an active member reads the full projection", async () => {
+    const f = orderDouble({});
+    const record = await handlerOf(orders.read)(f.ctx, READ_ORDER);
+    expect(record).toMatchObject({
+      orderId: "order-1",
+      network: "preprod",
+      address: "mn_addr_preprod1example",
+      phase: "SUBMITTED",
+      revision: 3,
+      fileCount: 3,
+    });
+    expect(record).toHaveProperty("deliveryManifest");
+    expect(record).toHaveProperty("observedAt");
+    expect(record).toHaveProperty("fresh");
+  });
+
+  test("allowed: a blank quoteId is null without touching the tables", async () => {
+    const f = orderDouble({});
+    expect(await handlerOf(orders.read)(f.ctx, { quoteId: "   " })).toBeNull();
+  });
+
+  test("allowed: an approved quote with no chain order is null, not an error", async () => {
+    const f = orderDouble({ chainOrder: false });
+    expect(await handlerOf(orders.read)(f.ctx, READ_ORDER)).toBeNull();
+  });
+
+  test("denied: fileCount is not reachable without membership, so Q2 is answered by the gate", async () => {
+    // fileCount is derived from deliveries/fileGrants rows. With the gate in
+    // place an anonymous caller never reaches the count, so the disclosure
+    // question is answered by denial rather than by narrowing the return.
+    const anon = orderDouble({ identity: ANON });
+    await expect(
+      handlerOf(orders.read)(anon.ctx, READ_ORDER),
+    ).rejects.toThrow();
+    const member = orderDouble({});
+    const record = await handlerOf(orders.read)(member.ctx, READ_ORDER);
+    expect(typeof (record as { fileCount: number }).fileCount).toBe("number");
+  });
+
+  test("sibling public queries keep their behaviour", async () => {
+    // diagnostics:read still returns its redacted shape for a member.
+    const diag = ctxDouble(BUYER);
+    diag.tables.paymentInbox.push({
+      _id: "i1",
+      provider: "stripe",
+      accountId: "did:privy:buyer",
+      eventId: "evt_1",
+      eventType: "charge",
+      digest: "d",
+      paymentIntentRef: null,
+      receivedAt: 1,
+    });
+    const diagResult = await handlerOf(diagnostics.read)(diag.ctx, {});
+    expect(diagResult).toMatchObject({ subjectBound: true });
+    await expect(
+      handlerOf(diagnostics.read)(ctxDouble(ANON).ctx, {}),
+    ).rejects.toThrow();
+
+    // session:current still echoes the Privy subject.
+    expect(
+      await handlerOf(authSession.current)(ctxDouble(BUYER).ctx, {}),
+    ).toEqual({ subject: "did:privy:buyer" });
+    await expect(
+      handlerOf(authSession.current)(ctxDouble(ANON).ctx, {}),
+    ).rejects.toThrow();
+
+    // paymentMonitoring:status still refuses anonymous callers and returns a
+    // state for a member.
+    await expect(
+      handlerOf(paymentMonitoring.status)(ctxDouble(ANON).ctx, {
+        quoteId: "quote-1",
+      }),
+    ).rejects.toThrow();
+    const monitorCtx = ctxDouble(BUYER);
+    monitorCtx.tables.frozenQuotes.push({
+      _id: "fq",
+      id: "quote-1",
+      scopeId: "scope-1",
+      buyerAccountId: "buyer-1",
+      version: 1,
+      expiresAt: Date.now() + 600_000,
+    });
+    monitorCtx.tables.memberships.push({
+      _id: "m1",
+      privySubject: "did:privy:buyer",
+      scopeId: "scope-1",
+      accountId: "buyer-1",
+      role: "buyer",
+      status: "active",
+    });
+    const status = await handlerOf(paymentMonitoring.status)(monitorCtx.ctx, {
+      quoteId: "quote-1",
+    });
+    expect(status).toHaveProperty("state");
   });
 });
