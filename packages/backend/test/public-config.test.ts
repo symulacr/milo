@@ -5,7 +5,7 @@ import {
   publicConfigResponse,
   readServerEnv,
   serverEnvSchema,
-} from "../packages/backend/src/public-config";
+} from "../src/public-config";
 
 describe("browser public configuration", () => {
   test("allowlists public fields, never provider secrets", async () => {
@@ -87,7 +87,7 @@ describe("server environment schema", () => {
 
   test("the schema covers every variable documented in .env.example", async () => {
     const example = await readFile(
-      new URL("../.env.example", import.meta.url).pathname,
+      new URL("../../../.env.example", import.meta.url).pathname,
       "utf8",
     );
     const documented = new Set(
