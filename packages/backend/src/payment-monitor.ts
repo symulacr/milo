@@ -3,8 +3,8 @@ import type {
   GenericQueryCtx,
 } from "convex/server";
 import type { GenericId } from "convex/values";
+import type { AdmissionContext } from "../../../convex/admissionContext";
 import type schema from "../../../convex/schema";
-import type { AdmissionContext } from "./convex-admission";
 import { canonicalPayload } from "./trusted-provisioning-policy";
 
 export const MONITOR_DURATION_MS = 5 * 60_000;

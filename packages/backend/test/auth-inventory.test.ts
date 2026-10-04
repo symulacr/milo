@@ -526,7 +526,9 @@ describe("M7 auth inventory — completeness vs source exports", () => {
   });
 
   test("admission.bind rejects anonymous callers through admitCanonical", async () => {
-    const { admitCanonical } = await import("../src/convex-admission");
+    const { admitCanonical } = await import(
+      "../../../convex/canonicalAdmission"
+    );
     const f = ctxDouble(ANON);
     await expect(
       admitCanonical(f.ctx, {
