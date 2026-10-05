@@ -119,6 +119,10 @@ export function useModel() {
   // Latest committed state, read by async closures as a staleness guard;
   // written only inside commit() so the mirror cannot diverge.
   const latestState = useRef(state);
+  // The deep link this model is currently showing. Every write the model makes
+  // records it here, so the restore effect below can tell a link the model did
+  // not produce from one it wrote itself.
+  const appliedLink = useRef(initial);
   const [quote, setQuote] = useState(originalQuote);
   const [scenario, setScenario] = useState<Scenario>(initial.scenario);
   const [notice, setNotice] = useState("");
@@ -161,6 +165,7 @@ export function useModel() {
     setNotice("");
   }
   function syncDeepLink(nextScenario: Scenario, nextRole: Role) {
+    appliedLink.current = { scenario: nextScenario, role: nextRole };
     setSearchParams(
       { scenario: nextScenario, role: nextRole },
       { replace: true },
@@ -227,6 +232,37 @@ export function useModel() {
     }
   }
   useEffect(() => () => request.current?.abort(), []);
+  // A deep link is a full state restore on a client-side navigation as well as
+  // on a cold load. Reading it once in a useState initializer left the URL and
+  // the screen disagreeing until a reload (I140). Only a URL carrying its own
+  // scenario restores, and only when it differs from the link this model last
+  // wrote, so reset() and chooseRole() never re-apply their own writes.
+  // The body inlines invalidate() and commit() rather than calling them, so the
+  // effect depends only on the search string and on stable setters and refs.
+  useEffect(() => {
+    if (!searchParams.has("scenario")) return;
+    const requested = parseDeepLink(searchParams);
+    if (
+      requested.scenario === appliedLink.current.scenario &&
+      requested.role === appliedLink.current.role
+    ) {
+      return;
+    }
+    appliedLink.current = requested;
+    generation.current++;
+    request.current?.abort();
+    setChecking(false);
+    updateModal(null);
+    setConsent(false);
+    setNotice("");
+    setScenario(requested.scenario);
+    setQuote(originalQuote);
+    setTab("delivery");
+    const base = createScenario(requested.scenario);
+    const next = requested.role ? changeRole(base, requested.role) : base;
+    latestState.current = next;
+    setState(next);
+  }, [searchParams]);
   // The heading is announced on a real route change only. Focusing it on the
   // first render moved the browser's sequential-focus starting point into main
   // content, so the first Tab after a cold load walked the page body and never

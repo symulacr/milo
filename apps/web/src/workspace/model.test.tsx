@@ -112,13 +112,50 @@ describe("workspace skip link is the first tab stop (B1-F038N)", () => {
       "agreement nav link",
     );
     await click(link);
-    const heading = required(
-      win?.document.querySelector("h1"),
-      "agreement h1",
-    );
+    const heading = required(win?.document.querySelector("h1"), "agreement h1");
     expect(heading.textContent).toContain("Review the agreement");
     expect(
       required(win?.document.activeElement, "active element after navigation"),
     ).toBe(heading);
+  });
+});
+
+describe("a deep link restores its scenario on client-side navigation (I140)", () => {
+  test("the lost-capability link applies without a reload", async () => {
+    await renderApp("/account?scenario=review&role=buyer");
+    expect(container.textContent).toContain("Account");
+    const link = required(
+      container.querySelector(
+        'a[href^="/orders/sample-001?scenario=lost-capability"]',
+      ),
+      "lost-capability deep link",
+    );
+    await click(link);
+    expect(
+      required(win?.document.querySelector("h2"), "capability h2").textContent,
+    ).toBe("Capability unavailable");
+  });
+
+  test("a scenario the model wrote itself is not re-applied", async () => {
+    await renderApp("/orders?scenario=review&role=buyer");
+    const select = required(
+      container.querySelector<HTMLSelectElement>(
+        "details.prototype-toolbar select",
+      ),
+      "scenario select",
+    );
+    await act(async () => {
+      select.value = "dispute";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(
+      required(win?.document.querySelector("h1"), "orders h1").textContent,
+    ).toBe("Your orders");
+    expect(win?.document.body.textContent).toContain(
+      "Dispute needs a decision",
+    );
+    expect(win?.document.body.textContent).not.toContain(
+      "Delivery ready for review",
+    );
   });
 });
