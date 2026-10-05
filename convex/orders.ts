@@ -16,6 +16,10 @@ import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
 } from "../packages/backend/src/admission-policy";
+import {
+  CHAIN_ORDER_PHASES,
+  type ChainOrderPhase,
+} from "../packages/domain/src/phase-vocabulary";
 import { requireMembership } from "./auth/identity";
 import {
   applyChainObservation,
@@ -47,14 +51,9 @@ const observationBinding = v.union(
   v.object({ kind: v.literal("address-claimed"), reason: v.string() }),
 );
 
+/** The chain-order phase, enumerated once in phase-vocabulary.ts. */
 export const orderPhase = v.union(
-  v.literal("DEPLOYED"),
-  v.literal("RESERVED"),
-  v.literal("ACCEPTED"),
-  v.literal("SUBMITTED"),
-  v.literal("DISPUTED"),
-  v.literal("APPROVED"),
-  v.literal("CANCELLED"),
+  ...CHAIN_ORDER_PHASES.map((phase) => v.literal(phase)),
 );
 
 export const chainOrderRecord = v.object({
@@ -68,15 +67,6 @@ export const chainOrderRecord = v.object({
   fresh: v.union(v.boolean(), v.null()),
   fileCount: v.number(),
 });
-
-type ChainOrderPhase =
-  | "DEPLOYED"
-  | "RESERVED"
-  | "ACCEPTED"
-  | "SUBMITTED"
-  | "DISPUTED"
-  | "APPROVED"
-  | "CANCELLED";
 
 type ChainOrderDocument = Omit<ChainOrderRow, "phase"> & {
   _id: string;

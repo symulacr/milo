@@ -1,12 +1,30 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
+  CHAIN_ORDER_PHASES,
+  ORDER_ROW_PHASES,
+} from "../packages/domain/src/phase-vocabulary";
+import {
   bindingFields,
   deploymentObservationFields,
   frozenQuoteFields,
   imagePackPolicyFields,
   paymentAuthorization,
 } from "./admissionValidators";
+
+/**
+ * Both phase vocabularies are enumerated once in
+ * `packages/domain/src/phase-vocabulary.ts`, which also owns the mapping
+ * between them. Spreading the tuples here means a new phase cannot land in a
+ * schema without the mapping being asked about it in the same commit.
+ */
+const chainOrderPhase = v.union(
+  ...CHAIN_ORDER_PHASES.map((phase) => v.literal(phase)),
+);
+
+const orderRowPhase = v.union(
+  ...ORDER_ROW_PHASES.map((phase) => v.literal(phase)),
+);
 
 // Catalog approval and customer linking remain operator-provisioned, never browser-writable.
 export default defineSchema({
@@ -109,15 +127,7 @@ export default defineSchema({
     address: v.string(),
     nonce: v.string(),
     artifactFingerprint: v.string(),
-    phase: v.union(
-      v.literal("DEPLOYED"),
-      v.literal("RESERVED"),
-      v.literal("ACCEPTED"),
-      v.literal("SUBMITTED"),
-      v.literal("DISPUTED"),
-      v.literal("APPROVED"),
-      v.literal("CANCELLED"),
-    ),
+    phase: chainOrderPhase,
     revision: v.number(),
     deliveryManifest: v.optional(v.union(v.string(), v.null())),
     terminal: v.boolean(),
@@ -154,12 +164,7 @@ export default defineSchema({
     scopeId: v.string(),
     profile: v.literal("image-pack-v1"),
     outputCount: v.literal(3),
-    phase: v.union(
-      v.literal("ACCEPTED"),
-      v.literal("SUBMITTED"),
-      v.literal("DISPUTED"),
-      v.literal("TERMINAL"),
-    ),
+    phase: orderRowPhase,
     revision: v.number(),
   }).index("by_order", ["id"]),
   // One-time upload grant; storageId binds only after attachUpload.

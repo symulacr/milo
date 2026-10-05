@@ -10,6 +10,10 @@ import { internalMutationGeneric, makeFunctionReference } from "convex/server";
 import { type GenericId, v } from "convex/values";
 import type { PaymentAuthorization } from "../packages/backend/src/admission-policy";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
+import {
+  isChainOrderPhase,
+  settlementActionFor,
+} from "../packages/domain/src/phase-vocabulary";
 import type { AdmissionContext } from "./admissionContext";
 import { invalidatePaymentObservation } from "./paymentMonitor";
 
@@ -23,14 +27,22 @@ const settleActionRef = makeFunctionReference<"action">("stripeSettlement:run");
 export type SettleAction = "capture" | "void";
 export type OrderPhase = string;
 
-/** Capture only APPROVED; void only CANCELLED. Everything else refuses both. */
+/**
+ * Capture only APPROVED; void only CANCELLED. Everything else refuses both.
+ *
+ * The phase -> action decision is `settlementActionFor` in
+ * `packages/domain/src/phase-vocabulary.ts`, the one place the chain phase
+ * vocabulary is written down. This gate reads that table rather than
+ * re-comparing two literals, so a phase added to the chain vocabulary cannot
+ * settle money here by accident. The stored `settlementOps.phase` is a plain
+ * string, so an unrecognised value is refused, never guessed at.
+ */
 export function settlementAuthorized(
   action: SettleAction,
   phase: OrderPhase,
 ): boolean {
-  if (action === "capture") return phase === "APPROVED";
-  if (action === "void") return phase === "CANCELLED";
-  return false;
+  if (!isChainOrderPhase(phase)) return false;
+  return settlementActionFor(phase) === action;
 }
 
 /**
@@ -220,9 +232,9 @@ export const request = internalMutationGeneric({
     v.object({ kind: v.literal("noop"), reason: v.string() }),
   ),
   handler: async (ctx: AdmissionContext, args) => {
-    let action: SettleAction | null = null;
-    if (args.phase === "APPROVED") action = "capture";
-    else if (args.phase === "CANCELLED") action = "void";
+    const action = isChainOrderPhase(args.phase)
+      ? settlementActionFor(args.phase)
+      : null;
     if (!action || !settlementAuthorized(action, args.phase))
       return {
         kind: "noop" as const,
