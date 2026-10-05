@@ -227,9 +227,18 @@ export function useModel() {
     }
   }
   useEffect(() => () => request.current?.abort(), []);
+  // The heading is announced on a real route change only. Focusing it on the
+  // first render moved the browser's sequential-focus starting point into main
+  // content, so the first Tab after a cold load walked the page body and never
+  // reached aside.sidebar's skip link (B1-F038N).
+  const announcedPath = useRef<string | null>(null);
   useEffect(() => {
     document.title = routeTitle(location.pathname);
-    mainHeading.current?.focus();
+    const previous = announcedPath.current;
+    announcedPath.current = location.pathname;
+    if (previous !== null && previous !== location.pathname) {
+      mainHeading.current?.focus();
+    }
   }, [location.pathname]);
 
   function exportReceipt() {
