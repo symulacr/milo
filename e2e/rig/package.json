@@ -1,0 +1,13 @@
+{
+  "name": "milo-e2e-rig",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser and wallet measurement rig. Local-only test infrastructure; never part of a production bundle.",
+  "scripts": {
+    "list": "node run-flow.mjs --list",
+    "baseline": "node run-flow.mjs --serve --all --runs 5",
+    "baseline:focused": "node run-flow.mjs --serve --flow B1-F001 B1-F022 B1-F022N B1-F013 B1-F013N B1-F038 B1-F038N --runs 5",
+    "wallet-evidence": "node run-flow.mjs --serve --flow B1-F022 B1-F022N B1-F023 B1-F023N B1-F024 --runs 5 --wallet-evidence"
+  }
+}
