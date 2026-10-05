@@ -3,8 +3,11 @@ import {
   makeFunctionReference,
   mutationGeneric,
 } from "convex/server";
-import { v } from "convex/values";
-import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
+import { type GenericId, v } from "convex/values";
+import {
+  type FrozenQuote,
+  paymentBindsQuote,
+} from "../packages/backend/src/admission-policy";
 import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import {
   PROVIDER_LEASE_MS,
@@ -83,6 +86,7 @@ export async function requestPaymentJob(
   const membership = await requireMembership(ctx, quote.scopeId);
   if (!isQuoteBuyer(membership, quote.buyerAccountId))
     throw new Error("Quote buyer required");
+
   const now = Date.now();
   const monitor = await ctx.db
     .query("paymentMonitors")
@@ -104,36 +108,24 @@ export async function requestPaymentJob(
     .withIndex("by_buyer", (q) => q.eq("buyerAccountId", quote.buyerAccountId))
     .unique();
   if (!customer) throw new Error("Trusted Stripe customer binding required");
-  if (
-    payment &&
-    (!paymentBindsQuote(payment, quote) ||
-      payment.stripeAccountId !== customer.stripeAccountId ||
-      payment.stripeCustomerId !== customer.stripeCustomerId ||
-      payment.environment !== "test" ||
-      payment.network !== "preprod")
-  )
+  if (payment && !paymentMatchesCustomer(payment, quote, customer))
     throw new Error("Immutable payment binding mismatch");
+
   const job = await ctx.db
     .query("paymentJobs")
     .withIndex("by_quote", (q) => q.eq("quoteId", quote.id))
     .unique();
+  const reusable = reusableJobId(job, customer, now);
   if (job && !validJobClock(job, now))
     throw new Error("Invalid provisioning job clock");
-  if (
-    job &&
-    (job.stripeAccountId !== customer.stripeAccountId ||
-      job.stripeCustomerId !== customer.stripeCustomerId)
-  )
+  if (job && !jobMatchesCustomer(job, customer))
     throw new Error("Immutable customer binding changed");
-  if (
-    job &&
-    (job.state === "queued" || job.state === "running") &&
-    now - job.startedAt < PROVIDER_LEASE_MS
-  ) {
-    if (observationOnly && job.mode !== "observe")
+  if (reusable) {
+    if (observationOnly && job && job.mode !== "observe")
       throw new Error("Creation job must finish before observation");
-    return job._id;
+    return reusable;
   }
+
   const generation = (job?.generation ?? 0) + 1;
   const id =
     job?._id ??
@@ -165,6 +157,58 @@ export async function requestPaymentJob(
     { jobId: id, generation },
   );
   return id;
+}
+
+function paymentMatchesCustomer(
+  payment: {
+    quoteId: string;
+    quoteVersion: number;
+    buyerAccountId: string;
+    amountMinor: number;
+    currency: string;
+    stripeAccountId: string;
+    stripeCustomerId: string;
+    environment: string;
+    network: string;
+  },
+  quote: FrozenQuote,
+  customer: { stripeAccountId: string; stripeCustomerId: string },
+): boolean {
+  return (
+    paymentBindsQuote(payment, quote) &&
+    payment.stripeAccountId === customer.stripeAccountId &&
+    payment.stripeCustomerId === customer.stripeCustomerId &&
+    payment.environment === "test" &&
+    payment.network === "preprod"
+  );
+}
+
+function jobMatchesCustomer(
+  job: { stripeAccountId: string; stripeCustomerId: string },
+  customer: { stripeAccountId: string; stripeCustomerId: string },
+): boolean {
+  return (
+    job.stripeAccountId === customer.stripeAccountId &&
+    job.stripeCustomerId === customer.stripeCustomerId
+  );
+}
+
+/** An unfinished job still inside its provider lease may be reused as-is. */
+function reusableJobId(
+  job: {
+    _id: GenericId<"paymentJobs">;
+    state: string;
+    startedAt: number;
+    stripeAccountId: string;
+    stripeCustomerId: string;
+  } | null,
+  customer: { stripeAccountId: string; stripeCustomerId: string },
+  now: number,
+): GenericId<"paymentJobs"> | null {
+  if (!job || !jobMatchesCustomer(job, customer)) return null;
+  if (job.state !== "queued" && job.state !== "running") return null;
+  if (now - job.startedAt >= PROVIDER_LEASE_MS) return null;
+  return job._id;
 }
 
 export const requestPayment = mutationGeneric({

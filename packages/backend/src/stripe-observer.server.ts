@@ -60,132 +60,200 @@ export function normalizeTestPayment(
   binding: TestPaymentBinding,
   observedAt: number,
 ): PaymentObservation {
-  if (
-    !validBinding(binding) ||
-    !Number.isSafeInteger(observedAt) ||
-    !Number.isSafeInteger(observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS) ||
-    observedAt < 0
-  )
+  if (!validClock(binding, observedAt))
     return blocked("Invalid test payment binding or clock");
-  if (
-    intent.livemode !== false ||
-    intent.id !== binding.stripePaymentIntentId ||
-    intent.amount !== binding.amountMinor ||
-    intent.currency !== binding.currency.toLowerCase() ||
-    externalId(intent.customer) !== binding.stripeCustomerId ||
-    intent.capture_method !== "manual"
-  )
+  if (!intentMatchesBinding(intent, binding))
     return blocked("Stripe intent does not match immutable test binding");
 
   const charge =
     typeof intent.latest_charge === "object" ? intent.latest_charge : null;
   if (intent.latest_charge && !charge)
     return blocked("Expanded charge required");
-  if (
-    charge &&
-    (charge.livemode !== false ||
-      externalId(charge.payment_intent) !== intent.id ||
-      externalId(charge.customer) !== binding.stripeCustomerId ||
-      charge.amount !== binding.amountMinor ||
-      charge.currency !== intent.currency)
-  )
+  if (charge && !chargeMatchesBinding(charge, intent, binding))
     return blocked("Stripe charge does not match immutable test binding");
 
-  const captureBefore = charge?.payment_method_details?.card?.capture_before;
-  const captureBeforeMs =
-    typeof captureBefore === "number" &&
-    Number.isSafeInteger(captureBefore) &&
-    captureBefore > 0 &&
-    Number.isSafeInteger(captureBefore * 1000)
-      ? captureBefore * 1000
-      : 0;
-  let status: PaymentAuthorization["status"];
-  switch (intent.status) {
-    case "requires_capture":
-      if (
-        charge?.status !== "succeeded" ||
-        !charge.paid ||
-        charge.captured ||
-        charge.amount_captured !== 0 ||
-        charge.refunded ||
-        charge.amount_refunded !== 0 ||
-        charge.disputed ||
-        charge.payment_method_details?.type !== "card" ||
-        intent.amount_capturable !== binding.amountMinor ||
-        intent.amount_received !== 0 ||
-        !captureBeforeMs
-      )
-        return blocked(
-          "Full manual card authorization and provider capture expiry required",
-        );
-      status = captureBeforeMs > observedAt ? "authorized" : "failed";
-      break;
-    case "succeeded":
-      if (
-        !charge?.captured ||
-        !charge.paid ||
-        charge.status !== "succeeded" ||
-        charge.amount_captured !== binding.amountMinor ||
-        intent.amount_received !== binding.amountMinor ||
-        charge.refunded ||
-        charge.amount_refunded !== 0 ||
-        charge.disputed
-      )
-        return blocked(
-          "Captured payment needs independent refund/dispute reconciliation",
-        );
-      status = "captured";
-      break;
-    case "canceled":
-      status = "voided";
-      break;
-    case "requires_payment_method":
-      status = intent.last_payment_error ? "failed" : "pending";
-      break;
-    case "processing":
-    case "requires_action":
-    case "requires_confirmation":
-      status = "pending";
-      break;
-    default:
-      return blocked("Unsupported Stripe payment state");
-  }
-  const receipt = {
-    account: binding.stripeAccountId,
-    intent: intent.id,
-    charge: charge?.id ?? null,
-    providerStatus: intent.status,
-    amountCapturable: intent.amount_capturable,
-    amountReceived: intent.amount_received,
+  const captureBeforeMs = providerCaptureBeforeMs(charge);
+  const verdict = paymentVerdictFor(
+    intent,
+    charge,
+    binding,
     captureBeforeMs,
     observedAt,
-    status,
-  };
+  );
+  if (verdict.kind === "blocked") return blocked(verdict.reason);
+  const { status } = verdict;
   return {
     kind: "observed",
     authorization: {
-      id: binding.id,
-      quoteId: binding.quoteId,
-      quoteVersion: binding.quoteVersion,
-      buyerAccountId: binding.buyerAccountId,
-      amountMinor: binding.amountMinor,
-      currency: binding.currency,
-      usableFrom: observedAt,
-      usableUntil:
-        status === "authorized"
-          ? Math.min(
-              captureBeforeMs,
-              observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS,
-            )
-          : observedAt,
-      captureBeforeMs,
-      source: "payment-observer",
-      status,
+      ...authorizationFor(binding, status, observedAt, captureBeforeMs),
       providerReceiptFingerprint: createHash("sha256")
-        .update(JSON.stringify(receipt))
+        .update(
+          JSON.stringify({
+            account: binding.stripeAccountId,
+            intent: intent.id,
+            charge: charge?.id ?? null,
+            providerStatus: intent.status,
+            amountCapturable: intent.amount_capturable,
+            amountReceived: intent.amount_received,
+            captureBeforeMs,
+            observedAt,
+            status,
+          }),
+        )
         .digest("hex"),
     },
   };
+}
+
+function validClock(binding: TestPaymentBinding, observedAt: number): boolean {
+  return (
+    validBinding(binding) &&
+    Number.isSafeInteger(observedAt) &&
+    Number.isSafeInteger(observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS) &&
+    observedAt >= 0
+  );
+}
+
+function intentMatchesBinding(
+  intent: Stripe.PaymentIntent,
+  binding: TestPaymentBinding,
+): boolean {
+  return (
+    intent.livemode === false &&
+    intent.id === binding.stripePaymentIntentId &&
+    intent.amount === binding.amountMinor &&
+    intent.currency === binding.currency.toLowerCase() &&
+    externalId(intent.customer) === binding.stripeCustomerId &&
+    intent.capture_method === "manual"
+  );
+}
+
+function authorizationFor(
+  binding: TestPaymentBinding,
+  status: PaymentAuthorization["status"],
+  observedAt: number,
+  captureBeforeMs: number,
+): Omit<PaymentAuthorization, "providerReceiptFingerprint"> {
+  return {
+    id: binding.id,
+    quoteId: binding.quoteId,
+    quoteVersion: binding.quoteVersion,
+    buyerAccountId: binding.buyerAccountId,
+    amountMinor: binding.amountMinor,
+    currency: binding.currency,
+    usableFrom: observedAt,
+    usableUntil:
+      status === "authorized"
+        ? Math.min(
+            captureBeforeMs,
+            observedAt + PAYMENT_AUTHORIZATION_WINDOW_MS,
+          )
+        : observedAt,
+    captureBeforeMs,
+    source: "payment-observer",
+    status,
+  };
+}
+
+function chargeMatchesBinding(
+  charge: Stripe.Charge,
+  intent: Stripe.PaymentIntent,
+  binding: TestPaymentBinding,
+): boolean {
+  return (
+    charge.livemode === false &&
+    externalId(charge.payment_intent) === intent.id &&
+    externalId(charge.customer) === binding.stripeCustomerId &&
+    charge.amount === binding.amountMinor &&
+    charge.currency === intent.currency
+  );
+}
+
+function providerCaptureBeforeMs(charge: Stripe.Charge | null): number {
+  const captureBefore = charge?.payment_method_details?.card?.capture_before;
+  return typeof captureBefore === "number" &&
+    Number.isSafeInteger(captureBefore) &&
+    captureBefore > 0 &&
+    Number.isSafeInteger(captureBefore * 1000)
+    ? captureBefore * 1000
+    : 0;
+}
+
+function paymentVerdictFor(
+  intent: Stripe.PaymentIntent,
+  charge: Stripe.Charge | null,
+  binding: TestPaymentBinding,
+  captureBeforeMs: number,
+  observedAt: number,
+):
+  | { kind: "observed"; status: PaymentAuthorization["status"] }
+  | { kind: "blocked"; reason: string } {
+  const observed = (status: PaymentAuthorization["status"]) =>
+    ({ kind: "observed", status }) as const;
+  switch (intent.status) {
+    case "requires_capture":
+      return captureBeforeMs && holdMatchesBinding(charge, intent, binding)
+        ? observed(captureBeforeMs > observedAt ? "authorized" : "failed")
+        : {
+            kind: "blocked",
+            reason:
+              "Full manual card authorization and provider capture expiry required",
+          };
+    case "succeeded":
+      return captureReconciled(charge, intent, binding)
+        ? observed("captured")
+        : {
+            kind: "blocked",
+            reason:
+              "Captured payment needs independent refund/dispute reconciliation",
+          };
+    case "canceled":
+      return observed("voided");
+    case "requires_payment_method":
+      return observed(intent.last_payment_error ? "failed" : "pending");
+    case "processing":
+    case "requires_action":
+    case "requires_confirmation":
+      return observed("pending");
+    default:
+      return { kind: "blocked", reason: "Unsupported Stripe payment state" };
+  }
+}
+
+function holdMatchesBinding(
+  charge: Stripe.Charge | null,
+  intent: Stripe.PaymentIntent,
+  binding: TestPaymentBinding,
+): boolean {
+  return (
+    charge?.status === "succeeded" &&
+    !!charge.paid &&
+    !charge.captured &&
+    charge.amount_captured === 0 &&
+    !charge.refunded &&
+    charge.amount_refunded === 0 &&
+    !charge.disputed &&
+    charge.payment_method_details?.type === "card" &&
+    intent.amount_capturable === binding.amountMinor &&
+    intent.amount_received === 0
+  );
+}
+
+function captureReconciled(
+  charge: Stripe.Charge | null,
+  intent: Stripe.PaymentIntent,
+  binding: TestPaymentBinding,
+): boolean {
+  return (
+    !!charge?.captured &&
+    !!charge.paid &&
+    charge.status === "succeeded" &&
+    charge.amount_captured === binding.amountMinor &&
+    intent.amount_received === binding.amountMinor &&
+    !charge.refunded &&
+    charge.amount_refunded === 0 &&
+    !charge.disputed
+  );
 }
 
 function validBinding(binding: TestPaymentBinding): boolean {

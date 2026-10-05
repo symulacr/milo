@@ -217,6 +217,31 @@ export function decideCanonicalAdmission(
   });
 }
 
+const QUOTE_POLICY_FIELDS = [
+  "termsCommitment",
+  "constructorVersion",
+  "constructorEncoding",
+  "buyerCommitment",
+  "merchantCommitment",
+  "operatorCommitment",
+  "artifactFingerprint",
+  "keySetFingerprint",
+  "rolesFingerprint",
+  "initialStateFingerprint",
+  "genesisHash",
+  "acceptanceDeadlineSeconds",
+  "deliveryDeadlineSeconds",
+  "reviewDeadlineSeconds",
+  "resolutionDeadlineSeconds",
+] as const satisfies readonly (keyof ObservedDeployment & keyof FrozenQuote)[];
+
+function sameApprovedPolicy(
+  observed: ObservedDeployment,
+  quote: FrozenQuote,
+): boolean {
+  return QUOTE_POLICY_FIELDS.every((field) => observed[field] === quote[field]);
+}
+
 function validate(
   accountId: string | undefined,
   now: number,
@@ -226,6 +251,25 @@ function validate(
   observed: ObservedDeployment,
   timingPolicy: AdmissionTimingPolicy | undefined,
 ): string | undefined {
+  return (
+    validateRequest(accountId, now, input, quote) ??
+    validateAuthorizationBinding(
+      now,
+      quote,
+      input,
+      authorization,
+      timingPolicy,
+    ) ??
+    validateDeploymentObservation(now, input, quote, observed)
+  );
+}
+
+function validateRequest(
+  accountId: string | undefined,
+  now: number,
+  input: BindAdmissionInput,
+  quote: FrozenQuote,
+): string | undefined {
   if (!isId(accountId)) return "authenticated buyer is required";
   if (!Number.isSafeInteger(now) || now < 0) return "server clock is invalid";
   if (!ADDRESS.test(input.address)) return "contract address is malformed";
@@ -234,6 +278,16 @@ function validate(
     return "frozen quote identity does not match requested quote";
   if (accountId !== quote.buyerAccountId)
     return "authenticated account is not the quote buyer";
+  return undefined;
+}
+
+function validateAuthorizationBinding(
+  now: number,
+  quote: FrozenQuote,
+  input: BindAdmissionInput,
+  authorization: PaymentAuthorization,
+  timingPolicy: AdmissionTimingPolicy | undefined,
+): string | undefined {
   if (
     !validAuthorization(authorization) ||
     authorization.id !== input.authorizationId ||
@@ -252,6 +306,15 @@ function validate(
     BigInt(authorization.captureBeforeMs)
   )
     return "payment authorization expires before the required resolution window";
+  return undefined;
+}
+
+function validateDeploymentObservation(
+  now: number,
+  input: BindAdmissionInput,
+  quote: FrozenQuote,
+  observed: ObservedDeployment,
+): string | undefined {
   if (
     !validObserved(observed) ||
     observed.id !== input.observationId ||
@@ -265,23 +328,7 @@ function validate(
     observed.observedAt - now > MAX_FUTURE_SKEW_MS
   )
     return "deployment observation is not fresh";
-  if (
-    observed.termsCommitment !== quote.termsCommitment ||
-    observed.constructorVersion !== quote.constructorVersion ||
-    observed.constructorEncoding !== quote.constructorEncoding ||
-    observed.buyerCommitment !== quote.buyerCommitment ||
-    observed.merchantCommitment !== quote.merchantCommitment ||
-    observed.operatorCommitment !== quote.operatorCommitment ||
-    observed.artifactFingerprint !== quote.artifactFingerprint ||
-    observed.keySetFingerprint !== quote.keySetFingerprint ||
-    observed.rolesFingerprint !== quote.rolesFingerprint ||
-    observed.initialStateFingerprint !== quote.initialStateFingerprint ||
-    observed.genesisHash !== quote.genesisHash ||
-    observed.acceptanceDeadlineSeconds !== quote.acceptanceDeadlineSeconds ||
-    observed.deliveryDeadlineSeconds !== quote.deliveryDeadlineSeconds ||
-    observed.reviewDeadlineSeconds !== quote.reviewDeadlineSeconds ||
-    observed.resolutionDeadlineSeconds !== quote.resolutionDeadlineSeconds
-  )
+  if (!sameApprovedPolicy(observed, quote))
     return "observed deployment does not match approved quote policy";
   if (
     !sameEntrypoints(observed.entrypoints) ||
