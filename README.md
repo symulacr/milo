@@ -20,8 +20,15 @@ commands under [Run it](#run-it): 700 unit tests across 61 files with 0 failures
 passing 8 of 8. the contract is compiled before any of that, because the generated
 artifacts it needs live in the gitignored `packages/contract/generated/`.
 
-the browser workspace is a real read-only console rather than a simulator, but no order
-is connected end to end. the public browser configuration is three allowlisted fields,
+the browser app is two surfaces, not one. the seven workspace routes under
+`/orders`, `/merchant`, `/operator`, `/quotes` and `/account` are a **synthetic
+simulator**: `apps/web/src/workspace/model.tsx` holds an in-memory `SimState` built
+from the fixture in `packages/domain/src/prototype.ts`, which persists nothing, calls no
+backend, and is discarded on reload apart from a `?scenario=&role=` deep link. `/connections`
+is the one **real read-only console**: it is the only route that reaches
+`PrivyProvider`, `ConvexProviderWithAuth` and the chain-backed order record
+(`apps/web/src/Connections.tsx`). no order is connected end to end on any route. the public
+browser configuration is three allowlisted fields,
 `privyAppId`, `convexUrl` and `midnightNetwork: "preprod"` (`scripts/public-config.ts`),
 and none of the three is provisioned in this tree, so the wallet, backend and chain lanes
 never meet. the release flags stay frozen false: `immutableOrderAdmission` and
@@ -32,7 +39,8 @@ now has runtime proof (A1); hosted Convex remains unprovisioned.)*
 
 | layer | where | status |
 | --- | --- | --- |
-| browser workspace | browser, read-only console | renders wallet status and Convex payment observation; no circuit call |
+| browser workspace | browser, synthetic simulator | the seven workspace routes render an in-memory `SimState`; no persistence, no backend call, no circuit call |
+| browser console | browser, read-only console | `/connections` only: renders wallet status, the Convex order record and the recovery context; no circuit call |
 | contract | preprod | deployed, 14 proof circuits exercised (execution 14/14 ≠ acceptance 0/14) |
 | observer ingest | local Convex | `convex/observationIngest.ts` is in the tree and covered by `convex/observationIngest.test.ts`; the A1 RUNTIME receipt is local only, not a hosted-provider row |
 | midnight client / wallet | SDK | `packages/midnight-client` is in the tree (Lace connector + prepare gates, `packages/midnight-client/test/wallet-connector-w0.test.ts`); **TESTED SDK only**, `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
