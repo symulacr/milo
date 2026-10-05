@@ -15,6 +15,21 @@ import { buildQuote } from "./fixtures";
 // it hands anything to the pure policy, using the same shared constant. These
 // cases pin that adapter-level staleness gate, which is adjacent to (and
 // upstream of) admission-policy validate() without duplicating it.
+type Authorization = {
+  id: string;
+  quoteId: string;
+  quoteVersion: number;
+  buyerAccountId: string;
+  amountMinor: number;
+  currency: string;
+  usableFrom: number;
+  usableUntil: number;
+  captureBeforeMs: number;
+  source: string;
+  status: string;
+  providerReceiptFingerprint: string;
+};
+
 function databaseDouble() {
   const now = Date.now();
   const hash = "a".repeat(64);
@@ -38,7 +53,7 @@ function databaseDouble() {
     environment: "test",
     network: "preprod",
   };
-  const authorization = {
+  const authorization: Authorization = {
     id: payment._id,
     quoteId: quote.id,
     quoteVersion: 1,
@@ -152,7 +167,9 @@ function databaseDouble() {
     authorizationId: payment._id as GenericId<"paymentIntents">,
     address: observation.address,
   };
-  const setAuthorization = (patch: Record<string, unknown>) =>
+  const setAuthorization = (
+    patch: Partial<Authorization> | Record<string, unknown>,
+  ) =>
     Object.assign(
       tables.paymentObservations[0].authorization as Record<string, unknown>,
       patch,
@@ -251,21 +268,33 @@ describe("canonical admission payment-authorization staleness gate", () => {
   });
 
   test("no stale or mismatched authorization can ever write a binding", async () => {
-    const now = Date.now();
-    for (const patch of [
-      { id: "payment-other" },
-      { usableFrom: now - PAYMENT_AUTHORIZATION_WINDOW_MS },
-      { usableUntil: now + PAYMENT_AUTHORIZATION_WINDOW_MS + 1 },
-      { usableFrom: now, usableUntil: now + 120_000 },
-      { usableUntil: now - 1 },
-      { captureBeforeMs: 0 },
-      { status: "voided" },
-      { status: "pending" },
-      { status: "captured" },
-      { source: "caller-claim" },
+    for (const mutate of [
+      (a: Authorization) => ({ ...a, id: "payment-other" }),
+      // A full window old. The adapter compares against its own clock, so
+      // anchoring to the fixture's usableFrom keeps this from depending on how
+      // much wall time elapses between building the double and calling.
+      (a: Authorization) => ({
+        ...a,
+        usableFrom: a.usableFrom - PAYMENT_AUTHORIZATION_WINDOW_MS,
+      }),
+      (a: Authorization) => ({
+        ...a,
+        usableUntil: a.usableFrom + PAYMENT_AUTHORIZATION_WINDOW_MS + 1,
+        captureBeforeMs: a.usableFrom + 600_000,
+      }),
+      (a: Authorization) => ({
+        ...a,
+        usableUntil: a.usableFrom - 1,
+        captureBeforeMs: a.usableFrom - 1,
+      }),
+      (a: Authorization) => ({ ...a, captureBeforeMs: 0 }),
+      (a: Authorization) => ({ ...a, status: "voided" }),
+      (a: Authorization) => ({ ...a, status: "pending" }),
+      (a: Authorization) => ({ ...a, status: "captured" }),
+      (a: Authorization) => ({ ...a, source: "caller-claim" }),
     ]) {
       const db = databaseDouble();
-      db.setAuthorization(patch);
+      db.setAuthorization(mutate(db.authorization));
       const result = await admitCanonical(db.ctx, db.input);
       expect(result.kind).toBe("rejected");
       expect(db.tables.canonicalBindings).toHaveLength(0);
