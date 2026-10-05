@@ -217,3 +217,419 @@ describe("Stripe test-customer provider facts (not buyer ownership)", () => {
     });
   }
 });
+
+type ActionRow = Record<string, unknown>;
+
+const BINDING_ID = "trustedprovisioning_binding1";
+
+/**
+ * The Convex action as Convex runs it: a node-runtime internal action whose
+ * only capability is runMutation. The Stripe SDK under Bun resolves its `bun`
+ * export condition to the fetch HTTP client, so intercepting globalThis.fetch
+ * drives the real Stripe client, its real request URLs and its real response
+ * parsing with no network and no mocked module.
+ *
+ * Bun shares one global realm across test files, and apps/web's happy-dom
+ * suites (approve-flow.test.tsx:20-51) overwrite globalThis.Event with
+ * happy-dom's. Stripe's emitter builds a native EventTarget and dispatches a
+ * `_StripeEvent extends Event`, which then throws ERR_INVALID_ARG_TYPE against
+ * that native EventTarget. Aligning EventTarget to the realm Event came from
+ * keeps both pairs consistent; both are restored afterwards.
+ */
+function actionFixture(
+  responses: { account?: unknown; customer?: unknown; status?: number } = {},
+) {
+  const urls: string[] = [];
+  const mutations: { ref: string; args: ActionRow }[] = [];
+  let bindingId = BINDING_ID;
+  const realFetch = globalThis.fetch;
+  const realEventTarget = globalThis.EventTarget;
+  const injectedWindow = (
+    globalThis as unknown as { window?: { EventTarget?: typeof EventTarget } }
+  ).window;
+  const dispatches = () => {
+    try {
+      return new globalThis.EventTarget().dispatchEvent(
+        new globalThis.Event("milo-probe"),
+      );
+    } catch {
+      return false;
+    }
+  };
+  if (!dispatches() && injectedWindow?.EventTarget)
+    globalThis.EventTarget = injectedWindow.EventTarget;
+  globalThis.fetch = (async (resource: string | URL | Request) => {
+    const url = String(resource);
+    urls.push(url);
+    const status = responses.status ?? 200;
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    if (status >= 400)
+      return json({
+        error: {
+          type: "invalid_request_error",
+          message: "raw provider secret cus_leak",
+        },
+      });
+    if (url.endsWith("/v1/account"))
+      return json(
+        responses.account ?? { id: input.stripeAccountId, object: "account" },
+      );
+    if (url.includes("/v1/customers/"))
+      return json(
+        responses.customer ?? {
+          id: input.stripeCustomerId,
+          object: "customer",
+          deleted: false,
+          livemode: false,
+        },
+      );
+    return json({ error: { message: "unexpected route" } });
+  }) as typeof fetch;
+  const ctx = {
+    runMutation: async (ref: unknown, args: ActionRow) => {
+      const symbol = Object.getOwnPropertySymbols(ref)[0] as symbol;
+      mutations.push({
+        ref: String((ref as Record<symbol, string>)[symbol]),
+        args,
+      });
+      return bindingId;
+    },
+  };
+  return {
+    urls,
+    mutations,
+    ctx,
+    setBindingId: (id: string) => {
+      bindingId = id;
+    },
+    restore: () => {
+      globalThis.fetch = realFetch;
+      globalThis.EventTarget = realEventTarget;
+    },
+  };
+}
+
+const authorityConfig = JSON.stringify([input]);
+const priorAuthorities = process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
+const priorSecretKey = process.env.STRIPE_SECRET_KEY;
+
+function setEnv(key: string | undefined, config: string | undefined) {
+  if (key === undefined) delete process.env.STRIPE_SECRET_KEY;
+  else process.env.STRIPE_SECRET_KEY = key;
+  if (config === undefined)
+    delete process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
+  else process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = config;
+}
+
+function restoreEnv() {
+  setEnv(priorSecretKey, priorAuthorities);
+}
+
+const actionHandler = (
+  provision as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<string>;
+  }
+)._handler;
+
+async function runAction(
+  f: ReturnType<typeof actionFixture>,
+  args: Record<string, unknown> = {},
+) {
+  setEnv("sk_test_convexactioncoverage", authorityConfig);
+  return actionHandler(f.ctx, { ...input, ...args });
+}
+
+describe("convex stripeCustomerProvisioning.provision action", () => {
+  test("is internal-only and registers an id return on trustedProvisioning", () => {
+    expect(provision.isInternal).toBe(true);
+    expect(provision.isAction).toBe(true);
+    expect("isPublic" in provision).toBe(false);
+    const registered = provision as unknown as {
+      exportArgs: () => string;
+      exportReturns: () => string;
+    };
+    expect(JSON.parse(registered.exportArgs())).toEqual({
+      type: "object",
+      value: {
+        requestId: { fieldType: { type: "string" }, optional: false },
+        operatorId: { fieldType: { type: "string" }, optional: false },
+        sourceId: { fieldType: { type: "string" }, optional: false },
+        buyerAccountId: { fieldType: { type: "string" }, optional: false },
+        stripeAccountId: { fieldType: { type: "string" }, optional: false },
+        stripeCustomerId: { fieldType: { type: "string" }, optional: false },
+      },
+    });
+    expect(JSON.parse(registered.exportReturns())).toEqual({
+      type: "id",
+      tableName: "trustedProvisioning",
+    });
+  });
+
+  test("verifies live provider facts and commits them through trustedProvisioning:provision", async () => {
+    const f = actionFixture();
+    let committed: string | undefined;
+    try {
+      committed = await runAction(f);
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    expect(committed).toBe(BINDING_ID);
+    expect(f.urls).toEqual([
+      "https://api.stripe.com/v1/account",
+      `https://api.stripe.com/v1/customers/${input.stripeCustomerId}`,
+    ]);
+    expect(f.mutations).toHaveLength(1);
+    expect(f.mutations[0].ref).toBe("trustedProvisioning:provision");
+    expect(f.mutations[0].args).toEqual({
+      requestId: input.requestId,
+      provenance: {
+        operatorId: input.operatorId,
+        sourceId: input.sourceId,
+        evidenceFingerprint: createHash("sha256")
+          .update(
+            canonicalPayload({
+              domain: "milo.stripe-test-customer-provider-facts",
+              version: 1,
+              stripeAccountId: input.stripeAccountId,
+              stripeCustomerId: input.stripeCustomerId,
+              deleted: false,
+              livemode: false,
+              buyerMapping: {
+                authority: "operator-asserted",
+                buyerAccountId: input.buyerAccountId,
+              },
+            }),
+          )
+          .digest("hex"),
+      },
+      payload: {
+        kind: "customer",
+        value: {
+          buyerAccountId: input.buyerAccountId,
+          stripeAccountId: input.stripeAccountId,
+          stripeCustomerId: input.stripeCustomerId,
+        },
+      },
+    });
+  });
+
+  test("the committed payload carries no provider email or metadata", async () => {
+    const f = actionFixture({
+      customer: {
+        id: input.stripeCustomerId,
+        object: "customer",
+        deleted: false,
+        livemode: false,
+        email: "private@example.invalid",
+        metadata: { buyer: input.buyerAccountId, stripe: "raw" },
+      },
+    });
+    try {
+      await runAction(f);
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    const serialized = JSON.stringify(f.mutations[0].args);
+    expect(serialized).not.toContain("private@example.invalid");
+    expect(serialized).not.toContain("raw");
+    expect(f.mutations[0].args.requestId).toBe(input.requestId);
+  });
+
+  test("returns whatever id the trustedProvisioning mutation returns", async () => {
+    const f = actionFixture();
+    f.setBindingId("trustedprovisioning_other9999");
+    let committed: string | undefined;
+    try {
+      committed = await runAction(f);
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    expect(committed).toBe("trustedprovisioning_other9999");
+  });
+
+  test("the evidence fingerprint changes with the buyer mapping only", async () => {
+    const first = actionFixture();
+    let a: string | undefined;
+    try {
+      await runAction(first);
+      a = String(
+        (first.mutations[0].args.provenance as ActionRow).evidenceFingerprint,
+      );
+    } finally {
+      first.restore();
+    }
+    const second = actionFixture();
+    let b: string | undefined;
+    try {
+      await runAction(second, { buyerAccountId: "buyer-2" });
+      b = String(
+        (second.mutations[0].args.provenance as ActionRow).evidenceFingerprint,
+      );
+    } finally {
+      second.restore();
+      restoreEnv();
+    }
+    expect(a).toMatch(/^[a-f0-9]{64}$/);
+    expect(b).toMatch(/^[a-f0-9]{64}$/);
+    expect(b).not.toBe(a);
+  });
+
+  for (const [name, customer] of [
+    [
+      "live-mode",
+      {
+        id: input.stripeCustomerId,
+        object: "customer",
+        deleted: false,
+        livemode: true,
+      },
+    ],
+    [
+      "deleted",
+      { id: input.stripeCustomerId, object: "customer", deleted: true },
+    ],
+    [
+      "wrong-id",
+      {
+        id: "cus_someoneelse",
+        object: "customer",
+        deleted: false,
+        livemode: false,
+      },
+    ],
+  ] as const) {
+    test(`a ${name} customer is refused before any mutation`, async () => {
+      const f = actionFixture({ customer });
+      let caught: unknown;
+      try {
+        await runAction(f);
+      } catch (error) {
+        caught = error;
+      } finally {
+        f.restore();
+        restoreEnv();
+      }
+      expect((caught as Error).message).toBe(
+        "Stripe test customer facts unavailable",
+      );
+      expect(f.mutations).toEqual([]);
+    });
+  }
+
+  test("an account that is not the requested one stops before the customer read", async () => {
+    const f = actionFixture({
+      account: { id: "acct_someoneelse", object: "account" },
+    });
+    let caught: unknown;
+    try {
+      await runAction(f);
+    } catch (error) {
+      caught = error;
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    expect((caught as Error).message).toBe(
+      "Stripe test customer facts unavailable",
+    );
+    expect(f.urls).toEqual(["https://api.stripe.com/v1/account"]);
+    expect(f.mutations).toEqual([]);
+  });
+
+  test("a provider error is redacted and never commits", async () => {
+    const f = actionFixture({ status: 402 });
+    let caught: unknown;
+    try {
+      await runAction(f);
+    } catch (error) {
+      caught = error;
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    expect((caught as Error).message).toBe(
+      "Stripe test customer facts unavailable",
+    );
+    expect((caught as Error).message).not.toContain("cus_leak");
+    expect(f.mutations).toEqual([]);
+  });
+
+  test("an unallowlisted operator config is refused before the provider is called", async () => {
+    const f = actionFixture();
+    let caught: unknown;
+    try {
+      setEnv(
+        "sk_test_convexactioncoverage",
+        JSON.stringify([
+          { operatorId: "operator-other", sourceId: "stripe-facts" },
+        ]),
+      );
+      await actionHandler(f.ctx, input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      f.restore();
+      restoreEnv();
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect(f.urls).toEqual([]);
+    expect(f.mutations).toEqual([]);
+  });
+
+  test("malformed identifiers are refused before the provider is called", async () => {
+    for (const field of [
+      "buyerAccountId",
+      "stripeAccountId",
+      "stripeCustomerId",
+    ] as const) {
+      const f = actionFixture();
+      let caught: unknown;
+      try {
+        await runAction(f, { [field]: " bad " });
+      } catch (error) {
+        caught = error;
+      } finally {
+        f.restore();
+      }
+      expect((caught as Error).message).toBe(
+        "Invalid trusted customer fact identifiers",
+      );
+      expect(f.urls).toEqual([]);
+      expect(f.mutations).toEqual([]);
+    }
+    restoreEnv();
+  });
+
+  for (const key of [
+    undefined,
+    "",
+    "sk_live_convexactioncoverage",
+    "sk_test_",
+  ]) {
+    test(`the action refuses key ${JSON.stringify(key)} rather than calling the provider`, async () => {
+      const f = actionFixture();
+      let caught: unknown;
+      try {
+        setEnv(key, authorityConfig);
+        await actionHandler(f.ctx, input);
+      } catch (error) {
+        caught = error;
+      } finally {
+        f.restore();
+        restoreEnv();
+      }
+      expect((caught as Error).message).toBe(
+        "Stripe test customer facts unavailable",
+      );
+      expect(f.urls).toEqual([]);
+      expect(f.mutations).toEqual([]);
+    });
+  }
+});
