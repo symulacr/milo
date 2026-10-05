@@ -1,4 +1,5 @@
 import { Dialog } from "radix-ui";
+import { useLocation } from "react-router";
 import { sampleFiles } from "../assets";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
 import { useWorkspace } from "../workspace/model";
@@ -20,6 +21,7 @@ export function OrderDialog() {
     setReason,
   } = useWorkspace();
   const image = modal !== null && typeof modal === "object" ? modal : null;
+  const { search } = useLocation();
   return (
     <Dialog.Root
       open={modal !== null}
@@ -301,7 +303,9 @@ export function OrderDialog() {
                 disabled={!can(modal)}
                 onClick={() => {
                   act(modal);
-                  if (modal === "reserve") navigate("/orders/sample-001");
+                  if (modal === "reserve") {
+                    navigate(`/orders/sample-001${search}`);
+                  }
                 }}
               >
                 {modal === "reserve" ? "Reserve the terms" : "Accept the order"}
