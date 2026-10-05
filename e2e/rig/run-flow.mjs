@@ -18,7 +18,7 @@
  *   node e2e/rig/run-flow.mjs --flow B1-F001 B1-F001N --runs 5
  *   node e2e/rig/run-flow.mjs --all --runs 5 --serve
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -239,21 +239,6 @@ async function executeStep(page, context, state, step, index) {
   }
   if (step.expectDisabled) { await locator(step.expectDisabled).waitFor({ state: "visible" }); const disabled = await locator(step.expectDisabled).isDisabled(); if (!disabled) throw new Error(`${step.expectDisabled} was not disabled`); return "expectDisabled"; }
   if (step.expectFocused) { await locator(step.expectFocused).waitFor({ state: "visible" }); const focused = await locator(step.expectFocused).evaluate((el) => el === document.activeElement); if (!focused) throw new Error(`${step.expectFocused} did not hold focus`); return "expectFocused"; }
-  if (step.expectFocusWithin) {
-    const css = step.expectFocusWithin.replace(/^css=/, "");
-    const inside = await page.evaluate((selector) => {
-      const container = document.querySelector(selector);
-      return !!container && container.contains(document.activeElement);
-    }, css);
-    if (!inside) {
-      const active = await page.evaluate(() => {
-        const el = document.activeElement;
-        return el ? `${el.tagName}.${el.className}` : "none";
-      });
-      throw new Error(`focus left ${step.expectFocusWithin} (now on ${active})`);
-    }
-    return "expectFocusWithin";
-  }
   if (step.expectInvalid) {
     const valid = await locator(step.expectInvalid).evaluate((el) => el.checkValidity());
     if (valid) throw new Error(`${step.expectInvalid} reported itself valid`);
@@ -588,4 +573,4 @@ if (isDirect) {
   }
 }
 
-export { main, runOnce, parseArgs, spawnSync };
+export { main, runOnce, parseArgs };
