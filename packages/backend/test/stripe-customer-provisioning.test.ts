@@ -7,6 +7,10 @@ import {
   provisionTestCustomerFacts,
 } from "../src/stripe-customer-provisioning.server";
 import { canonicalPayload } from "../src/trusted-provisioning-policy";
+import {
+  installStripeDouble,
+  type StripeDoubleRoutes,
+} from "./stripe-fetch-double";
 
 const input = {
   requestId: "request-1",
@@ -227,68 +231,15 @@ const BINDING_ID = "trustedprovisioning_binding1";
  * only capability is runMutation. The Stripe SDK under Bun resolves its `bun`
  * export condition to the fetch HTTP client, so intercepting globalThis.fetch
  * drives the real Stripe client, its real request URLs and its real response
- * parsing with no network and no mocked module.
- *
- * Bun shares one global realm across test files, and apps/web's happy-dom
- * suites (approve-flow.test.tsx:20-51) overwrite globalThis.Event with
- * happy-dom's. Stripe's emitter builds a native EventTarget and dispatches a
- * `_StripeEvent extends Event`, which then throws ERR_INVALID_ARG_TYPE against
- * that native EventTarget. Aligning EventTarget to the realm Event came from
- * keeps both pairs consistent; both are restored afterwards.
+ * parsing with no network and no mocked module. See stripe-fetch-double.ts.
  */
-function actionFixture(
-  responses: { account?: unknown; customer?: unknown; status?: number } = {},
-) {
-  const urls: string[] = [];
+function actionFixture(responses: StripeDoubleRoutes = {}) {
   const mutations: { ref: string; args: ActionRow }[] = [];
   let bindingId = BINDING_ID;
-  const realFetch = globalThis.fetch;
-  const realEventTarget = globalThis.EventTarget;
-  const injectedWindow = (
-    globalThis as unknown as { window?: { EventTarget?: typeof EventTarget } }
-  ).window;
-  const dispatches = () => {
-    try {
-      return new globalThis.EventTarget().dispatchEvent(
-        new globalThis.Event("milo-probe"),
-      );
-    } catch {
-      return false;
-    }
-  };
-  if (!dispatches() && injectedWindow?.EventTarget)
-    globalThis.EventTarget = injectedWindow.EventTarget;
-  globalThis.fetch = (async (resource: string | URL | Request) => {
-    const url = String(resource);
-    urls.push(url);
-    const status = responses.status ?? 200;
-    const json = (body: unknown) =>
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { "content-type": "application/json" },
-      });
-    if (status >= 400)
-      return json({
-        error: {
-          type: "invalid_request_error",
-          message: "raw provider secret cus_leak",
-        },
-      });
-    if (url.endsWith("/v1/account"))
-      return json(
-        responses.account ?? { id: input.stripeAccountId, object: "account" },
-      );
-    if (url.includes("/v1/customers/"))
-      return json(
-        responses.customer ?? {
-          id: input.stripeCustomerId,
-          object: "customer",
-          deleted: false,
-          livemode: false,
-        },
-      );
-    return json({ error: { message: "unexpected route" } });
-  }) as typeof fetch;
+  const double = installStripeDouble({
+    account: { id: input.stripeAccountId, object: "account" },
+    ...responses,
+  });
   const ctx = {
     runMutation: async (ref: unknown, args: ActionRow) => {
       const symbol = Object.getOwnPropertySymbols(ref)[0] as symbol;
@@ -300,16 +251,13 @@ function actionFixture(
     },
   };
   return {
-    urls,
+    urls: double.urls,
     mutations,
     ctx,
     setBindingId: (id: string) => {
       bindingId = id;
     },
-    restore: () => {
-      globalThis.fetch = realFetch;
-      globalThis.EventTarget = realEventTarget;
-    },
+    restore: double.restore,
   };
 }
 
