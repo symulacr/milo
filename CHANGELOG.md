@@ -1,7 +1,14 @@
 # Changelog
 
-## v0.0.4 - 2026-09-25
+## Unreleased — 2026-09-25 concurrency wave (no release tag; 11 of 13 claims refuted at HEAD)
 
+> **Relabelled 2026-10-05 [I122].** This section was headed `v0.0.4`, but no `v0.0.4` was ever
+> released: `git tag` lists only `v0.0.1` and `v0.0.2`, `package.json` says `0.0.3`, and the
+> 2026-10-03 correction below had already refuted 11 of this entry's 13 claims. A version heading
+> over refuted claims is the trap: `git describe` and every semver-aware reader would treat a
+> dated receipt as a shipped release. It is now an unreleased work entry. The newest **released**
+> section is `v0.0.3`, which is what the `v0.0.3` tag points at.
+>
 > **Corrected 2026-10-03.** This entry was written against a different tree. The `hardening/`
 > and `.hoplite/` directories it leans on were never tracked, and several of the
 > `packages/integration/src/` modules it names were later consolidated and removed. Of the
@@ -251,6 +258,16 @@ Changes are grouped by verified scope. “Added” does not mean a live service 
 integration gate. Execution status lives in `PROGRESS_MANIFEST.md`.
 
 ## v0.0.3 - 2026-09-20
+
+> **Verified 2026-10-05 [I122].** This section is what the annotated `v0.0.3` tag points at, so
+> every path it names was existence-checked against the tagged tree. Present:
+> `packages/integration/src/dust-seed.mjs`, `packages/integration/src/wallet-state-verify.mjs`,
+> `packages/integration/src/preprod-lane.mjs` (both `--verify-state` and `--repair-state`),
+> `packages/integration/test/dust-seed.test.mjs` (the `GOLDEN.height = 2633333` fixture is at
+> line 31, as this entry says), and `scripts/native-services-health.ts`. Absent and therefore
+> receipts only, not reproducible claims: `hardening/v6/prototype/upstream-fast-sync/RESULTS.md`
+> and `prototype/restore-verify/verify.mjs`. Both are named as the *source of a decision*, and the
+> decision itself is re-derivable from the tree; neither is needed to build or run.
 
 the fast-sync wave: a start-late DUST seeder that skips the genesis replay, the fail-closed
 restore gate it is verified by, and the decision that closes the upstream fast-sync route.

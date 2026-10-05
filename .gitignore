@@ -236,4 +236,11 @@ hardening/
 convex/_generated/
 e2e/**/out/
 packages/integration/src/p0-*.mjs
+# Generated, deliberately dropped in 6e58936 and deliberately ignored here. Checked
+# 2026-10-05 before leaving it alone: `git show 5e178da:release-manifest.json` is a
+# 2315-line per-file inventory (generatedAt, trackedCount, classCounts, filesOver500KB,
+# rows). It records no project version, nothing in this repository reads it, and its
+# `trackedCount: 438` is already stale against the current 481. It is a tree snapshot, not
+# a release authority, so it stays untracked. The version authority is package.json
+# (0.0.3), the annotated git tags (v0.0.1, v0.0.2, v0.0.3) and CHANGELOG.md.
 release-manifest.json
