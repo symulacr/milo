@@ -349,10 +349,12 @@ async function runOnce(env, flowEntry, runIndex, runDir, options) {
     goalMs: null,
   };
 
-  // Only the flow's own page feeds the counters; the axe page navigates too and
-  // must not inflate navigations or route changes.
+  // Only the flow's own page feeds the counters. A persistent context always has an
+  // about:blank page before newPage() below, and it emits a navigation, so a guard
+  // written as `mainPage && source.page !== mainPage` cannot filter it: mainPage is
+  // still undefined when that page fires. Require the page to BE mainPage instead.
   await context.exposeBinding("__miloRigEmit", (source, record) => {
-    if (mainPage && source.page !== mainPage) return;
+    if (!mainPage || source.page !== mainPage) return;
     streamed.push(record);
   });
   await context.addInitScript(installInstrumentation, {
