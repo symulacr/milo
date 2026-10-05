@@ -97,8 +97,10 @@ VERIFICATION.md
 # 5. Re-include the sample images the landing and demo render.
 !apps/web/public/images/
 !apps/web/public/images/*.png
-# Two unreferenced orphans (their asserting test, apps/web/src/assets.test.ts, no longer
-# exists). They stay on disk, untracked; later rules win over the re-include above.
+# Two unreferenced orphans. No source, test or config in this tree names them; the
+# `!…*.png` re-include above is what put them in the index, and they are TRACKED, so the
+# re-ignore below has no effect on what ships. Kept verbatim so the orphan status stays
+# visible to the next reader; see DEAD-CODE-REPORT.md for the deletion decision.
 apps/web/public/images/avatar-merchant.png
 apps/web/public/images/avatar-operator.png
 
@@ -123,6 +125,8 @@ scripts/convex-local-*
 # re-included 2026-09-20: the documented test:native-node / test:native-network
 # commands were missing from package.json, and these two files are their
 # implementations (native-services-health is imported by native-node-smoke).
+# Corrected 2026-10-05: this rule IGNORES the file, and the file is absent from the
+# tree and from every commit that has ever existed. No script here names it.
 scripts/preprod-observe.mjs
 
 # 7. Local-lane and leftover files, untracked after an import-graph and
@@ -137,7 +141,10 @@ packages/integration/src/verify-persisted-constructor.mjs
 
 packages/midnight-client/node_modules/
 
-# generated QA bundle (rebuild via scripts/qa-build-reserve-ui.ts)
+# generated QA bundle. The rebuild command named in the old comment here,
+# scripts/qa-build-reserve-ui.ts, has never existed in this repository's history:
+# `git log --all -- scripts/qa-build-reserve-ui.ts` is empty and the file is absent
+# from disk, so nothing can rebuild this directory.
 apps/web/public/qa-build/
 
 # never track these
@@ -163,6 +170,29 @@ gates/*.json
 !/RUNBOOKS.md
 !/SECURITY-INVENTORY.md
 !/PR7-UX.md
+
+# Tracked root reports that the section-2 `*` rule was silently swallowing. Each is in
+# the index, so it ships today and `*` does not untrack it, but a deny-by-default
+# allowlist that leaves its own tracked files unlisted is a trap: `git check-ignore`
+# reports them ignored, and the next `git add` after an unlink recreates a tracked-looking
+# file that no clone receives. Audit 2026-10-05, `git check-ignore --no-index -v`.
+!/COHORT-UPGRADE.md
+!/CONVERGENCE-MAP.md
+!/DEAD-CODE-REPORT.md
+!/FLOW-READINESS.md
+!/LIVE-READINESS-MATRIX.md
+!/PITCH.md
+!/ROADMAP-LIVE.md
+!/RUBRIC-MAP.md
+!/WALLET-MATRIX.md
+!/WAVE-DELTA.md
+!/legal/
+!/legal/**
+# `!/docs/MIDNIGHT-INTEGRATION.md` alone does not work: git never descends into an
+# excluded directory, so the directory itself has to be re-included first (the gotcha in
+# this file's own header). `*` still ignores every other file under docs/.
+!/docs/
+!/docs/MIDNIGHT-INTEGRATION.md
 
 # Evidence scripts are tracked (R3)
 !evidence/
