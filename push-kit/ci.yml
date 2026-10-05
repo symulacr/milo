@@ -1,4 +1,4 @@
-# This file is the tracked CI definition. `.github/` is gitignored (.gitignore:21), so
+# This file is the tracked CI definition. `.github/` is gitignored (.gitignore:22), so
 # `push-kit/PUSH.md`'s "copy push-kit/ci.yml to .github/workflows/ci.yml" produces a
 # workflow that is never committed and never runs; this file is what a reviewer reads.
 # Revert: git revert <this commit>   (DECISION: where tracked CI lives, I078)
@@ -18,3 +18,104 @@ jobs:
       - run: bun run build
       - run: bun test apps/web/src/route-parity.test.ts
       - run: bash scripts/gates/gate.sh prototype
+
+      # Fails on advisories that are NOT in the KNOWN set below. It does not fail on the
+      # advisories this tree already carries, because those are recorded, measured and
+      # unreachable from the shipped browser bundle.
+      #
+      # REACHABILITY, measured 2026-10-05 on a fresh clone at be6fb2c [F10]. The scan finds
+      # 32 advisory groups (29 distinct OSV ids) across 6 packages: axios 20, ws 4,
+      # brace-expansion 3, uuid 2, @grpc/grpc-js 2, decode-uri-component 1. Two lockfiles
+      # are scanned, so both counts are real: 27 groups via bun.lock and 5 via
+      # packages/integration/package-lock.json. Every one is transitive through
+      # @privy-io/react-auth -> x402 -> wagmi -> @wagmi/connectors, plus the integration
+      # lane's own @grpc/grpc-js; nothing here is a direct dependency in package.json.
+      #
+      # Zero of the 6 packages contributes a single owned literal to either shipped bundle.
+      # Checked against dist/public-app-*.js (282 KB) and dist/app-*.js (5.5 MB) after
+      # `bun run build`: axios 0 (AxiosError, isAxiosError, ERR_BAD_REQUEST, ERR_NETWORK,
+      # ERR_FR_TOO_MANY_REDIRECTS), decode-uri-component 0 (DecodeURIError), uuid 0 (uuidv4,
+      # RFC4122), ws 0 (Sec-WebSocket-Accept, Unexpected server response, WebSocketServer),
+      # brace-expansion 0, @grpc/grpc-js 0. A bare package-name grep is NOT a valid test:
+      # "ws" matches 1488 times in minified output and "uuid" 64, purely as substrings.
+      #
+      # This is a ratchet, not a clearance. If an advisory here becomes reachable, or if a
+      # package is promoted to a direct dependency, this gate will not notice; that needs a
+      # rebuild of the literal probe above. osv-scanner 2.2.3 is a silently truncated
+      # download (17.7 MB of 57.5 MB) that segfaults on every input, so the version is
+      # pinned; the 2.6.0 release binary sha256 was measured against the GitHub release
+      # asset, which matches byte for byte.
+      - name: dependency advisories (ratchet, fails on new and tolerates the known set)
+        run: |
+          set -euo pipefail
+          # Resolved to an absolute path, not left as a bare name: after the download the
+          # binary sits in the checkout root and "." is not on PATH, so "osv-scanner" alone
+          # would resolve to nothing on a runner that has no osv-scanner preinstalled.
+          OSV="$(command -v osv-scanner || true)"
+          REPORT="$(mktemp)"; KNOWN="$(mktemp)"
+          trap 'rm -f "$REPORT" "$KNOWN" ${OSV_DOWNLOADED:-}' EXIT
+          if [ -z "$OSV" ]; then
+            OSV="$(mktemp)"
+            OSV_DOWNLOADED="$OSV"
+            curl -sSfL -o "$OSV" \
+              "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64"
+            echo "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108  $OSV" | sha256sum -c -
+            chmod +x "$OSV"
+          fi
+          "$OSV" scan source -r . --format json --output-file "$REPORT" --verbosity error || true
+          cat > "$KNOWN" <<'KNOWN_IDS'
+          GHSA-3pq3-5fj3-cg6v
+          GHSA-42h9-826w-cgv3
+          GHSA-44g4-m2mj-wpvx
+          GHSA-4hqw-qxg8-jxx2
+          GHSA-542g-h47m-68v8
+          GHSA-58qx-3vcg-4xpx
+          GHSA-6j4f-fj2g-mc7p
+          GHSA-7q8q-rj6j-mhjq
+          GHSA-96hv-2xvq-fx4p
+          GHSA-9fr6-4gfg-395g
+          GHSA-f4gw-2p7v-4548
+          GHSA-f596-whhp-79r4
+          GHSA-gcfj-64vw-6mp9
+          GHSA-hcpx-6fm6-wx23
+          GHSA-j8rh-479h-cp32
+          GHSA-jqh4-m9w3-8hp9
+          GHSA-m8m8-qj5v-23w3
+          GHSA-m9gg-hp2v-232j
+          GHSA-mghh-pgcx-3jjj
+          GHSA-mmx7-hfxf-jppx
+          GHSA-mwf2-3pr3-8698
+          GHSA-pmv8-rq9r-6j72
+          GHSA-q2hr-2g5m-vwhr
+          GHSA-qhr7-859c-m2p7
+          GHSA-vcc3-ghjq-m6fr
+          GHSA-vh66-26gq-q6x8
+          GHSA-w5hq-g745-h8pq
+          GHSA-x97p-jq2g-jp4f
+          GHSA-xj6q-8x83-jv6g
+          KNOWN_IDS
+          python3 - "$REPORT" "$KNOWN" <<'PY'
+          import json, sys
+
+          report, known_path = sys.argv[1], sys.argv[2]
+          data = json.load(open(report))
+          found, packages = set(), {}
+          for result in data.get("results", []):
+              lockfile = result.get("source", {}).get("path", "?").rsplit("/", 1)[-1]
+              for pkg in result.get("packages", []):
+                  for group in pkg.get("groups", []):
+                      for advisory in group.get("ids", []):
+                          found.add(advisory)
+                          packages[advisory] = (pkg["package"]["name"], pkg["package"]["version"], lockfile)
+
+          known = {line.strip() for line in open(known_path) if line.strip()}
+          new = sorted(found - known)
+          print(f"advisories: {len(found)} across {len({v[0] for v in packages.values()})} packages; "
+                f"{len(known & found)} known, {len(new)} new")
+          if new:
+              print("NEW advisories not in the known-unreachable set:")
+              for advisory in new:
+                  name, version, lockfile = packages[advisory]
+                  print(f"  {advisory}  {name}@{version}  via {lockfile}")
+              sys.exit(1)
+          PY
