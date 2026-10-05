@@ -1239,12 +1239,12 @@ export const FLOW_CATALOG = [
     group: "recovery-kit",
     surface: "app.html",
     route: "/orders/sample-001",
-    goal: "The recovery-kit panel is not reachable from any shipped route",
+    goal: "The recovery-kit panel is mounted on /connections only, not on the order routes",
     startState: "cold load",
-    success: ["no route renders the recovery panel", "recorded as a coverage gap, not a pass"],
+    success: ["no order route renders the recovery panel"],
     negativeTwin: "B1-F031N",
     blocked:
-      "apps/web/src/routes/OrderConsole.tsx is never imported and never routed; nothing in the tree mounts RecoveryKitPanel outside apps/web/src/qa-reserve-ui.tsx, whose bundle apps/web/public/qa-build/qa-reserve-ui.js is not produced by any script.",
+      "The panel is mounted as a child of PrivyConnection on /connections (apps/web/src/Connections.tsx). Without PRIVY_APP_ID the whole Privy subtree is gated off, so this flow can only prove the negative: the order routes never mount it. B1-F031R is the positive twin.",
     steps: s([
       { goto: "/orders/sample-001?scenario=review&role=buyer" },
       { expectHidden: `css=h3:text("Order recovery context")` },
@@ -1252,7 +1252,29 @@ export const FLOW_CATALOG = [
       { expectHidden: `css=h3:text("Order recovery context")` },
       { goto: "/account" },
       { expectHidden: `css=h3:text("Order recovery context")` },
-      { markGoal: "recovery-panel-unreachable" },
+      { markGoal: "recovery-panel-not-on-order-routes" },
+    ]),
+  }),
+  flow({
+    id: "B1-F031R",
+    twinOf: "B1-F031",
+    group: "recovery-kit",
+    surface: "app.html",
+    route: "/connections",
+    goal: "The recovery-kit panel is reachable on a shipped route",
+    startState: "cold load, PRIVY_APP_ID provisioned",
+    success: [
+      "the panel renders inside the real PrivyProvider subtree",
+      "it claims no persistence beyond the browser",
+    ],
+    negativeTwin: "B1-F031",
+    blocked:
+      "PRIVY_APP_ID is not provisioned in this tree (.env.local is off-limits to agents), so the real PrivyProvider throws and IdentityBoundary renders its fail-closed copy before the panel mounts. Measured with a dummy PRIVY_APP_ID=w5b-rig-probe: 5/5 runs fail at the expectVisible, screenshot shows 'Privy could not initialize.' The mount itself is proven by the shipped bundle (app bundle contains 'Order recovery context', 0 occurrences before this change) and by apps/web/src/recovery-kit-reachability.test.tsx, which renders the real PrivyConnection subtree.",
+    steps: s([
+      { goto: "/connections" },
+      { expectVisible: `css=h3:text("Order recovery context")` },
+      { expectText: "No capability, witness, seed or file is ever stored here" },
+      { markGoal: "recovery-panel-reachable" },
     ]),
   }),
   flow({

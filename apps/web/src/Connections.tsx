@@ -17,6 +17,7 @@ import {
   loadPublicConfig,
   type PublicConfig,
 } from "./connection-runtime";
+import { RecoveryKitPanel } from "./RecoveryKitPanel";
 
 const PrivyConnection = lazy(() => import("./PrivyConnection"));
 
@@ -181,7 +182,9 @@ export function Connections({
                     <PrivyConnection
                       appId={config.privyAppId}
                       convexUrl={config.convexUrl}
-                    />
+                    >
+                      <RecoveryKitPanel />
+                    </PrivyConnection>
                   </Suspense>
                 </IdentityBoundary>
               ) : (
