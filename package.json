@@ -14,7 +14,7 @@
     "dev": "sh scripts/with-bun.sh --hot scripts/dev.ts",
     "build": "sh scripts/with-bun.sh scripts/build.ts",
     "typecheck": "sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit",
-    "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check .",
+    "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check --max-diagnostics=200 .",
     "test:unit": "sh scripts/with-bun.sh test apps/web packages/domain packages/contract packages/backend scripts convex packages/midnight-client e2e",
     "test:integration": "sh scripts/with-bun.sh scripts/test-integration.ts",
     "test:native-network": "sh scripts/with-bun.sh scripts/setup-native-node.ts && python3 scripts/setup-native-services.py && sh scripts/with-bun.sh scripts/test-native-network.ts",
