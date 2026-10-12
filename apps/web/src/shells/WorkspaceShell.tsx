@@ -6,11 +6,12 @@ import { Badge, Icon } from "../components/ui";
 import { WordmarkStar } from "../components/Wordmark";
 import { roleNames, scenarios, useWorkspace } from "../workspace/model";
 
-// avatar-buyer.png is corrupt and unrecoverable (truncated IDAT; see the image
-// repair report), so the buyer avatar keeps its original path until the source
-// art is re-exported. The merchant and operator avatars are WebP.
-const avatarPhoto: Record<Role, string> = {
-  buyer: "/images/avatar-buyer.png",
+// avatar-buyer.png is corrupt and unrecoverable (truncated IDAT; verified absent
+// from git history, this host and the live deployment), so the buyer avatar falls
+// back to the design's art colour rather than requesting a broken file. The
+// merchant and operator avatars are WebP.
+const avatarPhoto: Record<Role, string | null> = {
+  buyer: null,
   merchant: "/images/avatar-merchant.webp",
   operator: "/images/avatar-operator.webp",
 };
@@ -31,7 +32,11 @@ export function WorkspaceShell() {
         aria-label="Workspace navigation"
         style={
           {
-            "--avatar-photo": `url(${avatarPhoto[state.role]})`,
+            // Omit the photo layer entirely when there is none, so the avatar falls
+            // back to the design's art colour instead of requesting a broken file.
+            "--avatar-photo": avatarPhoto[state.role]
+              ? `url(${avatarPhoto[state.role]})`
+              : "none",
           } as CSSProperties
         }
       >

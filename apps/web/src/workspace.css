@@ -722,6 +722,17 @@ dd {
   border-radius: 10px;
   margin-bottom: var(--space-4);
 }
+/* The cover photograph is unavailable (corrupt source; see the image repair
+   report). The block keeps its shape using the design's own art tokens, so the
+   layout holds and no broken image ships. */
+.studio-cover-unavailable {
+  aspect-ratio: 1536 / 1024;
+  display: grid;
+  place-items: center;
+  background: var(--art-bg);
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
 .reading-panel p {
   font-size: 14px;
   color: var(--muted);
