@@ -126,14 +126,14 @@ export async function requestUpload(
  * with the upload URL (consumed on bind) and by storeAndAttachUpload (R-04),
  * which produces the storageId on the authorized action path itself.
  */
-export async function attachUpload(
-  ctx: AdmissionContext,
-  input: { grantId: string; storageId: string; uploadTicket: string },
-) {
+/**
+ * The upload-grant authorization guard. Both upload entry points ran a byte-identical copy of
+ * this 21-line check; a permission guard in two places is one that can drift, so it has one
+ * definition and returns the grant the caller then consumes.
+ */
+async function requireUploadGrant(ctx: AdmissionContext, grantId: string) {
   requireSessionSubject(await ctx.auth.getUserIdentity());
-  const grant = (await ctx.db.get(
-    input.grantId as never,
-  )) as FileGrantRow | null;
+  const grant = (await ctx.db.get(grantId as never)) as FileGrantRow | null;
   if (!grant) throw new Error("upload grant is unavailable");
   const order = await loadOrder(ctx, grant.orderId);
   const membership = await requireMembership(ctx, order.scopeId);
@@ -151,6 +151,14 @@ export async function attachUpload(
     now >= grant.expiresAt
   )
     throw new Error("upload grant is unavailable");
+  return grant;
+}
+
+export async function attachUpload(
+  ctx: AdmissionContext,
+  input: { grantId: string; storageId: string; uploadTicket: string },
+) {
+  const grant = await requireUploadGrant(ctx, input.grantId);
   // URL->storageId provenance: only the one-time ticket minted with this
   // grant's upload URL may bind a storageId. Foreign or missing tickets are
   // refused before any storage lookup.
@@ -202,27 +210,7 @@ export async function storeAndAttachUpload(
   },
   input: { grantId: string; bytes: Uint8Array },
 ) {
-  requireSessionSubject(await ctx.auth.getUserIdentity());
-  const grant = (await ctx.db.get(
-    input.grantId as never,
-  )) as FileGrantRow | null;
-  if (!grant) throw new Error("upload grant is unavailable");
-  const order = await loadOrder(ctx, grant.orderId);
-  const membership = await requireMembership(ctx, order.scopeId);
-  if (
-    membership.role !== "merchant" ||
-    membership.accountId !== order.merchantId ||
-    membership.accountId !== grant.uploaderId
-  )
-    throw new Error("upload grant is unavailable");
-  const now = Date.now();
-  if (
-    grant.consumed ||
-    grant.storageId !== undefined ||
-    !Number.isSafeInteger(grant.expiresAt) ||
-    now >= grant.expiresAt
-  )
-    throw new Error("upload grant is unavailable");
+  const grant = await requireUploadGrant(ctx, input.grantId);
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0)
     throw new Error("upload bytes are required");
   // Produce the storage identity on the authorized path only.
