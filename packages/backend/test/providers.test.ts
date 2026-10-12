@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type Stripe from "stripe";
 import { HEX64 } from "../src/encoding";
-import { requirePrivySubject } from "../src/privy-identity";
+import { requireSessionSubject } from "../src/session-identity";
 import {
   normalizeTestPayment,
   type TestPaymentBinding,
@@ -211,7 +211,7 @@ describe("Stripe server observation normalization", () => {
 describe("Privy identity boundary", () => {
   test("accepts the subject of a Convex-validated Privy identity", () => {
     expect(
-      requirePrivySubject({ issuer: "privy.io", subject: "did:privy:user1" }),
+      requireSessionSubject({ issuer: "privy.io", subject: "did:privy:user1" }),
     ).toBe("did:privy:user1");
   });
   test("rejects missing identity, another issuer and malformed subject", () => {
@@ -220,8 +220,8 @@ describe("Privy identity boundary", () => {
       { issuer: "another", subject: "did:privy:user1" },
       { issuer: "privy.io", subject: "user1" },
     ]) {
-      expect(() => requirePrivySubject(identity)).toThrow(
-        "Authenticated Privy identity required",
+      expect(() => requireSessionSubject(identity)).toThrow(
+        "Authenticated session required",
       );
     }
   });

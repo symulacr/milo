@@ -11,7 +11,7 @@ import type {
 } from "convex/server";
 import { queryGeneric } from "convex/server";
 import { v } from "convex/values";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import type schema from "./schema";
 
 type DiagContext = GenericQueryCtx<
@@ -96,7 +96,7 @@ export const read = queryGeneric({
     ),
   }),
   handler: async (ctx: DiagContext, args) => {
-    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const ops = args.paymentIntentId
       ? await byIntentRows(
           ctx.db as never,

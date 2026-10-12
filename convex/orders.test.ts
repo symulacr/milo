@@ -94,7 +94,7 @@ describe("orders.read authorization", () => {
     const f = ctxDouble(null);
     seedQuote(f);
     await expect(handler(f.ctx, { quoteId: "quote-1" })).rejects.toThrow(
-      "Authenticated Privy identity required",
+      "Authenticated session required",
     );
   });
 

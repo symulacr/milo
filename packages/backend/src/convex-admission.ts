@@ -14,7 +14,7 @@ import {
   decideCanonicalAdmission,
 } from "./admission-policy";
 import { monitorReceiptUsable } from "./payment-monitor";
-import { requirePrivySubject } from "./privy-identity";
+import { requireSessionSubject } from "./session-identity";
 
 export type AdmissionContext = GenericMutationCtx<
   DataModelFromSchemaDefinition<typeof schema>
@@ -27,7 +27,7 @@ export async function admitCanonical(
   ctx: AdmissionContext,
   input: AdmissionInput,
 ): Promise<AdmissionDecision> {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const quote = await ctx.db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))

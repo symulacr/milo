@@ -157,7 +157,7 @@ describe("R7C gate — local-only hard boundaries", () => {
     if (!result.ok) expect(result.code).toBe("missing_convex_url");
   });
 
-  test("subject must match did:privy:<id> for requirePrivySubject", () => {
+  test("subject must match did:privy:<id> for requireSessionSubject", () => {
     expect(isValidTestSubject("did:privy:local-test-buyer")).toBe(true);
     expect(isValidTestSubject("did:privy:abc-123")).toBe(true);
     expect(isValidTestSubject("user_1")).toBe(false);
@@ -253,10 +253,10 @@ describe("R7C production config boundary", () => {
     expect(PROPOSED_AUTH_CONFIG_SNIPPET).toContain("coordinator");
   });
 
-  test("requirePrivySubject identity contract is documented by the issuer", () => {
-    // privy-identity.ts still requires iss=privy.io + did:privy: sub.
+  test("requireSessionSubject identity contract is documented by the issuer", () => {
+    // session-identity.ts still requires iss=privy.io + did:privy: sub.
     const privyIdentity = readIfExists(
-      join(REPO, "packages", "backend", "src", "privy-identity.ts"),
+      join(REPO, "packages", "backend", "src", "session-identity.ts"),
     );
     expect(privyIdentity).toContain('issuer !== "privy.io"');
     expect(privyIdentity).toContain("did:privy:");

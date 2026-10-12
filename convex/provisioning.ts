@@ -5,7 +5,6 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import {
   PROVIDER_LEASE_MS,
   PROVIDER_RETRY_WINDOW_MS,
@@ -15,6 +14,7 @@ import {
   validJobClock,
 } from "../packages/backend/src/provisioning-policy";
 import { validPublicConstructor } from "../packages/backend/src/public-constructor.ts";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import type { AdmissionContext } from "./admissionContext";
 import { frozenQuoteFields, paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";
@@ -25,7 +25,7 @@ export async function freezeApprovedQuote(
   ctx: AdmissionContext,
   input: { quoteId: string; expectedVersion: number },
 ) {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const approved = await ctx.db
     .query("approvedQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))
@@ -71,7 +71,7 @@ export async function requestPaymentJob(
   input: { quoteId: string; expectedVersion: number },
   observationOnly: boolean,
 ) {
-  const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+  const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
   const quote = await ctx.db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))

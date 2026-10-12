@@ -4,7 +4,7 @@
  * Purpose: unblock E2E-01 happy-path auth without Privy test accounts
  * (O-PRIVY-TEST owner gap). This module mints ES256 JWTs that a LOCAL
  * disposable Convex deployment can verify via a test JWKS, so the existing
- * `requirePrivySubject` identity shape (`iss: "privy.io"` + `sub: did:privy:…`)
+ * `requireSessionSubject` identity shape (`iss: "privy.io"` + `sub: did:privy:…`)
  * is satisfied without contacting api.privy.io.
  *
  * Hard boundary — all must hold or minting refuses:
@@ -39,7 +39,7 @@ import { Buffer } from "node:buffer";
 export const MILO_TEST_ISSUER_ENV = "MILO_TEST_ISSUER";
 export const MILO_TEST_ISSUER_VALUE = "local-only";
 
-/** Claim shape required by packages/backend/src/privy-identity.ts. */
+/** Claim shape required by packages/backend/src/session-identity.ts. */
 export const PRIVY_ISSUER = "privy.io";
 
 /** Receipt / harness label for results produced via this issuer. */
@@ -51,7 +51,7 @@ export const TEST_JWK_KID = "milo-local-test-issuer-1";
 export type TestIssuerGateEnv = Record<string, string | undefined>;
 
 export type MintSubject = {
-  /** Must match `did:privy:<id>` (requirePrivySubject). */
+  /** Must match `did:privy:<id>` (requireSessionSubject). */
   subject: string;
   /** Optional aud; defaults to a fixed local test application id. */
   applicationId?: string;
@@ -252,7 +252,7 @@ export function mintTestJwt(
   }
   if (!isValidTestSubject(input.subject)) {
     throw new Error(
-      "test-jwt-issuer: subject must match did:privy:<id> so requirePrivySubject can accept the local identity.",
+      "test-jwt-issuer: subject must match did:privy:<id> so requireSessionSubject can accept the local identity.",
     );
   }
   const ttl = Math.min(Math.max(input.ttlSeconds ?? 3600, 60), 86400);

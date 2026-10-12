@@ -402,7 +402,7 @@ describe("Trusted provisioning — explicit doubles", () => {
     db.identity(null);
     await expect(
       freezeApprovedQuote(db.ctx, { quoteId: "quote", expectedVersion: 1 }),
-    ).rejects.toThrow("Privy");
+    ).rejects.toThrow("Authenticated session required");
     db.identity({ issuer: "privy.io", subject: "did:privy:buyer" });
     await expect(
       freezeApprovedQuote(db.ctx, { quoteId: "quote", expectedVersion: 2 }),
@@ -944,7 +944,7 @@ describe("bounded read-only monitoring — transaction doubles", () => {
     );
     db.identity(null);
     await expect(monitorStatus(db.ctx, { quoteId: "quote" })).rejects.toThrow(
-      "Privy",
+      "Authenticated session required",
     );
   });
 

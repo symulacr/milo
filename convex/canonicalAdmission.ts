@@ -7,7 +7,7 @@ import {
   PAYMENT_AUTHORIZATION_WINDOW_MS,
   paymentBindsQuote,
 } from "../packages/backend/src/admission-policy";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import type { AdmissionContext } from "./admissionContext";
 import { admissionArgs } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";
@@ -22,7 +22,7 @@ export async function admitCanonical(
   ctx: AdmissionContext,
   input: AdmissionInput,
 ): Promise<AdmissionDecision> {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const quote = await ctx.db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))

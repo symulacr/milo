@@ -15,7 +15,7 @@ import { stripeWebhookHandler } from "../../../convex/http";
 import * as orders from "../../../convex/orders";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
-import { requirePrivySubject } from "../src/privy-identity";
+import { requireSessionSubject } from "../src/session-identity";
 
 const CONVEX_DIR = new URL("../../../convex", import.meta.url).pathname;
 
@@ -272,14 +272,14 @@ describe("M7 auth inventory — public Convex query/mutation", () => {
     },
   );
 
-  test("requirePrivySubject is the shared identity gate", () => {
-    expect(() => requirePrivySubject(null)).toThrow(
-      "Authenticated Privy identity required",
+  test("requireSessionSubject is the shared identity gate", () => {
+    expect(() => requireSessionSubject(null)).toThrow(
+      "Authenticated session required",
     );
     expect(() =>
-      requirePrivySubject({ issuer: "evil", subject: "did:privy:x" }),
-    ).toThrow("Authenticated Privy identity required");
-    expect(requirePrivySubject(BUYER)).toBe("did:privy:buyer");
+      requireSessionSubject({ issuer: "evil", subject: "did:privy:x" }),
+    ).toThrow("Authenticated session required");
+    expect(requireSessionSubject(BUYER)).toBe("did:privy:buyer");
   });
 
   test("requireMembership rejects missing/revoked membership", async () => {
@@ -501,7 +501,7 @@ describe("M7 auth inventory — completeness vs source exports", () => {
         address: "addr",
         network: "preprod",
       } as never),
-    ).rejects.toThrow("Authenticated Privy identity required");
+    ).rejects.toThrow("Authenticated session required");
   });
 
   test("HTTP route table declares only the authenticated stripe webhook", async () => {

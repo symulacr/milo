@@ -21,7 +21,7 @@ import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
 } from "../packages/backend/src/admission-policy";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { isQuoteBuyer } from "./auth/identity";
 import {
   applyChainObservation,
@@ -212,7 +212,7 @@ export const read = queryGeneric({
   handler: async (ctx: OrderReadContext, args) => {
     const quoteId = args.quoteId.trim();
     if (!quoteId) return null;
-    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const quote = ((await ctx.db
       .query("frozenQuotes")
       .withIndex("by_quote", (q) => q.eq("id", quoteId))

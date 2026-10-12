@@ -15,7 +15,7 @@ import {
   type UploadGrant,
   verifyRetrievedBytes,
 } from "../packages/backend/src/delivery-policy";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import type { AdmissionContext } from "./admissionContext";
 import { requireMembership } from "./auth/identity";
 
@@ -78,7 +78,7 @@ export async function requestUpload(
   ctx: AdmissionContext,
   input: { orderId: string },
 ) {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const { order } = await requireMerchantOrder(ctx, input.orderId);
   if (order.phase !== "ACCEPTED")
     throw new Error("merchant delivery is not permitted in this phase");
@@ -130,7 +130,7 @@ export async function attachUpload(
   ctx: AdmissionContext,
   input: { grantId: string; storageId: string; uploadTicket: string },
 ) {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const grant = (await ctx.db.get(
     input.grantId as never,
   )) as FileGrantRow | null;
@@ -202,7 +202,7 @@ export async function storeAndAttachUpload(
   },
   input: { grantId: string; bytes: Uint8Array },
 ) {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const grant = (await ctx.db.get(
     input.grantId as never,
   )) as FileGrantRow | null;
@@ -320,7 +320,7 @@ export async function freeze(
     }>;
   },
 ) {
-  requirePrivySubject(await ctx.auth.getUserIdentity());
+  requireSessionSubject(await ctx.auth.getUserIdentity());
   const { order, membership } = await requireMerchantOrder(ctx, input.orderId);
   const accountId = membership.accountId;
   const now = Date.now();

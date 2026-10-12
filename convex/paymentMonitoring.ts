@@ -6,8 +6,8 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
-import { requirePrivySubject } from "../packages/backend/src/privy-identity";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import type { AdmissionContext } from "./admissionContext";
 import { paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer } from "./auth/identity";
@@ -48,7 +48,7 @@ export const status = queryGeneric({
     canStart: v.boolean(),
   }),
   handler: async (ctx: MonitorQueryContext, args) => {
-    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const session = await ctx.db
       .query("paymentMonitors")
       .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
@@ -137,7 +137,7 @@ export const start = mutationGeneric({
   },
   returns: v.id("paymentMonitors"),
   handler: async (ctx: AdmissionContext, args) => {
-    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const current = await monitorBinding(ctx, args.quoteId, subject);
     if (!current || current.quote.version !== args.expectedVersion)
       throw new Error("Active immutable payment and quote buyer required");
@@ -191,7 +191,7 @@ export const stop = mutationGeneric({
   args: { quoteId: v.string() },
   returns: v.null(),
   handler: async (ctx: AdmissionContext, args) => {
-    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const session = await ctx.db
       .query("paymentMonitors")
       .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
