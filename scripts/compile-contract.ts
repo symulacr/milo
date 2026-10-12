@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { sha256File } from "./sha256-file";
 import "./verify-compact-cohort";
 
 const source = "packages/contract/src/order.compact";
 const destination = "packages/contract/generated";
-const sha256 = async (path: string) =>
-  new Bun.CryptoHasher("sha256")
-    .update(await Bun.file(path).arrayBuffer())
-    .digest("hex");
-const sourceHash = await sha256(source);
+const sourceHash = await sha256File(source);
 await mkdir(".tools", { recursive: true });
 const temporary = await mkdtemp(".tools/contract-build-");
 
@@ -24,7 +21,11 @@ try {
     { stdout: "inherit", stderr: "inherit" },
   );
   assert.equal(await process.exited, 0, "Full Compact compilation failed");
-  assert.equal(await sha256(source), sourceHash, "Source changed during build");
+  assert.equal(
+    await sha256File(source),
+    sourceHash,
+    "Source changed during build",
+  );
 
   const metadata = await Bun.file(
     `${temporary}/compiler/contract-info.json`,
@@ -71,7 +72,7 @@ try {
   const artifacts: Record<string, string> = {};
   const paths = [...new Bun.Glob("**/*").scanSync(temporary)].sort();
   for (const path of paths)
-    artifacts[path] = await sha256(`${temporary}/${path}`);
+    artifacts[path] = await sha256File(`${temporary}/${path}`);
   await Bun.write(
     `${temporary}/compile-receipt.json`,
     `${JSON.stringify(

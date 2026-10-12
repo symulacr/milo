@@ -15,23 +15,13 @@ import {
   makeFunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
+import { bytesToHex, hexToBytes } from "../packages/backend/src/encoding";
 
 function utf8Bytes(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
 function byteLen(s: string | Uint8Array): number {
   return typeof s === "string" ? utf8Bytes(s).length : s.length;
-}
-function hexToBytes(hex: string): Uint8Array {
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++)
-    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  return out;
-}
-function bytesToHex(b: Uint8Array): string {
-  let s = "";
-  for (const x of b) s += x.toString(16).padStart(2, "0");
-  return s;
 }
 
 /** Constant-time hex compare (equal length, no early exit). */

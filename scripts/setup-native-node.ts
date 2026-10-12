@@ -4,6 +4,7 @@ import {
   installNativeSignalCleanup,
   ownNativeProcess,
 } from "./native-processes";
+import { sha256File } from "./sha256-file";
 
 const removeSignalHandlers = import.meta.main
   ? installNativeSignalCleanup()
@@ -17,13 +18,9 @@ await mkdir(`${directory}/downloads`, { recursive: true });
 await mkdir(`${directory}/node`, { recursive: true });
 const expected =
   "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf";
-const checksum = async (path: string) =>
-  new Bun.CryptoHasher("sha256")
-    .update(await Bun.file(path).arrayBuffer())
-    .digest("hex");
 if (
   !(await Bun.file(archive).exists()) ||
-  (await checksum(archive)) !== expected
+  (await sha256File(archive)) !== expected
 ) {
   const response = await fetch(
     "https://github.com/midnightntwrk/midnight-node/releases/download/node-1.0.0/midnight-node-1.0.0-linux-amd64.tar.gz",
@@ -33,7 +30,7 @@ if (
   try {
     await Bun.write(temporary, response);
     assert.equal(
-      await checksum(temporary),
+      await sha256File(temporary),
       expected,
       "Native release checksum mismatch",
     );
@@ -43,9 +40,7 @@ if (
   }
 }
 assert.equal(
-  new Bun.CryptoHasher("sha256")
-    .update(await Bun.file(archive).arrayBuffer())
-    .digest("hex"),
+  await sha256File(archive),
   expected,
   "Native release checksum mismatch",
 );

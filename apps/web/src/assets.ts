@@ -1,3 +1,5 @@
+import { bytesToHex } from "../../../packages/backend/src/encoding";
+
 export const sampleFiles = [
   {
     id: "01",
@@ -34,9 +36,7 @@ export async function verifySampleFiles(
       if (!response.ok) throw new Error("File unavailable. Please try again.");
       const bytes = await response.arrayBuffer();
       const digest = await crypto.subtle.digest("SHA-256", bytes);
-      const hash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
+      const hash = bytesToHex(new Uint8Array(digest));
       if (hash !== file.hash)
         throw new Error(
           "Cannot verify: sample bytes do not match the expected digest. Approval stays blocked.",

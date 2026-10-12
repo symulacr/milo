@@ -97,12 +97,6 @@ export const RECOVERY_KIT_OPS: RecoveryKitOpRow[] = [
   },
 ];
 
-/** Back-compat alias: justifications for ops this UI does not call. */
-export const UNUSED_RECOVERY_KIT_OPS: { op: string; detail: string }[] =
-  RECOVERY_KIT_OPS.filter((row) => row.disposition === "justified").map(
-    (row) => ({ op: row.op, detail: row.detail }),
-  );
-
 /** Lifecycle steps still without a browser path; each names the missing piece. */
 const unavailableSteps: { step: string; detail: string }[] = [
   {
