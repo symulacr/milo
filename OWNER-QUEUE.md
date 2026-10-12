@@ -26,10 +26,18 @@ was not authorized. So the duplication stands, and the row is closed on this bas
 
 - **Priced**: Better Auth + the official `@convex-dev/better-auth` component installs as 36
   packages / 6,773 files / 103 MB, against the 68,200 files / 369 MB it would remove.
-- **Prepared**: commit `7d5dd3a` made the backend identity gate provider-neutral, so the swap
-  is now one provider binding plus two frontend files rather than a 15-site rewrite. The
-  prototype and its 36 tests are in `hardening/v8/auth-swap/`, and the measured surface is 15
-  call sites across 9 modules (an earlier note said 25; that counted imports and the definition).
+- **Prepared**: commit `7d5dd3a` made the backend identity gate provider-neutral, so the gate
+  itself is one provider binding rather than a 15-site rewrite. The prototype and its 36 tests
+  are in `hardening/v8/auth-swap/`, and the measured gate surface is 15 call sites across 9
+  modules (an earlier note said 25; that counted imports and the definition).
+
+  **The full migration is larger than the gate surface suggests, and this was understated
+  earlier.** Beyond the gate binding it needs: a restructure of `PrivyConnection.tsx` (~200
+  lines — its Convex `useAuth` adapter disappears entirely in favour of Better Auth's
+  `ConvexBetterAuthProvider`), `RecoveryKitPanel.tsx`, the Privy test mock, `public-config.ts`
+  and its tests, `Connections.tsx`, and — if the legacy issuer fallback is removed at cutover
+  rather than left in place — **~66 identity fixtures across 15 files**. Plus a running Better
+  Auth service. "One binding plus two frontend files" was the cheap half only.
 - **Why it is owner-only**: Better Auth reaches Convex as a component and must be registered in
   a `convex/convex.config.ts` that does not exist; the generated API still declares
   `components: {}`. Registering it needs Convex codegen, which is not offline — even under
@@ -45,6 +53,14 @@ was not authorized. So the duplication stands, and the row is closed on this bas
   auth service. Either way the deployment must be updated — no replacement provider can be
   reached without one — but the second is a materially smaller ask, and it is the route to
   prefer if the goal is to retire `@privy-io/react-auth` with the least deployment surgery.
+- **Why it was not written anyway (2026-10-12)**: the frontend half was attempted and reverted.
+  It means authoring the Better Auth integration against an API that has never been executed
+  here, for a token flow whose `iss`/`aud` claim values only a running Better Auth instance
+  reveals. The failure mode is silent: the suite mocks the auth provider, so a broken
+  integration passes every gate green and surfaces only when a real user cannot sign in. The
+  packages were removed rather than left installed, because unused they would have added 103 MB
+  to the very footprint this entry exists to reduce. The work needs a runnable Better Auth
+  service to be done honestly, not more effort.
 - **Already recovered without it**: the runtime cost was removed in `f869a7c` — eager workspace
   JS fell from 5,490,710 B to 477,994 B (-91.3%) by enabling `splitting` and making
   `RecoveryKitPanel` lazy, so the EVM subtree no longer loads on first paint.
