@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { HEX64 } from "../src/config.mjs";
 import {
   compareResources,
   decodeGasCost,
@@ -190,11 +191,11 @@ test("MID-T01 binds read-only cost, limits and encoding to one finalized block",
   assert.equal(result.blockHash, f.blockHash);
   assert.equal(result.runtime.codeHash, f.codeHash);
   assert.equal(result.identifierCount, 1);
-  assert.match(result.identifierListSha256, /^[0-9a-f]{64}$/);
+  assert.match(result.identifierListSha256, HEX64);
   assert(!JSON.stringify(result).includes(f.id));
   assert.equal(result.transactionBytes, 3);
   assert.equal(result.extrinsicBytes, 8);
-  assert.match(result.transactionSha256, /^[0-9a-f]{64}$/);
+  assert.match(result.transactionSha256, HEX64);
   assert.equal(f.events.length, 1);
   assert(!JSON.stringify(result).includes("PRIVATE"));
 });

@@ -1,5 +1,5 @@
 /**
- * RECONSTRUCTED (P8-W1-C) — evidence-gated release flags, single source of truth.
+ * RECONSTRUCTED (P8-W1-C) - evidence-gated release flags, single source of truth.
  *
  * Every harness emits `releaseFlags()` / `releaseFlagsFromEvidence()`.
  * Defaults are frozen false. A flag flips only when a stored receipt is
@@ -14,28 +14,58 @@
  * evidence and never reads the network.
  */
 
-/** @type {Readonly<{ immutableOrderAdmission: false, r1Complete: false }>} */
-export const RELEASE_FLAG_DEFAULTS = Object.freeze({
+export interface AdmissionBindingReceipt {
+  source: "canonicalBindings";
+  verdict: "bound";
+  binding: {
+    network: string;
+    nonce: string;
+    address: string;
+    quoteId: string;
+    observationId: string;
+    authorizationId: string;
+    boundAt: number;
+  };
+}
+
+export interface ChainReservationReceipt {
+  source: "chain-observer";
+  kind: "reserved";
+  orderId: string;
+  address: string;
+  observedAt: number;
+}
+
+export interface ReleaseEvidence {
+  canonicalBinding?: AdmissionBindingReceipt | undefined;
+  chainReservation?: ChainReservationReceipt | undefined;
+}
+
+export interface ReleaseFlags {
+  readonly immutableOrderAdmission: boolean;
+  readonly r1Complete: boolean;
+}
+
+export const RELEASE_FLAG_DEFAULTS: ReleaseFlags = Object.freeze({
   immutableOrderAdmission: false,
   r1Complete: false,
 });
 
-/**
- * @param {unknown} value
- * @returns {value is { source: "canonicalBindings", verdict: "bound", binding: { network: string, nonce: string, address: string, quoteId: string, observationId: string, authorizationId: string, boundAt: number } }}
- */
-function isCanonicalBindingReceipt(value) {
+function isCanonicalBindingReceipt(
+  value: unknown,
+): value is AdmissionBindingReceipt {
   if (!value || typeof value !== "object") return false;
-  const receipt =
-    /** @type {{ source?: unknown, verdict?: unknown, binding?: unknown }} */ (
-      value
-    );
+  const receipt = value as {
+    source?: unknown;
+    verdict?: unknown;
+    binding?: unknown;
+  };
   if (receipt.source !== "canonicalBindings" || receipt.verdict !== "bound") {
     return false;
   }
   const binding = receipt.binding;
   if (!binding || typeof binding !== "object") return false;
-  const b = /** @type {Record<string, unknown>} */ (binding);
+  const b = binding as Record<string, unknown>;
   return (
     typeof b.network === "string" &&
     b.network.length > 0 &&
@@ -55,16 +85,17 @@ function isCanonicalBindingReceipt(value) {
   );
 }
 
-/**
- * @param {unknown} value
- * @returns {value is { source: "chain-observer", kind: "reserved", orderId: string, address: string, observedAt: number }}
- */
-function isChainReservationReceipt(value) {
+function isChainReservationReceipt(
+  value: unknown,
+): value is ChainReservationReceipt {
   if (!value || typeof value !== "object") return false;
-  const receipt =
-    /** @type {{ source?: unknown, kind?: unknown, orderId?: unknown, address?: unknown, observedAt?: unknown }} */ (
-      value
-    );
+  const receipt = value as {
+    source?: unknown;
+    kind?: unknown;
+    orderId?: unknown;
+    address?: unknown;
+    observedAt?: unknown;
+  };
   if (receipt.source !== "chain-observer" || receipt.kind !== "reserved") {
     return false;
   }
@@ -81,10 +112,10 @@ function isChainReservationReceipt(value) {
 
 /**
  * Evidence-driven setter. Incomplete or absent receipts leave flags false.
- * @param {{ canonicalBinding?: unknown, chainReservation?: unknown } | null | undefined} evidence
- * @returns {Readonly<{ immutableOrderAdmission: boolean, r1Complete: boolean }>}
  */
-export function releaseFlagsFromEvidence(evidence) {
+export function releaseFlagsFromEvidence(
+  evidence?: ReleaseEvidence | null,
+): ReleaseFlags {
   const immutableOrderAdmission = isCanonicalBindingReceipt(
     evidence?.canonicalBinding,
   );
@@ -95,11 +126,9 @@ export function releaseFlagsFromEvidence(evidence) {
 }
 
 /**
- * What every harness emits today. No evidence → frozen defaults (all false).
- * @param {{ canonicalBinding?: unknown, chainReservation?: unknown } | null | undefined} evidence
- * @returns {Readonly<{ immutableOrderAdmission: boolean, r1Complete: boolean }>}
+ * What every harness emits today. No evidence -> frozen defaults (all false).
  */
-export function releaseFlags(evidence) {
+export function releaseFlags(evidence?: ReleaseEvidence | null): ReleaseFlags {
   if (evidence === undefined || evidence === null) return RELEASE_FLAG_DEFAULTS;
   return releaseFlagsFromEvidence(evidence);
 }

@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import { TOOLCHAIN, validateArtifacts, validateCohort } from "./artifacts.mjs";
-import { isLoopbackHostname } from "./config.mjs";
 import {
-  observePreprod,
-  PREPROD_INDEXER,
-  PREPROD_RPC,
-} from "./preprod-observation.mjs";
+  blockfrostPreprodEndpoints,
+  blockfrostProjectId,
+  PREPROD_BLOCKFROST_BASES,
+} from "./blockfrost.mjs";
+import { HEX64, isLoopbackHostname } from "./config.mjs";
+import { observePreprod } from "./preprod-observation.mjs";
 
+// The bare Blockfrost Preprod bases, WITHOUT the token, for reference and tests. The
+// token-bearing endpoints are produced per call by `preprodConfig` (see blockfrost.mjs).
 export const preprodEndpoints = Object.freeze({
-  node: PREPROD_RPC,
-  nodeWS: "wss://rpc.preprod.midnight.network",
-  indexer: PREPROD_INDEXER,
-  indexerWS: "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
+  node: PREPROD_BLOCKFROST_BASES.node,
+  nodeWS: PREPROD_BLOCKFROST_BASES.nodeWS,
+  indexer: PREPROD_BLOCKFROST_BASES.indexer,
+  indexerWS: PREPROD_BLOCKFROST_BASES.indexerWS,
 });
 
 export const preprodServiceExpectations = Object.freeze({
@@ -59,11 +62,24 @@ export function preprodConfig(env) {
           "MILO_PREPROD_ARTIFACT_SET_SHA256",
           "MILO_PREPROD_COMPILE_RECEIPT_SHA256",
           "MILO_PREPROD_PROOF_HTTP",
+          // The Blockfrost token is required, and the endpoint BASES are overridable so an
+          // operator can point at a local stub. The token is appended to whichever base is
+          // in force, so an override cannot drop authentication.
+          "MILO_PREPROD_BLOCKFROST_PROJECT_ID",
+          "MILO_PREPROD_INDEXER_HTTP",
+          "MILO_PREPROD_INDEXER_WS",
+          "MILO_PREPROD_NODE",
+          "MILO_PREPROD_NODE_WS",
         ].includes(key),
-        "Unknown preprod setting; endpoints cannot be overridden",
+        "Unknown preprod setting",
       );
     }
   }
+  // The token is required and must be a well-formed Midnight Preprod project id. A missing,
+  // malformed, or Mainnet token fails closed here, before any network I/O. This replaces the
+  // old "endpoints cannot be overridden" assertion: endpoints may now be pointed elsewhere,
+  // but the token must be present and correct.
+  blockfrostProjectId(env);
   const spec = env.MILO_PREPROD_RUNTIME_SPEC_VERSION;
   assert.match(
     spec ?? "",
@@ -86,7 +102,7 @@ export function preprodConfig(env) {
     for (const hash of [artifactSetSha256, compileReceiptSha256]) {
       assert.match(
         hash ?? "",
-        /^[0-9a-f]{64}$/,
+        HEX64,
         "Approved artifact fingerprints required",
       );
       assert.notEqual(hash, "0".repeat(64), "Placeholder artifact fingerprint");
@@ -104,12 +120,14 @@ export function preprodConfig(env) {
     );
     proofServer = url.href;
   }
+  // Resolve the four token-bearing Blockfrost endpoints (overridable bases, token appended).
+  const endpoints = blockfrostPreprodEndpoints(env);
   return Object.freeze({
     profile: "preprod",
     mode,
     networkId: "preprod",
     walletNetworkId: "preprod",
-    ...preprodEndpoints,
+    ...endpoints,
     genesisHash: env.MILO_PREPROD_GENESIS_HASH,
     runtimeSpecVersion,
     proofServer,
@@ -150,6 +168,7 @@ export async function checkPreprodProfile(env, { request = fetch } = {}) {
     request,
     expectedGenesisHash: config.genesisHash,
     expectedRuntimeSpecVersion: config.runtimeSpecVersion,
+    endpoints: config,
   });
   assert.match(
     observation.nodeVersion,

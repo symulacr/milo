@@ -9,10 +9,12 @@ import {
 } from "../src/preprod-profile.mjs";
 
 const hash = "a".repeat(64);
+const TOKEN = "nightpreprod" + "a".repeat(24);
 const env = {
   MILO_PREPROD_NETWORK_ID: "preprod",
   MILO_PREPROD_GENESIS_HASH: `0x${hash}`,
   MILO_PREPROD_RUNTIME_SPEC_VERSION: "1000000",
+  MILO_PREPROD_BLOCKFROST_PROJECT_ID: TOKEN,
 };
 const deployEnv = {
   ...env,
@@ -28,10 +30,38 @@ test("separate immutable preprod profile does not authorize local harness", () =
   assert(Object.isFrozen(config));
   assert.equal(config.mode, "observe");
   assert.equal(config.networkId, "preprod");
-  for (const [key, value] of Object.entries(preprodEndpoints))
-    assert.equal(config[key], value);
+  // Endpoints are the Blockfrost bases with the token appended exactly once. Compare on the
+  // parsed URL, since a bare-host base canonicalises to a trailing slash.
+  for (const [key, base] of Object.entries(preprodEndpoints)) {
+    const expected = new URL(base);
+    expected.searchParams.set("project_id", TOKEN);
+    assert.equal(
+      config[key],
+      expected.href,
+      `endpoint ${key} must be the Blockfrost base plus the token`,
+    );
+    assert.equal(
+      new URL(config[key]).searchParams.getAll("project_id").length,
+      1,
+    );
+  }
   assert.throws(() => localConfig(env));
   assert.equal(preprodConfig(deployEnv).proofServer, "http://127.0.0.1:6300/");
+});
+
+test("preprod endpoints honour an explicit base override and still carry the token once", () => {
+  const config = preprodConfig({
+    ...env,
+    MILO_PREPROD_INDEXER_HTTP: "http://127.0.0.1:9999/api/v4/graphql",
+  });
+  assert.equal(
+    config.indexer,
+    `http://127.0.0.1:9999/api/v4/graphql?project_id=${TOKEN}`,
+  );
+  // The non-overridden endpoints stay on the Blockfrost base.
+  const expectedNode = new URL(preprodEndpoints.node);
+  expectedNode.searchParams.set("project_id", TOKEN);
+  assert.equal(config.node, expectedNode.href);
 });
 
 for (const [name, overrides] of Object.entries({
@@ -44,10 +74,17 @@ for (const [name, overrides] of Object.entries({
   missingSpec: { MILO_PREPROD_RUNTIME_SPEC_VERSION: undefined },
   unsafeSpec: { MILO_PREPROD_RUNTIME_SPEC_VERSION: "9007199254740992" },
   zeroSpec: { MILO_PREPROD_RUNTIME_SPEC_VERSION: "0" },
-  nodeOverride: {
-    MILO_PREPROD_NODE_HTTP: "https://rpc.mainnet.midnight.network",
+  missingToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: undefined },
+  emptyToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "   " },
+  mainnetToken: {
+    MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightmainnet" + "a".repeat(24),
   },
-  indexerOverride: { MILO_PREPROD_INDEXER_HTTP: "https://attacker.example" },
+  wrongPrefixToken: {
+    MILO_PREPROD_BLOCKFROST_PROJECT_ID: "preprod" + "a".repeat(24),
+  },
+  malformedToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightpreprod!!" },
+  tokenWithSpace: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightpreprod abc" },
+  unknownSetting: { MILO_PREPROD_TYPO: "x" },
   submitMode: { MILO_PREPROD_MODE: "deploy" },
   noConsent: { MILO_PREPROD_ALLOW_PREFLIGHT: undefined },
   noArtifacts: { MILO_PREPROD_ARTIFACT_SET_SHA256: undefined },

@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import * as L from "@midnight-ntwrk/midnight-js-protocol/ledger";
-import { publicReceipt } from "./config.mjs";
+import { HEX64, publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
 
 const operations = ["deploy", "install", "lock"];
@@ -30,8 +30,8 @@ export function verifyRecoveryReceipt(
   checkedIdentifiers(identifiers);
   checkedIdentifiers(data.identifiers);
   checkedIdentifiers(data.tx.identifiers());
-  assert.match(receipt.txHash, /^[0-9a-f]{64}$/);
-  assert.match(receipt.blockHash, /^[0-9a-f]{64}$/);
+  assert.match(receipt.txHash, HEX64);
+  assert.match(receipt.blockHash, HEX64);
   assert(Number.isSafeInteger(receipt.blockHeight) && receipt.blockHeight >= 0);
   assert.equal(data.tx.transactionHash(), receipt.txHash);
   assert(identifiers.includes(receipt.txId));
@@ -154,7 +154,7 @@ export async function runProcessRecovery({
         Promise.resolve()
           .then(async () => {
             const { id, method, address, operation } = message;
-            assert.match(address, /^[0-9a-f]{64}$/);
+            assert.match(address, HEX64);
             plannedAddress ??= address;
             assert.equal(
               address,

@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
+import {
+  blockfrostPreprodEndpoints,
+  PREPROD_BLOCKFROST_BASES,
+  redactBlockfrostUrl,
+} from "./blockfrost.mjs";
 
-export const PREPROD_RPC = "https://rpc.preprod.midnight.network";
-export const PREPROD_INDEXER =
-  "https://indexer.preprod.midnight.network/api/v4/graphql";
+// Bare Blockfrost Preprod bases, WITHOUT the token. The token is appended at call time by
+// observePreprod, so importing this module never requires a token and never throws.
+export const PREPROD_RPC = PREPROD_BLOCKFROST_BASES.node;
+export const PREPROD_INDEXER = PREPROD_BLOCKFROST_BASES.indexer;
 
 // Public-chain health evidence only: never an admission or contract-state record.
 export async function observePreprod({
   request = fetch,
   expectedGenesisHash,
   expectedRuntimeSpecVersion,
+  endpoints,
 } = {}) {
+  // Resolve the token-bearing endpoints from the environment unless the caller pins them.
+  const ep = endpoints ?? blockfrostPreprodEndpoints(process.env);
   if (expectedGenesisHash !== undefined)
     assert.match(expectedGenesisHash, /^0x[0-9a-f]{64}$/);
   if (expectedRuntimeSpecVersion !== undefined)
@@ -29,7 +38,7 @@ export async function observePreprod({
     return response.json();
   }
   async function rpc(method, params = []) {
-    const result = await post(PREPROD_RPC, {
+    const result = await post(ep.node, {
       jsonrpc: "2.0",
       id: 1,
       method,
@@ -63,7 +72,7 @@ export async function observePreprod({
       expectedRuntimeSpecVersion,
       "Preprod runtime mismatch",
     );
-  const indexed = await post(PREPROD_INDEXER, {
+  const indexed = await post(ep.indexer, {
     query: `query { block(offset: {height: ${blockHeight}}) { height hash } }`,
   });
   assert.equal(indexed.errors, undefined, "Preprod indexer error");
@@ -72,7 +81,11 @@ export async function observePreprod({
   return {
     scope: "preprod-finalized-block-health-only",
     observedAt: new Date().toISOString(),
-    endpoints: { rpc: PREPROD_RPC, indexer: PREPROD_INDEXER },
+    // Redacted: the endpoint URLs carry the Blockfrost token as a query parameter.
+    endpoints: {
+      rpc: redactBlockfrostUrl(ep.node),
+      indexer: redactBlockfrostUrl(ep.indexer),
+    },
     chain,
     genesisHash,
     nodeVersion,

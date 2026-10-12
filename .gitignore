@@ -36,7 +36,8 @@ packages/contract/generated/
 *.Zone.Identifier
 .DS_Store
 
-# Root planning corpus. TRACKED since 6da76a0+: npm run check:plan reads these eight
+# Root planning corpus. TRACKED since 7d2c6bf (the commit that added all eight
+# documents): npm run check:plan reads these eight
 # documents and asserts their gate IDs, fences and links, so a fresh clone must have them.
 # The per-phase evidence files below stay local.
 #01-blueprint.md
@@ -92,16 +93,23 @@ VERIFICATION.md
 # 5. Re-include the sample images the landing and demo render.
 !apps/web/public/images/
 !apps/web/public/images/*.png
-# Two unreferenced orphans (their asserting test, apps/web/src/assets.test.ts, no longer
-# exists). They stay on disk, untracked; later rules win over the re-include above.
+# Two sample avatars. The rule below is inert for them today: they are already tracked
+# (git ls-files lists both), and gitignore does not affect tracked files. The asserting
+# test apps/web/src/assets.test.ts DOES exist and is tracked; it covers the three
+# hero/detail/collection images, not these avatars.
 apps/web/public/images/avatar-merchant.png
 apps/web/public/images/avatar-operator.png
 
 # 6. Local-only workflow tooling. Kept on disk for development, never published.
 #    Untracked in 098573a. Not needed to build or run the app.
-#    NOT listed here on purpose, because CI or a documented command needs them:
-#      scripts/check-plan.ts         run by `npm run check:plan` in both
-#                                    .github/workflows/check.yml and local-checks.yml
+#    NOT listed here on purpose, because a documented command or a test needs them:
+#      scripts/check-plan.ts         tracked; the two .github workflows call
+#                                    `npm run check:plan`, but package.json has no
+#                                    such script and the script itself fails with
+#                                    `Missing canonical ID: MID-P2` (the corpus has
+#                                    MID-P1 and MID-P6 but no MID-P2..P5). No CI
+#                                    exists in a clone anyway: .github/ is ignored
+#                                    (line 21).
 #      scripts/native-processes.ts   imported by setup-native-node.ts and
 #                                    setup-integration-runtime.ts, and by a test
 #      scripts/convex-local-lifecycle-check.py   a documented command in
@@ -132,7 +140,8 @@ packages/integration/src/verify-persisted-constructor.mjs
 
 packages/midnight-client/node_modules/
 
-# generated QA bundle (rebuild via scripts/qa-build-reserve-ui.ts)
+# generated QA bundle (the generating script scripts/qa-build-reserve-ui.ts is not in the
+# tree; the bundle is consumed by apps/web/public/qa-reserve-ui.html)
 apps/web/public/qa-build/
 
 # never track these

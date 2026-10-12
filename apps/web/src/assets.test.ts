@@ -8,14 +8,19 @@ import { sampleFiles } from "./assets";
 
 describe("original sample image integrity", () => {
   for (const file of sampleFiles) {
-    test(`${file.name} has the pinned SHA-256, PNG header and 600×720 dimensions`, async () => {
+    test(`${file.name} has the pinned SHA-256, WebP header and 600×720 dimensions`, async () => {
       const bytes = await Bun.file(`apps/web/public${file.src}`).arrayBuffer();
       const view = new DataView(bytes);
-      expect([...new Uint8Array(bytes).slice(0, 8)]).toEqual([
-        137, 80, 78, 71, 13, 10, 26, 10,
+      // RIFF container: "RIFF" ... "WEBP" then a lossy "VP8 " frame.
+      expect([...new Uint8Array(bytes).slice(0, 4)]).toEqual([82, 73, 70, 70]);
+      expect([...new Uint8Array(bytes).slice(8, 12)]).toEqual([87, 69, 66, 80]);
+      expect([...new Uint8Array(bytes).slice(12, 16)]).toEqual([
+        86, 80, 56, 32,
       ]);
-      expect(view.getUint32(16)).toBe(600);
-      expect(view.getUint32(20)).toBe(720);
+      // VP8 keyframe header: 3-byte sync code, then 14-bit width and height.
+      expect([...new Uint8Array(bytes).slice(23, 26)]).toEqual([157, 1, 42]);
+      expect(view.getUint16(26, true) & 0x3fff).toBe(600);
+      expect(view.getUint16(28, true) & 0x3fff).toBe(720);
       const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
       expect(hash).toBe(file.hash);
     });

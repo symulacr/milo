@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HEX64 } from "../packages/backend/src/encoding.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
@@ -62,6 +63,9 @@ function redact(text) {
   s = s.replace(/\b[a-f0-9]{64}\b/g, (tok) =>
     tok === SEED ? "<redacted:seed>" : tok,
   );
+  // The Blockfrost token is a live credential that appears in endpoint URLs; scrub it too.
+  if (BLOCKFROST_TOKEN)
+    s = s.split(BLOCKFROST_TOKEN).join("<redacted:blockfrost-token>");
   return s;
 }
 
@@ -75,7 +79,7 @@ function sayErr(line) {
 
 function seedPresence() {
   if (!SEED) return "absent";
-  const ok = /^[a-f0-9]{64}$/.test(SEED);
+  const ok = HEX64.test(SEED);
   // length only — never the value
   return ok
     ? `present (64-hex, length ${SEED.length}, value redacted)`
@@ -112,17 +116,35 @@ async function localChainHeight() {
   }
 }
 
-const PREPROD_GQL = "https://indexer.preprod.midnight.network/api/v4/graphql";
+// Blockfrost Preprod indexer base. The Midnight-hosted Preprod indexer was decommissioned
+// from 22:00 UTC on 2026-10-09, so every read needs a Midnight Preprod project token appended
+// as the project_id query parameter. The token is read from the environment or .env.preprod
+// and never printed (redact() replaces it in all output).
+const PREPROD_GQL_BASE = "https://midnight-preprod.blockfrost.io/api/v0";
+const BLOCKFROST_TOKEN =
+  process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID ??
+  fileEnv.MILO_PREPROD_BLOCKFROST_PROJECT_ID ??
+  "";
+
+function preprodGql() {
+  if (!BLOCKFROST_TOKEN)
+    throw new Error(
+      "MILO_PREPROD_BLOCKFROST_PROJECT_ID is required for Preprod reads",
+    );
+  const url = new URL(PREPROD_GQL_BASE);
+  url.searchParams.set("project_id", BLOCKFROST_TOKEN);
+  return url.href;
+}
 
 async function preprodChainHeight() {
   try {
-    const j = await postJson(PREPROD_GQL, { query: "{ block { height } }" });
+    const j = await postJson(preprodGql(), { query: "{ block { height } }" });
     const height = j?.data?.block?.height;
     if (typeof height !== "number")
-      return { ok: false, error: JSON.stringify(j).slice(0, 200) };
+      return { ok: false, error: redact(JSON.stringify(j)).slice(0, 200) };
     return { ok: true, height };
   } catch (error) {
-    return { ok: false, error: String(error?.message ?? error) };
+    return { ok: false, error: redact(String(error?.message ?? error)) };
   }
 }
 
@@ -134,11 +156,11 @@ async function preprodContractAction() {
   }
 }`;
   try {
-    const j = await postJson(PREPROD_GQL, { query: q });
+    const j = await postJson(preprodGql(), { query: q });
     const action = j?.data?.contractAction;
     return { ok: true, action };
   } catch (error) {
-    return { ok: false, error: String(error?.message ?? error) };
+    return { ok: false, error: redact(String(error?.message ?? error)) };
   }
 }
 
@@ -184,6 +206,14 @@ async function modeAudit() {
     local.ok
       ? `local-chain-height: ${local.height}`
       : `local-chain-height: unavailable (${local.error})`,
+  );
+
+  say(
+    `blockfrost-token: ${
+      BLOCKFROST_TOKEN
+        ? `present (prefix ${BLOCKFROST_TOKEN.slice(0, 12)}..., value redacted)`
+        : "absent (set MILO_PREPROD_BLOCKFROST_PROJECT_ID for Preprod reads)"
+    }`,
   );
 
   const tip = await preprodChainHeight();
@@ -242,7 +272,7 @@ async function modeLocal() {
 
 function modeWallet() {
   return new Promise((resolvePromise) => {
-    if (!SEED || !/^[a-f0-9]{64}$/.test(SEED)) {
+    if (!SEED || !HEX64.test(SEED)) {
       sayErr(
         "wallet-mode requires MIDNIGHT_PREPROD_SEED (64-hex) in env or .env.preprod",
       );

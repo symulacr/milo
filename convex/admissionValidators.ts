@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { CONSTRUCTOR_ENCODING } from "../packages/backend/src/public-constructor.mjs";
+import { CONSTRUCTOR_ENCODING } from "../packages/backend/src/public-constructor.ts";
 
 export const publicConstructorFields = {
   constructorVersion: v.literal(1),

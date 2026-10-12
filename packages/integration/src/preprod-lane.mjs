@@ -59,14 +59,24 @@
 // Env (from .env.preprod, allowlist-ignored):
 //   MIDNIGHT_PREPROD_SEED        64 hex characters (required)
 //   MILO_PREPROD_ALLOW           must equal "disposable-owned-preprod"
+//   MILO_PREPROD_BLOCKFROST_PROJECT_ID
+//                                required Blockfrost Midnight Preprod project token; must
+//                                start "nightpreprod" (a "nightmainnet" token is rejected).
+//                                Appended as the project_id query parameter to every endpoint.
 //   MIDNIGHT_PREPROD_PROOF_HTTP  loopback proof server, default http://127.0.0.1:6300
 //   MIDNIGHT_PREPROD_RUN_DIR     optional receipt directory
 //   MIDNIGHT_PREPROD_PROGRESS_INTERVAL_MS  durable sync-progress-receipt interval in ms,
 //                                default 60000, bounded 10000..3600000
 //   MIDNIGHT_PREPROD_INDEXER_HTTP / MIDNIGHT_PREPROD_INDEXER_WS / MIDNIGHT_PREPROD_NODE
-//                                indexer and node endpoints, default the public Preprod
-//                                endpoints. Overridable only so an offline dry run can
-//                                point at local stubs without touching the chain.
+//                                indexer and node endpoint BASES, default the Blockfrost
+//                                Preprod services. The token is appended to each. Overridable
+//                                only so an offline dry run can point at local stubs.
+//
+// Snapshots are not portable between indexers. A snapshot written against the Midnight-hosted
+// indexer cannot be restored against Blockfrost (event and transaction ids differ), so the
+// first run after this migration is a full genesis sync (~67 min measured on Blockfrost). The
+// lane records the indexer host beside each snapshot and refuses to restore one whose host
+// does not match the indexer in use.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -79,6 +89,11 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { proofCircuits } from "./artifacts.mjs";
+import {
+  blockfrostPreprodEndpoints,
+  redactBlockfrostUrl,
+} from "./blockfrost.mjs";
+import { HEX64 } from "./config.mjs";
 import {
   DustSeedError,
   DustSeedTimeoutError,
@@ -96,18 +111,18 @@ import {
   verifyWalletState,
   WALLET_STATE_FILES,
   walletStateDir,
+  writeIndexerMarker,
 } from "./wallet-state-verify.mjs";
 
 const PREPROD = Object.freeze({
   networkId: "preprod",
-  indexer: "https://indexer.preprod.midnight.network/api/v4/graphql",
-  indexerWS: "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
-  node: "https://rpc.preprod.midnight.network",
+  // The indexer, indexerWS and node endpoints now come from Blockfrost; they are resolved
+  // from the environment in preprodConfig below (see blockfrost.mjs). The explorer is a
+  // public read-only site and needs no token.
   explorer: "https://preprod.midnightexplorer.com",
 });
 
 const GENERATED = "packages/contract/generated";
-const HEX64 = /^[a-f0-9]{64}$/;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 // Resolved from this module, not the cwd, so receipts always land in the repository's
@@ -132,8 +147,14 @@ function preprodConfig(env) {
     ["127.0.0.1", "[::1]"].includes(url.hostname),
     "loopback proof server required",
   );
+  // Blockfrost Preprod endpoints, with the token appended once. A missing, malformed, or
+  // Mainnet token fails here with a named error, before any network I/O. The
+  // MIDNIGHT_PREPROD_INDEXER_HTTP/_INDEXER_WS/_NODE overrides still point at a local stub
+  // for an offline dry run, but the token is still required and appended.
+  const endpoints = blockfrostPreprodEndpoints(env);
   return {
     ...PREPROD,
+    ...endpoints,
     seed: env.MIDNIGHT_PREPROD_SEED,
     proofServer,
     runDir: env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir(),
@@ -141,11 +162,6 @@ function preprodConfig(env) {
     progressIntervalMs: progressIntervalMs(env),
     // Derived, never hardcoded: 16+ characters with three character classes.
     privateStatePassword: `Milo1!${hash(env.MIDNIGHT_PREPROD_SEED).slice(0, 20)}`,
-    // Default to the public Preprod endpoints. The override exists only for offline dry
-    // runs (local stubs) so the mode can be exercised without touching the chain.
-    indexer: env.MIDNIGHT_PREPROD_INDEXER_HTTP ?? PREPROD.indexer,
-    indexerWS: env.MIDNIGHT_PREPROD_INDEXER_WS ?? PREPROD.indexerWS,
-    node: env.MIDNIGHT_PREPROD_NODE ?? PREPROD.node,
   };
 }
 
@@ -388,6 +404,7 @@ async function loadWalletState(config) {
   // unexercised check refuses the snapshot and forces the full from-seed sync below.
   const verdict = await verifyWalletState(dir, {
     receiptPath: resolve(config.runDir, "wallet-state-verification.json"),
+    endpoints: config,
   });
   if (!verdict.safeForFastPath) {
     await emit(config.runDir, {
@@ -422,6 +439,11 @@ async function saveWalletState(config, wallet) {
     resolve(dir, "sdk-versions.json"),
     `${JSON.stringify(await resolveSdkVersions(), null, 2)}\n`,
   );
+  // Record which indexer host produced this snapshot. Saved sync state is not portable
+  // between indexers, so a later run refuses to restore a snapshot whose host does not match
+  // the indexer in use (see wallet-state-verify.mjs G11). The host is recorded, never the
+  // token-bearing URL.
+  bytes.indexerHost = await writeIndexerMarker(dir, config.indexer);
   return bytes;
 }
 
@@ -1112,7 +1134,7 @@ async function main() {
     await emitBestEffort(config.runDir, {
       event: "dust-seed-mode",
       network: config.networkId,
-      indexer: config.indexer,
+      indexer: redactBlockfrostUrl(config.indexer),
     });
     try {
       const modules = await loadWalletSdk(config);
@@ -1146,6 +1168,12 @@ async function main() {
         fallback: "ordinary-full-sync",
       });
     }
+    // The seeder reads the collapsed-update fields (`dustCommitmentMerkleTreeUpdate`,
+    // `dustCommitmentEndIndex`, `dustGenerationEndIndex`, and the published tree roots) that
+    // the Midnight-hosted indexer exposed. Blockfrost's published v4 schema does not carry
+    // them, so every seed attempt fails closed here with a DustSeedError from the indexer
+    // request, and the run continues as an ordinary full genesis sync. This is deliberate:
+    // no partial or unverified dust snapshot is ever written.
   }
   const session = await buildSession(config, {
     ...(prepared ?? {}),
@@ -1167,8 +1195,9 @@ async function main() {
       await emit(config.runDir, {
         event: "preprod-check",
         network: config.networkId,
-        indexer: config.indexer,
-        node: config.node,
+        // Redacted: the endpoint URLs carry the Blockfrost token as a query parameter.
+        indexer: redactBlockfrostUrl(config.indexer),
+        node: redactBlockfrostUrl(config.node),
         proofServer: config.proofServer,
         address: session.address,
         balances: await balances(session, session.ledger),

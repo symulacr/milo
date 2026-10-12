@@ -1,5 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { bytesToHex, hexToBytes } from "../src/encoding";
+import { bytesToHex, HEX64, hexToBytes } from "../src/encoding";
+
+describe("HEX64 single definition (convergence)", () => {
+  test("accepts exactly lowercase 64-hex and rejects everything else", () => {
+    const accepted = [
+      "0".repeat(64),
+      "f".repeat(64),
+      "a".repeat(64),
+      "0123456789abcdef".repeat(4),
+    ];
+    const rejected = [
+      "",
+      "a".repeat(63),
+      "a".repeat(65),
+      "A".repeat(64),
+      "g".repeat(64),
+      "z".repeat(64),
+      `0x${"a".repeat(64)}`,
+      `${"a".repeat(63)} `,
+      `${"a".repeat(63)}\n`,
+    ];
+    for (const value of accepted) expect(HEX64.test(value)).toBe(true);
+    for (const value of rejected) expect(HEX64.test(value)).toBe(false);
+  });
+});
 
 describe("encoding hex round-trip", () => {
   test("empty", () => {

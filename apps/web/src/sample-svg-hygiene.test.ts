@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { HEX64 } from "../../../packages/backend/src/encoding";
 
 const SAMPLES = new URL("../public/samples/", import.meta.url).pathname;
 const MANIFEST = join(SAMPLES, "manifest.tsv");
@@ -123,7 +124,7 @@ describe("sample rasters and manifest", () => {
     for (const line of rows) {
       const [name, bytes, sha] = line.split("\t");
       expect(Number(bytes)).toBe(statSync(join(SAMPLES, name)).size);
-      expect(sha).toMatch(/^[0-9a-f]{64}$/);
+      expect(sha).toMatch(HEX64);
     }
   });
 });

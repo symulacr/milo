@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { HEX64 } from "../packages/backend/src/encoding";
 import {
   parseStripeSignatureHeader,
   verifyStripeSignature,
@@ -59,7 +60,7 @@ describe("Stripe documented signature shape", () => {
     const body = '{"id":"evt_1","type":"payment_intent.succeeded"}';
     const signed = `${t}.${body}`;
     const v1 = nodeHmacHex(WHSEC, signed);
-    expect(v1).toMatch(/^[0-9a-f]{64}$/);
+    expect(v1).toMatch(HEX64);
     const header = `t=${t},v1=${v1}`;
     const parsed = parseStripeSignatureHeader(header);
     expect(parsed).toEqual({ timestamp: t, v1: [v1] });

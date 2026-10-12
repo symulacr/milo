@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type Stripe from "stripe";
+import { HEX64 } from "../src/encoding";
 import { requirePrivySubject } from "../src/privy-identity";
 import {
   normalizeTestPayment,
@@ -76,9 +77,7 @@ describe("Stripe server observation normalization", () => {
       usableUntil: now + 60_000,
       currency: "USD",
     });
-    expect(result.authorization.providerReceiptFingerprint).toMatch(
-      /^[a-f0-9]{64}$/,
-    );
+    expect(result.authorization.providerReceiptFingerprint).toMatch(HEX64);
   });
 
   test("never derives expiry from intent metadata or creation time", () => {

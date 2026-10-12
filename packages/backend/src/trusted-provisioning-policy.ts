@@ -1,3 +1,5 @@
+import { HEX64 } from "./encoding.ts";
+
 export type Provenance = {
   operatorId: string;
   sourceId: string;
@@ -12,7 +14,7 @@ export function validateProvenance(
   configuredAuthorities: string | undefined,
 ) {
   validateProvisioningAuthority(provenance, requestId, configuredAuthorities);
-  if (!/^[a-f0-9]{64}$/.test(provenance.evidenceFingerprint))
+  if (!HEX64.test(provenance.evidenceFingerprint))
     throw new Error(
       "Allowlisted operator/source and evidence fingerprint required",
     );

@@ -23,12 +23,13 @@ import type {
   FrozenQuote,
   PaymentAuthorization,
 } from "../src/admission-policy";
+import { HEX64 } from "../src/encoding";
 import {
   PROVIDER_LEASE_MS,
   PROVIDER_RETRY_WINDOW_MS,
   usableObservation,
 } from "../src/provisioning-policy";
-import { publicConstructorFingerprints } from "../src/public-constructor.mjs";
+import { publicConstructorFingerprints } from "../src/public-constructor.ts";
 import { provisionTestIntent } from "../src/stripe-provisioning.server";
 import { buildQuote } from "./fixtures";
 
@@ -490,7 +491,7 @@ describe("Trusted provisioning — explicit doubles", () => {
       approved[key] =
         typeof value === "number"
           ? value + 1
-          : typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
+          : typeof value === "string" && HEX64.test(value)
             ? "7".repeat(64)
             : `${value}x`;
       if (

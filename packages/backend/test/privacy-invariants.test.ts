@@ -86,7 +86,7 @@ describe("M9.1 no plaintext terms on-chain", () => {
 
   test("public constructor reconstruction never emits a Terms opening", async () => {
     const { reconstructPublicConstructor } = await import(
-      "../src/public-constructor.mjs"
+      "../src/public-constructor.ts"
     );
     const quote = {
       constructorVersion: 1 as const,

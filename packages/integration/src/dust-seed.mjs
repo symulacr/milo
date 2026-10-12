@@ -39,13 +39,15 @@
 
 import * as ledger from "@midnight-ntwrk/ledger-v8";
 import { CoreWallet } from "@midnight-ntwrk/wallet-sdk-dust-wallet/v1";
+import {
+  blockfrostPreprodEndpoints,
+  PREPROD_BLOCKFROST_BASES,
+} from "./blockfrost.mjs";
 
-/** Public Preprod indexer GraphQL endpoint. */
-export const PREPROD_INDEXER_HTTP =
-  "https://indexer.preprod.midnight.network/api/v4/graphql";
-/** Public Preprod indexer GraphQL websocket endpoint. */
-export const PREPROD_INDEXER_WS =
-  "wss://indexer.preprod.midnight.network/api/v4/graphql/ws";
+/** Bare Blockfrost Preprod indexer bases, WITHOUT the token (token appended at call time). */
+export const PREPROD_INDEXER_HTTP = PREPROD_BLOCKFROST_BASES.indexer;
+/** Bare Blockfrost Preprod indexer websocket base, WITHOUT the token. */
+export const PREPROD_INDEXER_WS = PREPROD_BLOCKFROST_BASES.indexerWS;
 
 /** One byte tag the chain prefixes to a dust Merkle root. */
 const DUST_ROOT_TAG = "73";
@@ -80,6 +82,18 @@ export const DUST_SEED_DEFAULTS = Object.freeze({
   maxTailEvents: 2_000,
   protocolVersion: 0n,
 });
+
+/** Resolve the token-bearing Blockfrost indexer endpoints from the environment, falling back
+ * to the bare bases (no token) when none is set, so importing and constructing never throws
+ * before a caller can decide to skip. */
+function defaultIndexerEndpoints() {
+  try {
+    const ep = blockfrostPreprodEndpoints(process.env);
+    return { indexerHttp: ep.indexer, indexerWs: ep.indexerWS };
+  } catch {
+    return { indexerHttp: PREPROD_INDEXER_HTTP, indexerWs: PREPROD_INDEXER_WS };
+  }
+}
 
 /** A seeder failure that must prevent any snapshot from being emitted. */
 export class DustSeedError extends Error {
@@ -1101,7 +1115,11 @@ async function collectTailEvents(config, ctx, tailStartId, deadline) {
  * @param {(event: string, fields?: object) => void} [options.emit] Progress sink.
  */
 export async function seedDustState(options = {}) {
-  const config = { ...DUST_SEED_DEFAULTS, ...options };
+  const config = {
+    ...DUST_SEED_DEFAULTS,
+    ...defaultIndexerEndpoints(),
+    ...options,
+  };
   const emit = options.emit ?? (() => {});
   const clock = options.now ?? Date.now;
   const startedAt = clock();

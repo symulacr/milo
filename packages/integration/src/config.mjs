@@ -1,3 +1,6 @@
+/** The one lowercase 64-hex (32-byte) digest/address guard for this package. */
+export const HEX64 = /^[a-f0-9]{64}$/;
+
 /** One loopback guard: an endpoint must be an explicit local address. */
 export function isLoopbackHostname(hostname) {
   return ["127.0.0.1", "[::1]"].includes(hostname);

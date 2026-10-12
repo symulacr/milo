@@ -1,6 +1,7 @@
 import type { FrozenQuote, PaymentAuthorization } from "./admission-policy";
 import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "./admission-policy";
-import { validPublicConstructor } from "./public-constructor.mjs";
+import { HEX64 } from "./encoding.ts";
+import { validPublicConstructor } from "./public-constructor.ts";
 
 export const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60_000;
 export const PROVIDER_LEASE_MS = 60_000;
@@ -74,7 +75,7 @@ export function validateFreeze(
       quote.rolesFingerprint,
       quote.initialStateFingerprint,
       quote.genesisHash,
-    ].every((value) => /^[a-f0-9]{64}$/.test(value))
+    ].every((value) => HEX64.test(value))
   ) {
     throw new Error("Approved preprod quote is invalid or expired");
   }
@@ -114,6 +115,6 @@ export function usableObservation(
     // (which is already min(captureBeforeMs, observation TTL)). Age < 60s alone
     // would still accept a hold whose provider expiry has already passed.
     now < authorization.usableUntil &&
-    /^[a-f0-9]{64}$/.test(authorization.providerReceiptFingerprint)
+    HEX64.test(authorization.providerReceiptFingerprint)
   );
 }

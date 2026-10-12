@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { deliveryCommitment as deliveryCommitmentNode } from "../src/delivery-commitment.mjs";
 import {
   deliveryCommitment,
+  deliveryCommitment as deliveryCommitmentNode,
   GRANT_GRACE_MS,
   GRANT_TTL_MS,
   inspectBytes,
   verifyRetrievedBytes,
 } from "../src/delivery-policy";
+import { HEX64 } from "../src/encoding";
 
 function pngBytes(extra: Uint8Array = new Uint8Array([1, 2, 3])): Uint8Array {
   return Uint8Array.from([
@@ -77,7 +78,7 @@ describe("RECONSTRUCTED delivery integrity pure helpers", () => {
     expect(first).toBe(
       createHash("sha256").update(digests.join("")).digest("hex"),
     );
-    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(first).toMatch(HEX64);
   });
 
   test("deliveryCommitment is order-sensitive and mismatch-sensitive", () => {

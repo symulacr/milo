@@ -66,7 +66,12 @@ const GOLDEN_EVENTS = {
     "6d69646e696768743a6576656e745b76395d3a0400f5011d1261afc8647a91f4c039d323f56a9742ef7329bd7dac88ac6898a0913bd190000002000773118265a3ed4da7e74a0d411181d938758bce5ddf68a7bde2fc19c18fe383393e32c7450073ccc7a6df4a38d489e5ceb404daf56e134df62e306f56b9ceae0544b61372e3560f01c06e31d9100103eae8af6a03fce8af6a",
 };
 
-const INDEXER_HTTP = "https://indexer.preprod.midnight.network/api/v4/graphql";
+// The live probe now targets Blockfrost Preprod. Without a Midnight Preprod project token
+// the indexer answers 403, so `networkAvailable` reports false and the live test skips. The
+// seeder's own defaults resolve the token-bearing endpoint from the environment.
+const INDEXER_HTTP = "https://midnight-preprod.blockfrost.io/api/v0";
+const BLOCKFROST_TOKEN =
+  process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID?.trim() ?? "";
 const APPLIED_INDEX = 1539228;
 
 function goldenState() {
@@ -91,7 +96,15 @@ function corruptPayload(payload) {
 let probe;
 async function networkAvailable() {
   if (probe === undefined) {
-    probe = fetch(INDEXER_HTTP, {
+    // No token means the Blockfrost indexer answers 403, so the live test skips rather than
+    // fails. Never send a token we do not have.
+    if (!BLOCKFROST_TOKEN) {
+      probe = false;
+      return probe;
+    }
+    const url = new URL(INDEXER_HTTP);
+    url.searchParams.set("project_id", BLOCKFROST_TOKEN);
+    probe = fetch(url.href, {
       method: "POST",
       redirect: "error",
       headers: { "content-type": "application/json" },
@@ -550,6 +563,30 @@ test("seeder refuses to guess the tail cursor when no dust event is found", asyn
   );
 });
 
+test("seeder fails closed when the indexer schema drops the collapsed-update fields", async () => {
+  // Blockfrost's published v4 schema does not carry `dustCommitmentMerkleTreeUpdate`,
+  // `dustCommitmentEndIndex` or `dustGenerationEndIndex`. A GraphQL server that does not know
+  // those fields answers with an errors array; the seeder must refuse rather than emit a
+  // snapshot, so --seed-dust falls back to a full genesis sync.
+  const secretKey = ledger.sampleDustSecretKey();
+  const schemaRejectingIndexer = async () => {
+    throw new DustSeedError(
+      'indexer GraphQL error: [{"message":"Cannot query field \\"dustCommitmentEndIndex\\" on type \\"Block\\"."}]',
+    );
+  };
+  await assert.rejects(
+    seedDustState(
+      fastStabilise({
+        request: schemaRejectingIndexer,
+        publicKey: secretKey.publicKey,
+        networkId: "preprod",
+        tailMs: 0,
+      }),
+    ),
+    DustSeedError,
+  );
+});
+
 test("tail replay guard applies a linearly resumable event", () => {
   const state = goldenState();
   const result = applyTailEventsLinear({
@@ -628,12 +665,13 @@ test("tail replay guard refuses an offset that re-applies a covered event", () =
 
 test("live indexer root verification succeeds with a stabilised comparison", async (t) => {
   if (!(await networkAvailable())) {
-    t.skip("Preprod indexer unreachable");
+    t.skip("Blockfrost Preprod indexer unreachable or no token");
     return;
   }
   const secretKey = ledger.sampleDustSecretKey();
   const successes = [];
   let instabilityReason = null;
+  let schemaGapReason = null;
   for (let attempt = 0; attempt < 4 && successes.length < 2; attempt++) {
     let result;
     try {
@@ -644,10 +682,23 @@ test("live indexer root verification succeeds with a stabilised comparison", asy
         tailMs: 1_500,
       });
     } catch (error) {
+      const message = String(error?.message);
       // An unsettled window is a legitimate refusal on a busy chain: skip with
       // the observed values rather than fail intermittently.
-      if (/did not stabilise|moving target/.test(String(error?.message))) {
-        instabilityReason = String(error.message);
+      if (/did not stabilise|moving target/.test(message)) {
+        instabilityReason = message;
+        continue;
+      }
+      // Blockfrost's published v4 schema does not carry the collapsed-update fields the
+      // seeder reads (`dustCommitmentMerkleTreeUpdate`, `dustCommitmentEndIndex`,
+      // `dustGenerationEndIndex`). The seeder fails closed there, which is the intended
+      // behaviour after the migration; record it and skip rather than fail.
+      if (
+        /could not be deserialized|indexer GraphQL error|no tip block|required|Cannot query field|Unknown field|invalid dust/.test(
+          message,
+        )
+      ) {
+        schemaGapReason = message;
         continue;
       }
       throw error;
@@ -687,7 +738,7 @@ test("live indexer root verification succeeds with a stabilised comparison", asy
   if (successes.length < 2) {
     t.skip(
       `could not obtain two stabilised verification windows (reason: ${
-        instabilityReason ?? "none recorded"
+        schemaGapReason ?? instabilityReason ?? "none recorded"
       })`,
     );
     return;

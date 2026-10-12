@@ -7,6 +7,7 @@ import {
 import { constants } from "node:fs";
 import { lstat, mkdir, open, rename, rm } from "node:fs/promises";
 import { join, parse, resolve } from "node:path";
+import { HEX64 } from "./config.mjs";
 
 export const RECOVERY_SCHEMA_VERSION = 1;
 
@@ -44,7 +45,6 @@ const TERM_INTEGERS = [
 ];
 const BASE64 =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-const HEX_32 = /^[0-9a-f]{64}$/;
 const HEX_33 = /^[0-9a-f]{66}$/;
 const U64_MAX = (1n << 64n) - 1n;
 const U64_DECIMAL = /^(0|[1-9][0-9]{0,19})$/;
@@ -207,8 +207,8 @@ function encodeStep(step) {
   for (const key of ["txId", "txHash", "blockHash", "blockHeight"])
     if (step[key] !== null) text(step[key], `step.${key}`);
   if (step.txId !== null && !HEX_33.test(step.txId)) invalid("step.txId");
-  if (step.txHash !== null && !HEX_32.test(step.txHash)) invalid("step.txHash");
-  if (step.blockHash !== null && !HEX_32.test(step.blockHash))
+  if (step.txHash !== null && !HEX64.test(step.txHash)) invalid("step.txHash");
+  if (step.blockHash !== null && !HEX64.test(step.blockHash))
     invalid("step.blockHash");
   if (step.blockHeight !== null && !U64_DECIMAL.test(step.blockHeight))
     invalid("step.blockHeight");
@@ -256,14 +256,14 @@ function encodeRecord(record) {
     ],
     "record",
   );
-  if (typeof record.signingKey !== "string" || !HEX_32.test(record.signingKey))
+  if (typeof record.signingKey !== "string" || !HEX64.test(record.signingKey))
     invalid("signingKey");
   if (
     typeof record.coinPublicKey !== "string" ||
-    !HEX_32.test(record.coinPublicKey)
+    !HEX64.test(record.coinPublicKey)
   )
     invalid("coinPublicKey");
-  if (typeof record.address !== "string" || !HEX_32.test(record.address))
+  if (typeof record.address !== "string" || !HEX64.test(record.address))
     invalid("address");
   if (!Array.isArray(record.steps) || record.steps.length !== STEPS.length)
     invalid("steps");

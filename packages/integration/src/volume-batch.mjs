@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { deliveryCommitment } from "../../backend/src/delivery-commitment.mjs";
+import { deliveryCommitment } from "../../backend/src/delivery-policy.ts";
 
 /**
  * RECONSTRUCTED volume-batch: synthetic multi-iteration delivery driver.

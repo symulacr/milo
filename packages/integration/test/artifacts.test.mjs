@@ -17,6 +17,7 @@ import {
   validateArtifacts,
   validateCohort,
 } from "../src/artifacts.mjs";
+import { HEX64 } from "../src/config.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 async function fixture(t) {
@@ -66,8 +67,8 @@ test("MID-T01 validates all 60 actual compiler artifacts and the installed canon
   const cohort = await validateCohort();
   assert.equal(receipt.artifactCount, 60);
   assert.equal(cohort.node, "24.20.0");
-  assert.match(receipt.sourceSha256, /^[0-9a-f]{64}$/);
-  assert.match(cohort.compilerFilesSha256["compactc.bin"], /^[0-9a-f]{64}$/);
+  assert.match(receipt.sourceSha256, HEX64);
+  assert.match(cohort.compilerFilesSha256["compactc.bin"], HEX64);
 });
 
 test("MID-T01 rejects tampering with each of all 60 artifacts before funding", async (t) => {

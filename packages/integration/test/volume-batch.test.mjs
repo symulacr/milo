@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliveryCommitment } from "../../backend/src/delivery-commitment.mjs";
+import { deliveryCommitment } from "../../backend/src/delivery-policy.ts";
+import { HEX64 } from "../src/config.mjs";
 import {
   deliveryOf,
   finishRecord,
@@ -11,10 +12,10 @@ test("deliveryOf is deterministic and digest-bound (no randomBytes placeholder)"
   const first = deliveryOf("order-label-a");
   const second = deliveryOf("order-label-a");
   assert.deepEqual(first, second);
-  assert.match(first.commitment, /^[0-9a-f]{64}$/);
+  assert.match(first.commitment, HEX64);
   assert.equal(first.files.length, 3);
   for (const file of first.files) {
-    assert.match(file.sha256, /^[0-9a-f]{64}$/);
+    assert.match(file.sha256, HEX64);
     assert.equal(file.contentType, "image/png");
     assert.equal(file.byteLength, 32);
   }

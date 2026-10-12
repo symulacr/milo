@@ -11,6 +11,7 @@ import {
 } from "../src/admission-observation.mjs";
 import { proofCircuits, validateArtifacts } from "../src/artifacts.mjs";
 import { prepareBootstrap } from "../src/bootstrap.mjs";
+import { HEX64 } from "../src/config.mjs";
 import { artifacts, freshOrder } from "../src/order.mjs";
 
 const artifactReceipt = await validateArtifacts();
@@ -307,7 +308,7 @@ test("admission observer binds independently expected state and keys to node/ind
     "keySetFingerprint",
     "rolesFingerprint",
   ])
-    assert.match(record[key], /^[0-9a-f]{64}$/);
+    assert.match(record[key], HEX64);
   assert.equal(
     f.calls.filter(
       (call) => call.method === "chain_getBlockHash" && call.params[0] === 0,

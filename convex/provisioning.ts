@@ -14,7 +14,7 @@ import {
   validateImagePackPolicy,
   validJobClock,
 } from "../packages/backend/src/provisioning-policy";
-import { validPublicConstructor } from "../packages/backend/src/public-constructor.mjs";
+import { validPublicConstructor } from "../packages/backend/src/public-constructor.ts";
 import type { AdmissionContext } from "./admissionContext";
 import { frozenQuoteFields, paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";

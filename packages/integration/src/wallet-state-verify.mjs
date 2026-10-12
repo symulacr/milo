@@ -30,12 +30,52 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { blockfrostHost, blockfrostPreprodEndpoints } from "./blockfrost.mjs";
 
 export const NETWORK_ID = "preprod";
-const INDEXER_HTTP = "https://indexer.preprod.midnight.network/api/v4/graphql";
-const INDEXER_WS = "wss://indexer.preprod.midnight.network/api/v4/graphql/ws";
+// The Preprod indexer and node RPC moved to Blockfrost, and every request needs a
+// `project_id` token. The endpoints are resolved from the environment at call time (never
+// hardcoded, never at import time) so a missing token fails with a clear message before any
+// network I/O. The proof server stays local on 6300.
 const PROOF_SERVER = "http://127.0.0.1:6300";
-const RELAY = "wss://rpc.preprod.midnight.network";
+
+// The marker written beside a snapshot recording which indexer host produced it. Saved sync
+// state is NOT portable between indexers: event and transaction ids differ, so a snapshot
+// restored against a different indexer wedges the dust sync with "values inserted
+// non-linearly into dust generation tree". The gate refuses a snapshot whose recorded host
+// does not match the indexer in use, and refuses one with no marker at all.
+export const INDEXER_MARKER_FILE = "indexer.json";
+
+/** Record the indexer host (never the token) beside a snapshot the lane just wrote. */
+export async function writeIndexerMarker(snapshotDir, indexerUrl) {
+  const host = blockfrostHost(indexerUrl);
+  if (host === null)
+    throw new Error(`cannot record a non-URL indexer endpoint: ${indexerUrl}`);
+  await mkdir(snapshotDir, { recursive: true });
+  await writeFile(
+    resolve(snapshotDir, INDEXER_MARKER_FILE),
+    `${JSON.stringify({ networkId: NETWORK_ID, indexerHost: host }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return host;
+}
+
+/** Read the recorded indexer host, or null when the marker is missing or unreadable. */
+export async function inspectIndexerMarker(snapshotDir) {
+  const path = resolve(snapshotDir, INDEXER_MARKER_FILE);
+  if (!existsSync(path)) return { path, exists: false, indexerHost: null };
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    return {
+      path,
+      exists: true,
+      indexerHost:
+        typeof parsed?.indexerHost === "string" ? parsed.indexerHost : null,
+    };
+  } catch {
+    return { path, exists: true, indexerHost: null };
+  }
+}
 
 // Exactly the files the lane serializes, and the packages it pins beside them.
 export const WALLET_STATE_FILES = Object.freeze({
@@ -401,11 +441,11 @@ function compareUtxoSet(left, right) {
 // --------------------------------------------------------------------------------------
 // Chain-side reads (independent of the wallet and of the snapshot)
 // --------------------------------------------------------------------------------------
-async function gqlHttp(query, variables) {
+async function gqlHttp(endpoint, query, variables) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   try {
-    const res = await fetch(INDEXER_HTTP, {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ query, variables }),
@@ -422,8 +462,11 @@ async function gqlHttp(query, variables) {
   }
 }
 
-async function queryTip() {
-  const data = await gqlHttp("query { block { height hash timestamp } }");
+async function queryTip(endpoint) {
+  const data = await gqlHttp(
+    endpoint,
+    "query { block { height hash timestamp } }",
+  );
   return data.block;
 }
 
@@ -437,12 +480,13 @@ function makeWs() {
  * indexer's own high-water transaction id for it. This is chain truth: it is built from
  * createdUtxos/spentUtxos, never from the wallet or the snapshot. */
 async function reconstructUnshielded(
+  endpointWs,
   address,
   { timeoutMs = 90_000, quietMs = 4_000 } = {},
 ) {
   const { WebSocket, createClient } = makeWs();
   const client = createClient({
-    url: INDEXER_WS,
+    url: endpointWs,
     webSocketImpl: WebSocket,
     retryAttempts: 0,
     lazy: false,
@@ -546,10 +590,10 @@ async function reconstructUnshielded(
 }
 
 /** The indexer's same-space high-water mark for a ledger-event index space. */
-async function readHighWater(kind, { timeoutMs = 30_000 } = {}) {
+async function readHighWater(endpointWs, kind, { timeoutMs = 30_000 } = {}) {
   const { WebSocket, createClient } = makeWs();
   const client = createClient({
-    url: INDEXER_WS,
+    url: endpointWs,
     webSocketImpl: WebSocket,
     retryAttempts: 0,
     lazy: false,
@@ -609,18 +653,18 @@ async function loadSdk() {
   return { ledger, addressFormat, sdk, rxjs };
 }
 
-function walletConfiguration(ledger, sdk) {
+function walletConfiguration(ledger, sdk, endpoints) {
   return {
     networkId: NETWORK_ID,
     indexerClientConnection: {
-      indexerHttpUrl: INDEXER_HTTP,
-      indexerWsUrl: INDEXER_WS,
+      indexerHttpUrl: endpoints.indexer,
+      indexerWsUrl: endpoints.indexerWS,
       bufferSize: 20_000,
       resumeThreshold: 200,
     },
     batchUpdates: { size: 500, timeout: 2, spacing: 0 },
     provingServerUrl: new URL(PROOF_SERVER),
-    relayURL: new URL(RELAY),
+    relayURL: new URL(endpoints.nodeWS),
     txHistoryStorage: new sdk.NoOpTransactionHistoryStorage(),
     costParameters: {
       additionalFeeOverhead: 300_000_000_000_000n,
@@ -717,6 +761,57 @@ async function checkVersionPin(checks, snapshotDir) {
   return inspection;
 }
 
+/** G11: the snapshot was written against the indexer currently in use. Saved sync state is
+ * NOT portable between indexers (event and transaction ids differ), so a snapshot with no
+ * marker, or one recorded against a different indexer host, refuses the fast path and forces
+ * a genesis sync. The host is recorded, never the token-bearing URL.
+ *
+ * The decision is a pure function so it can be tested without a network or a snapshot. */
+export function indexerMarkerVerdict(marker, currentHost) {
+  if (!marker.exists)
+    return {
+      status: "UNEXERCISED",
+      requires: marker.path,
+      detail:
+        "no indexer.json yet; a snapshot written before the Blockfrost migration, or by an older lane, has no recorded indexer and is never restored",
+    };
+  if (marker.indexerHost === null)
+    return {
+      status: "FAIL",
+      expected: "indexer.json carries an indexerHost string",
+      observed: "unreadable or missing indexerHost",
+      remedy:
+        "The recorded indexer cannot be trusted. Discard wallet-state and take a fresh from-genesis sync against Blockfrost.",
+    };
+  if (marker.indexerHost !== currentHost)
+    return {
+      status: "FAIL",
+      expected: `indexerHost == ${currentHost}`,
+      observed: `indexerHost=${marker.indexerHost}`,
+      remedy:
+        "Saved sync state is not portable between indexers. Discard wallet-state and sync from genesis on Blockfrost; do not shift cursors by hand.",
+    };
+  return {
+    status: "PASS",
+    expected: `indexerHost == ${currentHost}`,
+    observed: currentHost,
+  };
+}
+
+async function checkIndexerMarker(checks, snapshotDir, endpoints) {
+  const marker = await inspectIndexerMarker(snapshotDir);
+  const currentHost = blockfrostHost(endpoints.indexer);
+  const verdict = indexerMarkerVerdict(marker, currentHost);
+  const { status, ...detail } = verdict;
+  checks.add(
+    "indexer-marker",
+    "snapshot records the indexer host that produced it",
+    status,
+    detail,
+  );
+  return marker;
+}
+
 /** G2: all three snapshot files present, parse, are preprod, and carry no pending state. */
 async function checkSnapshotShape(checks, snapshotDir) {
   const texts = {};
@@ -785,11 +880,15 @@ async function checkSnapshotShape(checks, snapshotDir) {
 }
 
 /** Live tip plus the dust/zswap ledger-event high-water marks. Chain truth, always read. */
-async function checkChain(checks, parsed, opts) {
+async function checkChain(checks, parsed, opts, endpoints) {
   const [tip, dustHw, zswapHw] = await Promise.all([
-    withTimeout("tip", 25_000, queryTip),
-    withTimeout("dust-hw", 35_000, () => readHighWater("dust")),
-    withTimeout("zswap-hw", 35_000, () => readHighWater("zswap")),
+    withTimeout("tip", 25_000, () => queryTip(endpoints.indexer)),
+    withTimeout("dust-hw", 35_000, () =>
+      readHighWater(endpoints.indexerWS, "dust"),
+    ),
+    withTimeout("zswap-hw", 35_000, () =>
+      readHighWater(endpoints.indexerWS, "zswap"),
+    ),
   ]);
   const chain = {
     tip: tip.status === "ok" ? tip.value : null,
@@ -829,7 +928,7 @@ async function checkChain(checks, parsed, opts) {
     "reconstruct-unshielded",
     opts.chainTimeoutMs,
     () =>
-      reconstructUnshielded(address, {
+      reconstructUnshielded(endpoints.indexerWS, address, {
         timeoutMs: opts.chainTimeoutMs - 5_000,
         quietMs: opts.quietMs,
       }),
@@ -934,7 +1033,7 @@ function checkLedgerIndices(checks, parsed, chain) {
 
 /** G4/G9/G10: bounded restore of every role, a bounded start of the restored unshielded
  * wallet (no secret key needed), and the dust address consistency check. */
-async function checkBoundedRestore(checks, texts, opts, chain) {
+async function checkBoundedRestore(checks, texts, opts, chain, endpoints) {
   const present = Object.keys(WALLET_STATE_FILES).filter((r) => texts[r]);
   if (present.length === 0) {
     checks.add(
@@ -964,7 +1063,7 @@ async function checkBoundedRestore(checks, texts, opts, chain) {
     return null;
   }
   const { sdk, ledger, rxjs } = sdkParts;
-  const cfg = walletConfiguration(ledger, sdk);
+  const cfg = walletConfiguration(ledger, sdk, endpoints);
   const out = { instances: {} };
 
   // A CPU-busy timeout is a slow restore (#639), not a hang: re-run it with a larger bound
@@ -1374,6 +1473,11 @@ export const GATE_DEFINITION = Object.freeze({
       check: "bounded-restore-unshielded-start",
       text: "the restored unshielded wallet starts, becomes connected and current, and reports zero pending coins.",
     },
+    {
+      id: "G11",
+      check: "indexer-marker",
+      text: "the snapshot records the indexer host that produced it, and that host matches the indexer in use. Saved sync state is not portable between indexers (event and transaction ids differ), so a snapshot with no marker or one from a different indexer refuses the fast path and forces a genesis sync.",
+    },
   ],
   onFailure:
     "Write the receipt with FAIL and the observed value, refuse the fast path, and take a fresh full from-seed sync (the lane's restore:false path). Never proceed on a partial state.",
@@ -1402,6 +1506,9 @@ export async function verifyWalletState(snapshotDir, options = {}) {
     receiptPath:
       options.receiptPath ?? resolve(snapshotDir, "verification-receipt.json"),
     writeReceipt: options.writeReceipt !== false,
+    // Endpoints come from the environment (Blockfrost Preprod by default) so the token is
+    // never hardcoded. An explicit override exists for an offline dry run against stubs.
+    endpoints: options.endpoints ?? blockfrostPreprodEndpoints(process.env),
   };
   const checks = new Checks();
   const receipt = {
@@ -1409,7 +1516,7 @@ export async function verifyWalletState(snapshotDir, options = {}) {
     version: 1,
     generatedAt: new Date().toISOString(),
     networkId: NETWORK_ID,
-    indexer: INDEXER_HTTP,
+    indexer: blockfrostHost(opts.endpoints.indexer),
     node: process.version,
     snapshotDir,
     timeoutMs: opts.timeoutMs,
@@ -1423,9 +1530,10 @@ export async function verifyWalletState(snapshotDir, options = {}) {
   };
 
   await checkVersionPin(checks, snapshotDir);
+  await checkIndexerMarker(checks, snapshotDir, opts.endpoints);
   const shape = await checkSnapshotShape(checks, snapshotDir);
   receipt.snapshotFiles = shape.hashes;
-  const chain = await checkChain(checks, shape.parsed, opts);
+  const chain = await checkChain(checks, shape.parsed, opts, opts.endpoints);
   receipt.chain = {
     tip: chain.tip,
     dustHighWater: chain.dustHighWater,
@@ -1442,7 +1550,13 @@ export async function verifyWalletState(snapshotDir, options = {}) {
       : null,
   };
   checkLedgerIndices(checks, shape.parsed, chain);
-  const restored = await checkBoundedRestore(checks, shape.texts, opts, chain);
+  const restored = await checkBoundedRestore(
+    checks,
+    shape.texts,
+    opts,
+    chain,
+    opts.endpoints,
+  );
   receipt.restored = summarizeRestored(restored);
   checkUnshieldedAgainstChain(checks, restored, chain);
 

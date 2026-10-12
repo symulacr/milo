@@ -15,6 +15,7 @@
     "dev": "sh scripts/with-bun.sh --hot scripts/dev.ts",
     "build": "sh scripts/with-bun.sh scripts/build.ts",
     "typecheck": "sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit",
+    "check:plan": "sh scripts/with-bun.sh scripts/check-plan.ts",
     "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check .",
     "test:unit": "sh scripts/with-bun.sh test apps/web packages/domain packages/contract packages/backend scripts",
     "test:integration": "sh scripts/with-bun.sh scripts/test-integration.ts",

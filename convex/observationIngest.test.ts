@@ -10,7 +10,7 @@ import {
   type ObservedDeployment,
   REQUIRED_ENTRYPOINTS,
 } from "../packages/backend/src/admission-policy";
-import { publicConstructorFingerprints } from "../packages/backend/src/public-constructor.mjs";
+import { publicConstructorFingerprints } from "../packages/backend/src/public-constructor.ts";
 import {
   applyChainObservation,
   applyRecordDeployment,

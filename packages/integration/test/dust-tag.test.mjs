@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { isInsufficientDust } from "../src/dust.mjs";
 
 /**
@@ -10,7 +11,14 @@ import { isInsufficientDust } from "../src/dust.mjs";
  * SDK, so a rename in a future dependency bump would silently turn a recoverable
  * DUST shortfall into a hard abort. This pins the literal to the installed dist.
  */
-const NODE_MODULES = "packages/integration/node_modules/@midnight-ntwrk";
+// Resolved from this module, not the cwd, so the pin holds whether the suite is
+// invoked from the repository root or from packages/integration.
+const NODE_MODULES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "node_modules",
+  "@midnight-ntwrk",
+);
 
 /** The package the DUST retry path actually depends on. */
 const DUST_PACKAGE = "wallet-sdk-dust-wallet";

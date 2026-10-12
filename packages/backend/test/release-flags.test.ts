@@ -6,7 +6,7 @@ import {
   RELEASE_FLAG_DEFAULTS,
   releaseFlags,
   releaseFlagsFromEvidence,
-} from "../src/release-flags.mjs";
+} from "../src/release-flags.ts";
 
 const binding = {
   network: "preprod",

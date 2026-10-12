@@ -7,12 +7,13 @@ import {
   publicConstructorFingerprints,
   reconstructPublicConstructor,
   validPublicConstructor,
-} from "../../backend/src/public-constructor.mjs";
+} from "../../backend/src/public-constructor.ts";
 import { proofCircuits, TOOLCHAIN } from "./artifacts.mjs";
 import {
   prepareBootstrap,
   requireCompletedLockedBootstrap,
 } from "./bootstrap.mjs";
+import { HEX64 } from "./config.mjs";
 import { observeFinalizedContract } from "./maintenance-audit.mjs";
 import { generated } from "./order.mjs";
 
@@ -143,7 +144,7 @@ export function prepareAdmissionObserver({
       wait,
       now = Date.now,
     }) {
-      assert.match(address, /^[0-9a-f]{64}$/);
+      assert.match(address, HEX64);
       assert(Number.isSafeInteger(deadline) && deadline > now());
       assert.equal(
         await rpc("chain_getBlockHash", [0]),
@@ -255,7 +256,7 @@ export function createAdmissionObservationCoordinator({
         quoteId.length > 0 &&
         quoteId.length <= 256,
     );
-    assert(typeof address === "string" && /^[0-9a-f]{64}$/.test(address));
+    assert(typeof address === "string" && HEX64.test(address));
     const startedAt = now();
     const deadline = startedAt + timeoutMs;
     assert(Number.isSafeInteger(startedAt) && startedAt >= 0);
@@ -312,8 +313,7 @@ export function createAdmissionObservationCoordinator({
       "maintenanceReceiptFingerprint",
     ]) {
       assert(
-        typeof observation[key] === "string" &&
-          /^[0-9a-f]{64}$/.test(observation[key]),
+        typeof observation[key] === "string" && HEX64.test(observation[key]),
       );
     }
     const finishedAt = now();

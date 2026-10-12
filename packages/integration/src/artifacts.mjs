@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HEX64 } from "./config.mjs";
 
 /** The pinned toolchain cohort. Consumers assert against these, never literals. */
 export const TOOLCHAIN = Object.freeze({
@@ -95,7 +96,7 @@ export async function validateArtifacts(directory = contractDirectory) {
   );
   const artifacts = {};
   for (const path of artifactPaths) {
-    assert.match(receipt.artifacts[path], /^[0-9a-f]{64}$/);
+    assert.match(receipt.artifacts[path], HEX64);
     assert(
       (await lstat(join(generated, path))).size > 0,
       "Empty compiler artifact",

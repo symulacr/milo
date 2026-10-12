@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
+import { HEX64 } from "./config.mjs";
 
 const idPrefix = Buffer.from("midnight:transcation-id[v1]:");
 export function matchCounterLog(line, { identifiers, address, segments }) {
@@ -28,7 +29,7 @@ export function matchCounterLog(line, { identifiers, address, segments }) {
   });
   if (JSON.stringify(found.sort()) !== JSON.stringify([...identifiers].sort()))
     return false;
-  assert.match(address, /^[0-9a-f]{64}$/);
+  assert.match(address, HEX64);
   assert.equal(
     [...segments.values()].filter((value) => value === "SegmentFail").length,
     1,
@@ -94,7 +95,7 @@ export function requireCounterDispatch(error, metadata) {
 
 export async function observeCounterDispatch(env, data, nodeLogPath) {
   assert(["FailEntirely", "FailFallible"].includes(data.status));
-  assert.match(data.blockHash, /^[0-9a-f]{64}$/);
+  assert.match(data.blockHash, HEX64);
   const { ApiPromise, HttpProvider } = await import("@polkadot/api");
   const api = await ApiPromise.create({
     provider: new HttpProvider(env.node),

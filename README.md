@@ -13,35 +13,55 @@ order rules. stripe handles payment off chain.
 
 ## Status
 
-R0. SUPERSEDED (A0-2 tree loss): product sources under convex/, scripts/, packages/{backend,contract,domain,integration} and packages/midnight-client are gone from this tree (see audit/discovery/BASELINE-P3.md); fresh suite counts are UNKNOWN. Historical claims below are receipts only. the contract is deployed on preprod. the browser workspace is a real read-only console rather
-than a simulator, but no order is connected end to end: there is no hosted Convex deployment, no
-Privy app id, and no browser circuit-call path, so the wallet, backend and chain lanes never meet.
-*(W3-C3: the earlier blanket “no Convex” claim is superseded — local Convex observation ingest
-now has runtime proof (A1); hosted Convex remains unprovisioned.)*
+R0. the sources are present and tracked in this tree: `convex/` (31 tracked files), `packages/`
+(133) and `packages/midnight-client/src/` (8) all exist, and `audit/discovery/BASELINE-P3.md` has
+never existed in any ref. The Preprod deploy is not proven by any retained receipt: the only
+retained Preprod deploy receipts under `.hoplite/artifacts/preprod/` (2026-09-30) record
+`"status":"failed"` with `Wallet.InsufficientFunds: could not balance dust` and
+`finalCircuitCount: 0`. The browser workspace is still the in-memory simulator
+(`apps/web/src/workspace/model.tsx` imports `packages/domain/src/prototype.ts`;
+`apps/web/src/components/order.tsx:134` renders “In-memory simulator”), so no order is connected
+end to end: there is no browser circuit-call path and the wallet, backend and chain lanes never
+meet. A hosted Convex deployment and a Privy app id do exist: `dist/api/public-config` reads
+`{"privyAppId":"cmtvmx5ny02jg0blcvamxm1sd","convexUrl":"https://tremendous-rooster-473.convex.cloud","midnightNetwork":"preprod"}`.
 
 | layer | where | status |
 | --- | --- | --- |
-| browser workspace | browser, read-only console | renders wallet status and Convex payment observation; no circuit call |
-| contract | preprod | deployed, 14 proof circuits exercised (execution 14/14 ≠ acceptance 0/14) |
-| observer ingest | local Convex | SUPERSEDED (A0-2): `convex/observationIngest.ts` gone from tree; historical A1 RUNTIME receipt only |
-| midnight client / wallet | SDK | **TESTED SDK only** (historical) — SUPERSEDED (A0-2 tree loss) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
+| browser workspace | browser, in-memory simulator | renders wallet status and Convex payment observation; no circuit call |
+| contract | preprod | deployment claimed 2026-09-20 (14/14 execution, 0/14 acceptance); not proven by any retained receipt |
+| observer ingest | local Convex | `convex/observationIngest.ts` present and tracked; historical A1 RUNTIME receipt only |
+| midnight client / wallet | SDK | **TESTED SDK only** (historical) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
 | native and backend | local node, prover, backend | staged deploy, test doubles; F-21 settlement fix TESTED |
 | stripe | — | **no keys** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` missing); F-30 files **partial** |
 | providers | preprod | exercised by the run, acceptance rows partial |
 
-acceptance dual-state (see IMPLEMENTATION-DECISIONS D2): execution is 14/14 on
+acceptance dual-state (see IMPLEMENTATION-DECISIONS D2): execution is claimed 14/14 on
 preprod (2026-09-20) while acceptance stays 0/6 provider · 0/14 operation until
 the canonical criteria are met. **R1 is not complete** (`r1Complete` stays false).
+the 14/14 execution claim is historical and unverified: it is dated 2026-09-20 and its
+per-circuit hashes are not in the tree, while the only retained Preprod deploy receipts
+(`.hoplite/artifacts/preprod/staged-deploy-happy-path.json` and
+`staged-deploy-negatives.json`, 2026-09-30) record `"status":"failed"` on
+`Wallet.InsufficientFunds: could not balance dust` with `finalCircuitCount: 0`.
 new modules since the reconciliation pass, none
 of which close an acceptance row.
 
-SUPERSEDED (A0-2 tree loss): `packages/midnight-client` (browser Lace
+the modules named in the next paragraph are present and tracked in this tree:
+`packages/midnight-client` (browser Lace
 transport + reserve/accept prepare gates; wallet-signed reserve still unknown),
 `convex/observationIngest.ts` (durable deployment-observation writer — **local
 Convex RUNTIME (A1)**; not a hosted-provider row),
 `packages/backend/src/release-flags.mjs` (evidence-gated R1 flag single source of
 truth), and `packages/backend/src/delivery-commitment.mjs` (digest-bound
-delivery commitment). Those modules are GONE from this tree (BASELINE-P3); historical receipts only.
+delivery commitment). All four are tracked; the earlier “GONE from this tree
+(BASELINE-P3)” claim was false and `audit/discovery/BASELINE-P3.md` has never existed.
+
+the on-chain claims in this section are historical (dated 2026-09-20) and are not
+verifiable now: the only retained Preprod deploy receipts record failures on DUST, and the
+Midnight-hosted Preprod endpoints (`indexer.preprod.midnight.network`,
+`rpc.preprod.midnight.network`) were decommissioned from 22:00 UTC on 2026-10-09
+(docs.midnight.network/guides/networks-and-environments), so a live read returns
+`ENDPOINT_DECOMMISSIONED`. the explorer links below are retained as the recorded identity.
 
 the contract address is
 [`0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586)
@@ -61,9 +81,11 @@ run's own receipt recorded the ids `0x63f45a99...` and `0x06a85a07...` with no b
 indexer query for both returns an empty result, so they are not on chain in any form, and the block is
 the identity to cite rather than a second identifier. one earlier claim is corrected here: blocks
 2636398 and 2636469 belong to the superseded contract `0x731948c6...`, which the resume-path defect
-produced, not to this one. all 14 order
+produced, not to this one. the run claimed all 14 order
 circuits finalized, each with a txId and a block height between 2638272 and 2639589, and the
-must-reject suite was rejected at the contract layer with the expected asserts. maintenance drills
+must-reject suite was rejected at the contract layer with the expected asserts. this claim is
+historical (2026-09-20) and unverified: its per-circuit hashes are not in the tree, and the only
+retained Preprod deploy receipts record failures. maintenance drills
 removed and restored a verifier key and then froze authority to an empty committee, leaving
 `committee [], threshold 1, counter 4` and permanently non-upgradable authority; the three
 maintenance calls resolve on chain as
@@ -79,20 +101,26 @@ UTXO, and the wallet's spendable balance was measured at `60349100000000000` spe
 operator funded five more UTXOs. provider acceptance is partial; no connected-provider order is
 claimed.
 
-what this does not prove: the off-chain half is prototyped, not deployed. no Convex deployment
-exists, Privy is not configured, and the browser has no circuit-call path, so the wallet, backend and
-chain lanes never meet and no order is verifiable end to end.
+what this does not prove: the off-chain half is prototyped, not deployed end to end. a hosted
+Convex deployment and a Privy app id do exist (`dist/api/public-config`), but the browser has no
+circuit-call path, so the wallet, backend and chain lanes never meet and no order is verifiable end
+to end.
 
 ### Contracts and wallets, by address
 
 | name | address | purpose | state |
 | --- | --- | --- | --- |
-| Milo commission contract (`order.compact`) | [`0xb95c8243...e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586) | the deployed contract this repo is about: it holds an order's phase, its hashed commitments and its terms, and decides who may move it. the brief, the files and the price stay off chain | **live** - 14 of 14 circuits driven, maintenance authority frozen to an empty committee |
+| Milo commission contract (`order.compact`) | [`0xb95c8243...e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586) | the deployed contract this repo is about: it holds an order's phase, its hashed commitments and its terms, and decides who may move it. the brief, the files and the price stay off chain | **claimed live 2026-09-20** - 14 of 14 circuits driven per the historical record, maintenance authority frozen to an empty committee; unverified against retained receipts |
 | superseded first deploy | `0x731948c6...ce9aa` | the first attempt, produced by a resume-path defect. its failed deploy attempt is the only transaction in block 2636398 and its update the only one in 2636469 | abandoned, no order ran on it |
 | stray redeploy | `0x554f9ff0b0...3f75a` | a second contract deployed from this source in the same block as the live one | abandoned |
 | stray redeploy | `0x394bc7f2...f1ed1` | an earlier redeploy of the same source, the case the resume guard now prevents | abandoned |
 
 ### Funding a Preprod operator
+
+the Midnight-hosted Preprod endpoints (`indexer.preprod.midnight.network`,
+`rpc.preprod.midnight.network`) were decommissioned from 22:00 UTC on 2026-10-09
+(docs.midnight.network/guides/networks-and-environments); a live read returns
+`ENDPOINT_DECOMMISSIONED`. the faucet and the procedure below are retained as the historical record.
 
 | what | value |
 | --- | --- |
@@ -113,7 +141,7 @@ sequenceDiagram
     actor User
     box rgba(84, 52, 215, 0.12) implemented locally
         participant UI as React UI
-        participant Console as Read-only order console
+        participant Console as In-memory simulator
     end
     box rgba(92, 90, 87, 0.14) target only
         participant Wallet as Lace wallet
@@ -123,9 +151,9 @@ sequenceDiagram
 
     rect rgba(84, 52, 215, 0.10)
         Note over User,Console: <b>implemented local paths</b>
-        User->>UI: open the order console
+        User->>UI: open the workspace
         UI->>Console: render order and wallet status
-        Console->>UI: read-only view, no circuit call
+        Console->>UI: simulated view, no circuit call
     end
     rect rgba(92, 90, 87, 0.14)
         Note over User,API: <b>target connected flow</b> <i>not evidence</i>
@@ -169,11 +197,6 @@ set on every run. it admits no order.
 keep `PRIVY_APP_SECRET` and `STRIPE_SECRET_KEY` server side. rotate any secret shared in chat, and replace
 any wallet whose seed was disclosed. sample receipts are not proofs.
 
-## License
-
-mit, see [LICENSE](LICENSE). third-party material keeps its own license, see
-[third-party notices](THIRD_PARTY_NOTICES.md). the spec corpus is unpublished.
-
 
 ## Quick start (verified)
 
@@ -193,4 +216,5 @@ bun run typecheck
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE). third-party material keeps its own license, see
+[third-party notices](THIRD_PARTY_NOTICES.md). the spec corpus is unpublished.

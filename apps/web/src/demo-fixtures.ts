@@ -44,19 +44,19 @@ const sc01: DemoContext = {
   amount: "$360 USD",
   images: [
     {
-      src: "/images/hero.png",
+      src: "/images/hero.webp",
       title: "The hero",
       note: "Product portrait · studio composition",
       alt: "Sample Still Studio photography: sculptural vessel on a warm studio plinth",
     },
     {
-      src: "/images/detail.png",
+      src: "/images/detail.webp",
       title: "The details",
       note: "Material study · close composition",
       alt: "Sample Still Studio photography: detail of an olive ceramic vessel",
     },
     {
-      src: "/images/collection.png",
+      src: "/images/collection.webp",
       title: "The collection",
       note: "Campaign composition · family portrait",
       alt: "Sample Still Studio photography: the three-piece collection arrangement",
@@ -80,19 +80,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$420 USD",
     images: [
       {
-        src: "/images/sc-02-01.png",
+        src: "/images/sc-02-01.webp",
         title: "The form",
         note: "Overall composition · render",
         alt: "Sample Unison photography: stacked container forms on a plinth",
       },
       {
-        src: "/images/sc-02-02.png",
+        src: "/images/sc-02-02.webp",
         title: "The join",
         note: "Close detail · render",
         alt: "Sample Unison photography: close study of the container join",
       },
       {
-        src: "/images/sc-02-03.png",
+        src: "/images/sc-02-03.webp",
         title: "The colorways",
         note: "Set of three · render",
         alt: "Sample Unison photography: three colorway studies in a row",
@@ -113,19 +113,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$510 USD",
     images: [
       {
-        src: "/images/sc-03-01.png",
+        src: "/images/sc-03-01.webp",
         title: "The poster",
         note: "Hero composition · launch",
         alt: "Sample Basil Club photography: sun and rays over a horizon line",
       },
       {
-        src: "/images/sc-03-02.png",
+        src: "/images/sc-03-02.webp",
         title: "The crop",
         note: "Story format · launch",
         alt: "Sample Basil Club photography: close crop of the launch motif",
       },
       {
-        src: "/images/sc-03-03.png",
+        src: "/images/sc-03-03.webp",
         title: "The series",
         note: "Set of three · launch",
         alt: "Sample Basil Club photography: three small launch motifs in a row",
@@ -146,19 +146,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$390 USD",
     images: [
       {
-        src: "/images/sc-04-01.png",
+        src: "/images/sc-04-01.webp",
         title: "The arrival",
         note: "Doorway composition",
         alt: "Sample Hotel Aria photography: arched doorway on a quiet facade",
       },
       {
-        src: "/images/sc-04-02.png",
+        src: "/images/sc-04-02.webp",
         title: "The threshold",
         note: "Close detail",
         alt: "Sample Hotel Aria photography: close study of the arched threshold",
       },
       {
-        src: "/images/sc-04-03.png",
+        src: "/images/sc-04-03.webp",
         title: "The set",
         note: "Set of three",
         alt: "Sample Hotel Aria photography: three small arrival studies in a row",
@@ -179,19 +179,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$470 USD",
     images: [
       {
-        src: "/images/sc-05-01.png",
+        src: "/images/sc-05-01.webp",
         title: "The cover",
         note: "Front composition",
         alt: "Sample Chronicle House photography: standing book covers in ink tones",
       },
       {
-        src: "/images/sc-05-02.png",
+        src: "/images/sc-05-02.webp",
         title: "The spine",
         note: "Close detail",
         alt: "Sample Chronicle House photography: close study of a book spine",
       },
       {
-        src: "/images/sc-05-03.png",
+        src: "/images/sc-05-03.webp",
         title: "The series",
         note: "Set of three",
         alt: "Sample Chronicle House photography: three small cover studies in a row",
@@ -212,19 +212,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$440 USD",
     images: [
       {
-        src: "/images/sc-06-01.png",
+        src: "/images/sc-06-01.webp",
         title: "The badge",
         note: "Adapted mark",
         alt: "Sample Locale Supply photography: circular badge with ribbon",
       },
       {
-        src: "/images/sc-06-02.png",
+        src: "/images/sc-06-02.webp",
         title: "The label",
         note: "Close detail",
         alt: "Sample Locale Supply photography: close study of the badge label",
       },
       {
-        src: "/images/sc-06-03.png",
+        src: "/images/sc-06-03.webp",
         title: "The placements",
         note: "Set of three",
         alt: "Sample Locale Supply photography: three small badge studies in a row",
@@ -245,19 +245,19 @@ export const demoContexts: DemoContext[] = [
     amount: "$380 USD",
     images: [
       {
-        src: "/images/sc-07-01.png",
+        src: "/images/sc-07-01.webp",
         title: "The headline",
         note: "Chart composition",
         alt: "Sample Quotient Office photography: ascending chart bars on a baseline",
       },
       {
-        src: "/images/sc-07-02.png",
+        src: "/images/sc-07-02.webp",
         title: "The detail",
         note: "Close crop",
         alt: "Sample Quotient Office photography: close study of the chart bars",
       },
       {
-        src: "/images/sc-07-03.png",
+        src: "/images/sc-07-03.webp",
         title: "The set",
         note: "Set of three",
         alt: "Sample Quotient Office photography: three small chart studies in a row",

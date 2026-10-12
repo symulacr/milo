@@ -5,12 +5,13 @@ import {
   CompactTypeBytes,
   CompactTypeUnsignedInteger,
 } from "@midnight-ntwrk/compact-runtime";
-import { deliveryCommitment as deliveryCommitmentNode } from "../../backend/src/delivery-commitment.mjs";
 import {
   deliveryCommitment,
   deliveryCommitmentBytes32,
+  deliveryCommitment as deliveryCommitmentNode,
   submitDeliveryArgs,
 } from "../../backend/src/delivery-policy";
+import { HEX64 } from "../../backend/src/encoding";
 
 const digests = ["a".repeat(64), "b".repeat(64), "c".repeat(64)];
 const files = digests.map((sha256, index) => ({
@@ -32,7 +33,7 @@ const generatedDts = readFileSync(
 describe("deliveryCommitment equals on-chain submitDelivery arg shape", () => {
   test("submitDelivery args are (Uint<64>, Bytes<32>) and carry the digest bytes", () => {
     const manifest = deliveryCommitment(files);
-    expect(manifest).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest).toMatch(HEX64);
 
     const args = submitDeliveryArgs(2n, files);
     expect(args.expectedRevision).toBe(2n);

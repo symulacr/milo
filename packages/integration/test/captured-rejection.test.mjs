@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { HEX64 } from "../src/config.mjs";
 import { verifiedAuthorityRejection } from "../src/maintenance-audit.mjs";
 
 /**
@@ -30,7 +31,7 @@ test("the captured payload carries the exact fields the audit reads", () => {
   assert.deepEqual(captured.runtimeCustomCodes, [134]);
   assert.equal(captured.conclusion, "KeyNotInCommittee");
   assert.equal(captured.unchanged, true);
-  assert.match(captured.stateSha256, /^[a-f0-9]{64}$/);
+  assert.match(captured.stateSha256, HEX64);
 });
 
 test("the predicate rejects near-miss variants of the captured payload", () => {

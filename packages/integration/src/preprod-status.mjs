@@ -6,11 +6,21 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { blockfrostPreprodEndpoints } from "./blockfrost.mjs";
 
 const RUN_DIR = new URL("../../../.hoplite/artifacts/preprod", import.meta.url)
   .pathname;
 const RECEIPTS = resolve(RUN_DIR, "transactions.jsonl");
-const INDEXER = "https://indexer.preprod.midnight.network/api/v4/graphql";
+
+// Resolve the Blockfrost Preprod indexer (token appended) at call time. A read-only progress
+// probe must not throw at import when no token is present; it reports the failure instead.
+function indexerEndpoint() {
+  try {
+    return blockfrostPreprodEndpoints(process.env).indexer;
+  } catch (error) {
+    return { error: String(error?.message ?? error) };
+  }
+}
 
 const j = (value) => JSON.stringify(value);
 
@@ -44,7 +54,10 @@ function receipts() {
 }
 
 async function graphql(query, variables) {
-  const response = await fetch(INDEXER, {
+  const endpoint = indexerEndpoint();
+  if (typeof endpoint !== "string")
+    throw new Error(`indexer endpoint unavailable: ${endpoint.error}`);
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ query, variables }),

@@ -1,9 +1,9 @@
 import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
+import { bytesToHex, HEX64, hexToBytes } from "./encoding.ts";
 
 const id = z.string().trim().min(1).max(256);
-const digest = z.string().regex(/^[0-9a-f]{64}$/);
+const digest = z.string().regex(HEX64);
 const mime = z.enum(["image/png", "image/jpeg", "image/webp"]);
 const size = z
   .number()
@@ -291,13 +291,9 @@ export function deliveryCommitment(
  * The bytes are the raw SHA-256 digest, not a re-hash.
  */
 export function deliveryCommitmentBytes32(manifest: string): Uint8Array {
-  if (typeof manifest !== "string" || !/^[0-9a-f]{64}$/.test(manifest))
+  if (typeof manifest !== "string" || !HEX64.test(manifest))
     throw new Error("delivery commitment must be 64-char lowercase hex");
-  const out = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    out[i] = Number.parseInt(manifest.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
+  return hexToBytes(manifest);
 }
 
 /**

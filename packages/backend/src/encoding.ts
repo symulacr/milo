@@ -2,6 +2,10 @@
  * Canonical hex/bytes encoder (convergence CVG1).
  * Property: bytesToHex(hexToBytes(h)) === h.toLowerCase() for even-length hex.
  */
+
+/** Lowercase 64-hex (32-byte) digest/address guard: the single tree definition. */
+export const HEX64 = /^[a-f0-9]{64}$/;
+
 export function hexToBytes(hex: string): Uint8Array {
   if (hex.length % 2 !== 0) throw new Error("hex length must be even");
   const out = new Uint8Array(hex.length / 2);

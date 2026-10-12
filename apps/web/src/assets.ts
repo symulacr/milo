@@ -1,27 +1,27 @@
 export const sampleFiles = [
   {
     id: "01",
-    name: "01-still-hero.png",
+    name: "01-still-hero.webp",
     title: "The hero",
     note: "Product portrait · studio composition",
-    src: "/images/hero.png",
-    hash: "a05e51ca6ec13e5c880cb363d275d2ca5fface6fcaa735a8ca1449d63e903519",
+    src: "/images/hero.webp",
+    hash: "a70f248e5504aeec43e59ac68ebd9516614dd5c839a338635bceabf2cdfa8fda",
   },
   {
     id: "02",
-    name: "02-still-detail.png",
+    name: "02-still-detail.webp",
     title: "The details",
     note: "Material study · close composition",
-    src: "/images/detail.png",
-    hash: "3dbf9f923e11a17c9640e50cea8d9b152244f93a8637058dff8d97b9b38c7b20",
+    src: "/images/detail.webp",
+    hash: "3a07f69f751b1ec4bee4ffe0fd95dbaed043d7553bf5375f6dba9f3d797cf8bf",
   },
   {
     id: "03",
-    name: "03-still-collection.png",
+    name: "03-still-collection.webp",
     title: "The collection",
     note: "Campaign composition · family portrait",
-    src: "/images/collection.png",
-    hash: "cf4bebec832e7af624ee329bf0caf3efb4f87b7ac9c564564349557ae93d8baf",
+    src: "/images/collection.webp",
+    hash: "e994848a179a98868efdf731e761b0560790aaea029626d455e2a5a7fd9ba9a7",
   },
 ] as const;
 

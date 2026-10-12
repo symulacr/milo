@@ -6,6 +6,15 @@ import { Badge, Icon } from "../components/ui";
 import { WordmarkStar } from "../components/Wordmark";
 import { roleNames, scenarios, useWorkspace } from "../workspace/model";
 
+// avatar-buyer.png is corrupt and unrecoverable (truncated IDAT; see the image
+// repair report), so the buyer avatar keeps its original path until the source
+// art is re-exported. The merchant and operator avatars are WebP.
+const avatarPhoto: Record<Role, string> = {
+  buyer: "/images/avatar-buyer.png",
+  merchant: "/images/avatar-merchant.webp",
+  operator: "/images/avatar-operator.webp",
+};
+
 export function WorkspaceShell() {
   const isConnections =
     useLocation().pathname.replace(/\/+$/, "") === "/connections";
@@ -22,7 +31,7 @@ export function WorkspaceShell() {
         aria-label="Workspace navigation"
         style={
           {
-            "--avatar-photo": `url(/images/avatar-${state.role}.png)`,
+            "--avatar-photo": `url(${avatarPhoto[state.role]})`,
           } as CSSProperties
         }
       >

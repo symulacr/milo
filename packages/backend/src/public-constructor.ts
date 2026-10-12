@@ -1,22 +1,37 @@
 import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex } from "@noble/hashes/utils";
+import { bytesToHex, HEX64, hexToBytes } from "./encoding.ts";
 
 // v1: lowercase hex Bytes<32>, UTF-8 network right-padded with zeros,
 // safe integer seconds converted losslessly to Uint<64>; protocol 1 initial ledger.
-export const CONSTRUCTOR_ENCODING = "milo:compact-configuration:v1";
+export const CONSTRUCTOR_ENCODING: "milo:compact-configuration:v1" =
+  "milo:compact-configuration:v1";
 const INVALID_CONSTRUCTOR = "Invalid versioned public constructor inputs";
-const nonzeroHex = (value) =>
-  typeof value === "string" &&
-  /^[a-f0-9]{64}$/.test(value) &&
-  value !== "0".repeat(64);
-const bytes = (hex) =>
-  Uint8Array.from(hex.match(/../g), (byte) => Number.parseInt(byte, 16));
-const fingerprint = (kind, value) =>
+
+export interface PublicConstructorInputs {
+  constructorVersion: 1;
+  constructorEncoding: typeof CONSTRUCTOR_ENCODING;
+  buyerCommitment: string;
+  merchantCommitment: string;
+  operatorCommitment: string;
+}
+export interface ConstructorQuote extends PublicConstructorInputs {
+  network: string;
+  nonce: string;
+  termsCommitment: string;
+  acceptanceDeadlineSeconds: number;
+  deliveryDeadlineSeconds: number;
+  reviewDeadlineSeconds: number;
+  resolutionDeadlineSeconds: number;
+}
+
+const nonzeroHex = (value: unknown) =>
+  typeof value === "string" && HEX64.test(value) && value !== "0".repeat(64);
+const fingerprint = (kind: string, value: unknown) =>
   bytesToHex(
     sha256(JSON.stringify(["milo:admission-observation:v2", kind, value])),
   );
 
-export function reconstructPublicConstructor(quote) {
+export function reconstructPublicConstructor(quote: ConstructorQuote) {
   const roles = [
     quote.buyerCommitment,
     quote.merchantCommitment,
@@ -45,11 +60,11 @@ export function reconstructPublicConstructor(quote) {
   network.set(new TextEncoder().encode(quote.network));
   return {
     network,
-    orderNonce: bytes(quote.nonce),
-    termsCommitment: bytes(quote.termsCommitment),
-    buyerCommitment: bytes(roles[0]),
-    merchantCommitment: bytes(roles[1]),
-    operatorCommitment: bytes(roles[2]),
+    orderNonce: hexToBytes(quote.nonce),
+    termsCommitment: hexToBytes(quote.termsCommitment),
+    buyerCommitment: hexToBytes(roles[0]),
+    merchantCommitment: hexToBytes(roles[1]),
+    operatorCommitment: hexToBytes(roles[2]),
     acceptanceDeadline: BigInt(deadlines[0]),
     deliveryDeadline: BigInt(deadlines[1]),
     reviewDeadline: BigInt(deadlines[2]),
@@ -57,7 +72,7 @@ export function reconstructPublicConstructor(quote) {
   };
 }
 
-export function publicConstructorFingerprints(quote) {
+export function publicConstructorFingerprints(quote: ConstructorQuote) {
   const config = reconstructPublicConstructor(quote);
   const roles = [
     quote.buyerCommitment,
@@ -84,11 +99,12 @@ export function publicConstructorFingerprints(quote) {
   };
 }
 
-export function validPublicConstructor(quote) {
+export function validPublicConstructor(quote: unknown): boolean {
   try {
-    const expected = publicConstructorFingerprints(quote);
+    const expected = publicConstructorFingerprints(quote as ConstructorQuote);
+    const record = quote as Record<string, unknown>;
     return Object.entries(expected).every(
-      ([key, value]) => quote[key] === value,
+      ([key, value]) => record[key] === value,
     );
   } catch (error) {
     // Only the designed validation failure is a "false" verdict; programmer

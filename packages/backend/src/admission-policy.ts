@@ -1,7 +1,8 @@
+import { HEX64 } from "./encoding.ts";
 import {
   type PublicConstructorInputs,
   validPublicConstructor,
-} from "./public-constructor.mjs";
+} from "./public-constructor.ts";
 
 export const REQUIRED_ENTRYPOINTS = [
   "reserve",
@@ -153,8 +154,6 @@ export type AdmissionDecision =
   | { kind: "already-bound"; binding: AdmissionBinding }
   | { kind: "rejected"; reason: string };
 
-const ADDRESS = /^[a-f0-9]{64}$/;
-const HASH = /^[a-f0-9]{64}$/;
 /** Freshness window for deployment observations at write and at bind. */
 export const MAX_OBSERVATION_AGE_MS = 5 * 60_000;
 // ADMISSION.md invariant: a payment observation authorizes admission for one
@@ -228,7 +227,7 @@ function validate(
 ): string | undefined {
   if (!isId(accountId)) return "authenticated buyer is required";
   if (!Number.isSafeInteger(now) || now < 0) return "server clock is invalid";
-  if (!ADDRESS.test(input.address)) return "contract address is malformed";
+  if (!HEX64.test(input.address)) return "contract address is malformed";
   if (!validQuote(quote)) return "frozen quote is invalid";
   if (quote.id !== input.quoteId)
     return "frozen quote identity does not match requested quote";
@@ -348,7 +347,7 @@ function validObserved(o: ObservedDeployment): boolean {
     o.quoteVersion > 0 &&
     isId(o.network) &&
     isId(o.nonce) &&
-    ADDRESS.test(o.address) &&
+    HEX64.test(o.address) &&
     Number.isSafeInteger(o.observedAt) &&
     o.observedAt >= 0 &&
     Number.isSafeInteger(o.blockHeight) &&
@@ -545,7 +544,7 @@ function assertExactInput(input: BindAdmissionInput): void {
     );
 }
 function hash(value: string): boolean {
-  return HASH.test(value);
+  return HEX64.test(value);
 }
 function isId(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;

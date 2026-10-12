@@ -2,7 +2,7 @@ import type { FrozenQuote } from "../src/admission-policy";
 import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,
-} from "../src/public-constructor.mjs";
+} from "../src/public-constructor.ts";
 
 /**
  * Shared preprod quote fixture for the backend admission and monitoring

@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { HEX64 } from "../src/encoding";
 import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,
   reconstructPublicConstructor,
   validPublicConstructor,
-} from "../src/public-constructor.mjs";
+} from "../src/public-constructor.ts";
 
 const inputs = {
   constructorVersion: 1 as const,
@@ -119,14 +120,14 @@ describe("fingerprint parity with the integration observer", () => {
       publicConstructorFingerprints(quote);
     expect(rolesFingerprint).toBe(canonical("roles", roles));
     expect(typeof initialStateFingerprint).toBe("string");
-    expect(initialStateFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(initialStateFingerprint).toMatch(HEX64);
   });
 
   test("both sides use the same tag and JSON array encoding", () => {
     const shape =
       /JSON\.stringify\(\[(?<literal>"milo:[^"]+"|[a-z]+), (?<kind>[a-z]+), (?<value>[a-z]+)\]\)/;
     const backend = readFileSync(
-      new URL("../src/public-constructor.mjs", import.meta.url),
+      new URL("../src/public-constructor.ts", import.meta.url),
       "utf8",
     );
     const observer = readFileSync(

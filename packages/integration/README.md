@@ -13,15 +13,63 @@ Required public settings (no defaults inferred from the node being checked):
 - `MILO_PREPROD_GENESIS_HASH`: independently approved lowercase `0x` + 64-hex hash
 - `MILO_PREPROD_RUNTIME_SPEC_VERSION`: independently approved positive integer
 - `MILO_PREPROD_MODE=observe` (default) or `deployment-preflight`
+- `MILO_PREPROD_BLOCKFROST_PROJECT_ID`: a Blockfrost **Midnight Preprod** project
+  token. Required. It must start with `nightpreprod`; a `nightmainnet` token is
+  rejected by name. The token is appended to every endpoint as the `project_id`
+  query parameter (never a header: the wallet SDK indexer client takes a plain URL
+  and browser WebSockets cannot set headers). It is never printed or written to a
+  receipt.
 
-RPC and GraphQL endpoints are fixed to official Preprod HTTPS services. WS routes
-match testkit 4.1.1's Preprod configuration; WS connectivity is not tested by this
-HTTP check. Unknown `MILO_PREPROD_*` settings and any `MILO_LOCAL_*` settings are
-rejected rather than silently ignored. Run this profile in a separate environment
-from local diagnostics. Chain identity, genesis, finalized block, runtime spec,
-node version and indexer block agreement must match; redirects and indexer lag
-fail closed. The historical public health receipt in `docs/receipts` is reference
-evidence, not automatic approval of a current chain or deployment.
+## Blockfrost Preprod endpoints
+
+The Midnight-hosted Preprod indexer and node RPC (`indexer.preprod.midnight.network`,
+`rpc.preprod.midnight.network`) were decommissioned from 22:00 UTC on 2026-10-09.
+Blockfrost now serves both, and every request needs the project token. The endpoints are
+resolved from the environment at call time, so a missing token fails with a named error
+before any network I/O rather than a `403` deep inside a sync:
+
+| Service | Base (token appended as `?project_id=`) |
+| --- | --- |
+| Indexer (GraphQL) | `https://midnight-preprod.blockfrost.io/api/v0` |
+| Indexer (WebSocket) | `wss://midnight-preprod.blockfrost.io/api/v0/ws` |
+| Node RPC | `https://rpc.midnight-preprod.blockfrost.io` |
+| Node WebSocket | `wss://rpc.midnight-preprod.blockfrost.io` |
+| Proof server | `http://127.0.0.1:6300` (always local, not a Blockfrost service) |
+
+The endpoint BASES are overridable (`MIDNIGHT_PREPROD_INDEXER_HTTP`, `_INDEXER_WS`,
+`_NODE`, `_NODE_WS`, and the `MILO_PREPROD_*` aliases) so an operator can point at a local
+stub; the token is still required and appended to whichever base is in force. Validation is
+fail-closed: the token must be present, start `nightpreprod`, and be well-formed; every URL
+must carry exactly one `project_id` parameter and no credentials or fragment. Blockfrost
+limits are 10 requests/second per IP with a 500-request burst and 50,000 requests/day on the
+free plan.
+
+## Snapshots are not portable across indexers
+
+Saved wallet sync state from the old indexer is **not portable**: Blockfrost numbers ledger
+events and transactions differently (measured on Preprod as -22 ledger events and -30
+transactions), so a snapshot restored against a different indexer wedges the dust sync with
+`values inserted non-linearly into dust generation tree`. The lane records the indexer host
+beside every snapshot (`<runDir>/wallet-state/indexer.json`) and refuses to restore a
+snapshot whose recorded host does not match the indexer in use, or one with no marker at all.
+**The first run after this migration is a full genesis sync** (about 67 minutes measured on
+Blockfrost Preprod). Discard any `wallet-state` written against the Midnight-hosted indexer;
+do not shift cursors by hand.
+
+The `--seed-dust` fast start reads the indexer's collapsed-update fields
+(`dustCommitmentMerkleTreeUpdate`, `dustCommitmentEndIndex`, `dustGenerationEndIndex`), which
+Blockfrost's published v4 schema does not carry. Every seed attempt therefore fails closed
+with a `DustSeedError` and the run continues as an ordinary full genesis sync; no partial or
+unverified dust snapshot is ever written.
+
+RPC and GraphQL endpoints are the Blockfrost Preprod services. WS routes use
+`graphql-transport-ws`; WS connectivity is not tested by this HTTP check. Unknown
+`MILO_PREPROD_*` settings and any `MILO_LOCAL_*` settings are rejected rather than silently
+ignored. Run this profile in a separate environment from local diagnostics. Chain identity,
+genesis, finalized block, runtime spec, node version and indexer block agreement must match;
+redirects and indexer lag fail closed. The historical public health receipt in
+`docs/receipts` is reference evidence, not automatic approval of a current chain or
+deployment.
 
 Deployment **preflight**, not deployment execution, additionally requires:
 
@@ -43,8 +91,9 @@ Do not pass this output to trusted order-admission storage as contract evidence.
 The [official compatibility matrix](https://docs.midnight.network/relnotes/support-matrix.md)
 (checked 11 September 2026, **Preprod** table) specifies wallet SDK 1.2.0,
 Midnight.js/testkit 4.1.1, node 1.0.2, indexer 4.3.3-hotfix and proof server 8.1.0.
-The [endpoint table](https://docs.midnight.network/relnotes/network.md) supplies
-the fixed HTTP routes. This patch reconciles the installable wallet SDK and tests
+The [endpoint table](https://docs.midnight.network/guides/networks-and-environments)
+supplies the Blockfrost Preprod routes (the Midnight-hosted hosts were decommissioned
+from 22:00 UTC on 2026-10-09). This patch reconciles the installable wallet SDK and tests
 real exports, preprod codec round-trip/cross-network rejection, and shared ledger
 identity. Testkit 4.1.1 retains its own wallet SDK 1.1.0 barrel; no transitive
 override forces it onto 1.2.0. The compatibility test checks that both installed
