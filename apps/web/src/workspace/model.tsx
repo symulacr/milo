@@ -133,6 +133,9 @@ export function useModel() {
   const navigate = useNavigate();
   const location = useLocation();
   const mainHeading = useRef<HTMLHeadingElement>(null);
+  // Distinguishes the first mount from a later route change, so the heading is focused
+  // only when the user navigated (see the title effect below).
+  const headingMounted = useRef(false);
   const modalOrigin = useRef<HTMLElement | null>(null);
   function setModal(value: WorkspaceModal) {
     if (value && !modal && document.activeElement instanceof HTMLElement) {
@@ -229,6 +232,13 @@ export function useModel() {
   useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
     document.title = routeTitle(location.pathname);
+    // Focus the heading on NAVIGATION, not on first load: focusing it on mount moved
+    // the sequential-focus start past the skip link that WorkspaceShell renders first
+    // in the DOM, so the link was no longer the first tab stop (WCAG 2.2 SC 2.4.1).
+    if (!headingMounted.current) {
+      headingMounted.current = true;
+      return;
+    }
     mainHeading.current?.focus();
   }, [location.pathname]);
 

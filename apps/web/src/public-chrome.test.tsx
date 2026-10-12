@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { demoContexts } from "./demo-fixtures";
 import { REVIEW_DEADLINE } from "./reviewDeadline";
 import { DemoPage } from "./routes/DemoPage";
+import { InfoPage } from "./routes/InfoPage";
 import { PublicShell } from "./shells/PublicShell";
 
 declare global {
@@ -141,6 +142,60 @@ describe("public skip link is the first focusable element", () => {
     window.close();
   });
 
+  test("a cold load on an info route does not move focus past the skip link", async () => {
+    // PublicPageTitle used to focus its heading on mount, which moved the sequential
+    // focus start past the skip link PublicShell renders first in the DOM (WCAG 2.2
+    // SC 2.4.1 Bypass Blocks). It now focuses only on navigation.
+    const window = new Window({ url: "http://localhost/privacy" });
+    // @ts-expect-error happy-dom window as global
+    globalThis.window = window;
+    for (const key of [
+      "document",
+      "HTMLElement",
+      "HTMLAnchorElement",
+      "Element",
+      "Node",
+      "navigator",
+      "location",
+      "history",
+      "MutationObserver",
+      "getComputedStyle",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+      "AbortController",
+      "Blob",
+      "URL",
+      "CustomEvent",
+      "KeyboardEvent",
+      "PointerEvent",
+      "MouseEvent",
+      "Event",
+    ]) {
+      // @ts-expect-error wiring happy-dom globals
+      globalThis[key] = window[key] ?? globalThis[key];
+    }
+    const document = window.document;
+    const container = document.createElement("div");
+    document.body.appendChild(container as never);
+    const root = createRoot(container as unknown as HTMLElement);
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={["/privacy"]}>
+          <Routes>
+            <Route element={<PublicShell />}>
+              <Route path="/privacy" element={<InfoPage kind="privacy" />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+    });
+    const active = document.activeElement;
+    expect(active?.tagName ?? "BODY").toBe("BODY");
+    const html = document.body.innerHTML;
+    expect(html.indexOf("skip-link")).toBeLessThan(html.indexOf("<h1"));
+    await act(async () => root.unmount());
+    window.close();
+  });
   test("a cold load does not move focus into the demo content", async () => {
     const { window, root } = await mountDemoAt("/demo");
     // On a cold load nothing is focused, so the first Tab starts at the top of
