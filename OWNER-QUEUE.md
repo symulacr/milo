@@ -16,11 +16,24 @@
 | F-22 | escalateUnreviewed empty evidence | protected contract | document / owner change | contract | yes for that row |
 | F-24 | never-read digests | privacy product | document residual | copy | no |
 | M8 | Lace gap acceptance | product | accept gap / require Lace | MVP | no |
-| O-PRIVY-SDK | replace @privy-io/react-auth with Better Auth | changes the LIVE Convex auth provider; signs out every existing user | A authorize the deploy / B accept the duplication | 82 duplicate copies, 369 MB -> 103 MB | no (row recorded as an accepted limitation) |
+| O-PRIVY-SDK | deploy the Better Auth provider | changes the LIVE Convex auth provider; signs out every existing user | authorize the deploy / leave as-is | code swap DONE (bd76db6); deployment pending | no - repository is complete |
 
 ## O-PRIVY-SDK — detail
 
-Recorded as an accepted limitation on 2026-10-12. The replacement is authorized in principle
+**DELIVERED in code on 2026-10-12** (`bd76db6`). The SDK is gone: `bun.lock` fell from 1,797
+lines to 392 with **zero** references to viem, `@walletconnect`, `@reown`, wagmi, `@privy-io`,
+`@coinbase/wallet-sdk`, `@metamask` or `@base-org`, and a clean reinstall took `node_modules`
+from **1,165 MB to 344 MB** (-821 MB, -70%) with the EVM stack absent from disk. All gates stayed
+green through it. The route taken was Convex's generic `customJwt` rather than the Better Auth
+Convex component, so there is no component to register and no codegen run.
+
+**One step remains, and it is a deployment, not a change to this repository**: set
+`BETTER_AUTH_URL` on the Convex deployment and deploy the changed `convex/auth.config.ts`.
+Until that happens the live deployment still validates the previous provider, so sign-in will
+not work even though the code is conformant. Also worth knowing: `bun install` does not prune
+extraneous packages, so without a clean reinstall the retired files stay on disk unreferenced.
+
+Earlier note, retained for the record: The replacement is authorized in principle
 and priced, but it cannot be completed without changing the live Convex deployment, and that
 was not authorized. So the duplication stands, and the row is closed on this basis.
 
