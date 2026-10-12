@@ -16,3 +16,26 @@
 | F-22 | escalateUnreviewed empty evidence | protected contract | document / owner change | contract | yes for that row |
 | F-24 | never-read digests | privacy product | document residual | copy | no |
 | M8 | Lace gap acceptance | product | accept gap / require Lace | MVP | no |
+| O-PRIVY-SDK | replace @privy-io/react-auth with Better Auth | changes the LIVE Convex auth provider; signs out every existing user | A authorize the deploy / B accept the duplication | 82 duplicate copies, 369 MB -> 103 MB | no (row recorded as an accepted limitation) |
+
+## O-PRIVY-SDK — detail
+
+Recorded as an accepted limitation on 2026-10-12. The replacement is authorized in principle
+and priced, but it cannot be completed without changing the live Convex deployment, and that
+was not authorized. So the duplication stands, and the row is closed on this basis.
+
+- **Priced**: Better Auth + the official `@convex-dev/better-auth` component installs as 36
+  packages / 6,773 files / 103 MB, against the 68,200 files / 369 MB it would remove.
+- **Prepared**: commit `7d5dd3a` made the backend identity gate provider-neutral, so the swap
+  is now one provider binding plus two frontend files rather than a 15-site rewrite. The
+  prototype and its 36 tests are in `hardening/v8/auth-swap/`, and the measured surface is 15
+  call sites across 9 modules (an earlier note said 25; that counted imports and the definition).
+- **Why it is owner-only**: Better Auth reaches Convex as a component and must be registered in
+  a `convex/convex.config.ts` that does not exist; the generated API still declares
+  `components: {}`. Registering it needs Convex codegen, which is not offline — even under
+  `--dry-run` it prints "Downloading current deployment state..." and "Uploading functions to
+  Convex...". With a deploy key present, completing the swap changes the live auth provider.
+- **Already recovered without it**: the runtime cost was removed in `f869a7c` — eager workspace
+  JS fell from 5,490,710 B to 477,994 B (-91.3%) by enabling `splitting` and making
+  `RecoveryKitPanel` lazy, so the EVM subtree no longer loads on first paint.
+- Details and the three traps found while attempting it: `audit/discovery/U1-dependency-research.md`.
