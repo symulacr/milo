@@ -35,6 +35,16 @@ was not authorized. So the duplication stands, and the row is closed on this bas
   `components: {}`. Registering it needs Convex codegen, which is not offline — even under
   `--dry-run` it prints "Downloading current deployment state..." and "Uploading functions to
   Convex...". With a deploy key present, completing the swap changes the live auth provider.
+- **Two routes, and the cheaper one was found later**: the component route runs Better Auth
+  *inside* Convex (no new service to operate) but needs component registration plus codegen.
+  The other route leaves Better Auth as a normal service and points Convex at its JWTs through
+  Convex's generic `customJwt` provider — the exact same shape `convex/auth.config.ts` already
+  uses for Privy (`issuer`, `applicationID`, `algorithm`, `jwks`), with Better Auth's JWT plugin
+  serving JWKS at `/api/auth/jwks`. That route needs **no component, no codegen and no
+  component push**: one `auth.config.ts` change and one env value, plus somewhere to run the
+  auth service. Either way the deployment must be updated — no replacement provider can be
+  reached without one — but the second is a materially smaller ask, and it is the route to
+  prefer if the goal is to retire `@privy-io/react-auth` with the least deployment surgery.
 - **Already recovered without it**: the runtime cost was removed in `f869a7c` — eager workspace
   JS fell from 5,490,710 B to 477,994 B (-91.3%) by enabling `splitting` and making
   `RecoveryKitPanel` lazy, so the EVM subtree no longer loads on first paint.
