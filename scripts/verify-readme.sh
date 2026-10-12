@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 # J3 flake: bun must be on PATH even when the caller has a bare PATH
-export PATH="${HOME}/.bun/bin:/home/eya/milo/milo-main/.tools/node-runtime/node-v24.20.0-linux-x64/bin:${PATH}"
+export PATH="${HOME}/.bun/bin:${ROOT}/.tools/node-runtime/node-v24.20.0-linux-x64/bin:${PATH}"
 python3 - <<'PY'
 import re, subprocess, sys, os
 from pathlib import Path

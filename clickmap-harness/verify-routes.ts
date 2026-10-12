@@ -27,8 +27,8 @@ const REPO = resolve(HERE, "..");
 
 const DEFAULT_CANDIDATES = [
   join(REPO, "CLICK-MAP.md"),
-  "/home/eya/milo/milo-main/CLICK-MAP.md",
-  "/home/eya/milo/audit/discovery/CLICK-MAP.md",
+  // The corpus sometimes lives beside the repository rather than inside it.
+  resolve(REPO, "..", "audit", "discovery", "CLICK-MAP.md"),
 ];
 
 export type ClickMapRow = {
