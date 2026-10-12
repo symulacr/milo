@@ -88,11 +88,11 @@ export const infoContent: Record<
   "sign-in": {
     title: "Sign in",
     intro:
-      "Sign in with your email to reach an authorized quote or order. In this prototype the live Privy sign-in is wired as a bounded diagnostic under Connections; the sample workspace never requires an email, OTP, wallet seed or card details.",
+      "Sign in with your email to reach an authorized quote or order. In this prototype the live sign-in is wired as a bounded diagnostic under Connections; the sample workspace never requires an email, OTP, wallet seed or card details.",
     items: [
       [
         "One sign-in, no extra accounts",
-        "Privy handles the email challenge. A verified session permits only authorized app access — independent order capabilities still control protocol actions, and there is no separate wallet login or second account.",
+        "The auth service handles the email challenge. A verified session permits only authorized app access — independent order capabilities still control protocol actions, and there is no separate wallet login or second account.",
       ],
       [
         "Explore with a sample identity",

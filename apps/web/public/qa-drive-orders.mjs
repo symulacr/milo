@@ -17,7 +17,7 @@ const body = await page.locator("body").innerText();
 fs.writeFileSync("/tmp/milo-qa/orders-no-privy.txt", body);
 console.log(body.slice(0, 2000));
 const has =
-  body.includes("Privy is not configured") &&
+  body.includes("Sign-in is not configured") &&
   body.includes("Order console") &&
   body.includes("Unavailable");
 console.log("CHECK", has ? "PASS" : "FAIL");

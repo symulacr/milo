@@ -1,11 +1,12 @@
 /**
  * Browser QA harness for RecoveryKitPanel / BuyerReserveSection fail-closed UI.
  * Mounts the REAL product components with a Privy stub and a switchable
- * window.midnight Lace mock. Not part of the product entry graph.
+ * window.midnight Lace mock and a QA auth stub. Not part of the product entry graph.
  */
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { RecoveryKit } from "../../../packages/domain/src/recovery-kit";
+import { authClientFor } from "./auth-client";
 import {
   beginReserveOperation,
   confirmObservedReserve,
@@ -147,8 +148,8 @@ function Shell() {
     >
       <h1>QA · RecoveryKitPanel fail-closed browser proof</h1>
       <p data-testid="qa-banner">
-        Real RecoveryKitPanel + BuyerReserveSection with Privy stub and Lace
-        mock. No signature is requested. No reserve is claimed complete.
+        Real RecoveryKitPanel + BuyerReserveSection with the QA auth stub and
+        Lace mock. No signature is requested. No reserve is claimed complete.
       </p>
       <section
         style={{
@@ -269,6 +270,13 @@ function Shell() {
     </div>
   );
 }
+
+// RecoveryKitPanel reads identity through useMiloAuth(), which throws until a client exists.
+// The harness renders the panel outside SessionConnection, so it initialises one here.
+authClientFor(
+  (globalThis as { __QA_AUTH_URL__?: string }).__QA_AUTH_URL__ ??
+    "http://127.0.0.1:3999",
+);
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root");

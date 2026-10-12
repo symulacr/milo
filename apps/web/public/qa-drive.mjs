@@ -56,15 +56,15 @@ console.log(bodyText.slice(0, 3000));
 
 rec(
   "http://127.0.0.1:3000/orders",
-  "LOAD /orders (PRIVY_APP_ID+CONVEX_URL set, not signed in)",
+  "LOAD /orders (BETTER_AUTH_URL+CONVEX_URL set, not signed in)",
   bodyText.includes("Order console")
     ? "Order console heading present"
     : "Order console MISSING",
-  bodyText.includes("Privy is not configured")
+  bodyText.includes("Sign-in is not configured")
     ? "privy-unconfigured"
     : bodyText.includes("Sign in above to bind")
       ? "recovery-unauthenticated"
-      : bodyText.includes("Initializing Privy") ||
+      : bodyText.includes("Initializing sign-in") ||
           bodyText.includes("Not signed in")
         ? "privy-ready-unauthenticated"
         : "other",
