@@ -16,7 +16,7 @@ import {
   internalMutationGeneric,
   queryGeneric,
 } from "convex/server";
-import { type Infer, v } from "convex/values";
+import { v } from "convex/values";
 import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
@@ -44,7 +44,6 @@ export const recordObservationArgs = v.object({
   revision: v.number(),
   deliveryManifest: v.optional(v.union(v.string(), v.null())),
 });
-export type RecordObservationInput = Infer<typeof recordObservationArgs>;
 
 const observationBinding = v.union(
   v.object({

@@ -21,7 +21,7 @@
  */
 
 import { internalMutationGeneric } from "convex/server";
-import { type Infer, v } from "convex/values";
+import { v } from "convex/values";
 import {
   decideObservationBinding,
   MAX_FUTURE_SKEW_MS,
@@ -33,7 +33,6 @@ import {
 import { deploymentObservationFields } from "./admissionValidators";
 
 const recordDeploymentArgs = v.object(deploymentObservationFields);
-export type RecordDeploymentInput = Infer<typeof recordDeploymentArgs>;
 
 export type RecordDeploymentResult =
   | { kind: "recorded"; observationId: string }
