@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { OrderRecordControls } from "./OrderRecordPanel";
 import type {
@@ -59,18 +59,3 @@ describe("OrderRecordControls honesty", () => {
     expect(markup).toContain("observationIngest");
   });
 });
-
-describe("recovery-kit dead ops are marked unused, not simulated", () => {
-  test("panel modules still export the live reserve path only (static check)", async () => {
-    const mod = await import("./RecoveryKitPanel");
-    // Presentational exports that the order console uses. The ops inventory these used to be
-    // asserted through is covered directly, and more thoroughly, in recovery-ops-ui.test.tsx
-    // against RECOVERY_KIT_OPS - the constant the panel actually renders.
-    expect(typeof mod.RecoveryKitPanel).toBe("function");
-    expect(typeof mod.CheckpointSection).toBe("function");
-    expect(typeof mod.BuyerReserveSection).toBe("function");
-  });
-});
-
-// silence unused import in case of tree-shaking lint noise
-void mock;

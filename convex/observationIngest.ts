@@ -48,40 +48,12 @@ function contradictory(reason: string): never {
   throw new Error(`contradictory deployment observation: ${reason}`);
 }
 
-export interface StoredDeploymentRecord {
-  id: string;
-  quoteId: string;
-  quoteVersion: number;
-  constructorVersion: 1;
-  constructorEncoding: string;
-  buyerCommitment: string;
-  merchantCommitment: string;
-  operatorCommitment: string;
-  observationVersion: 2;
-  source: "chain-observer";
-  network: string;
-  nonce: string;
-  address: string;
-  phase: "DEPLOYED";
-  revision: 0;
-  termsCommitment: string;
-  artifactFingerprint: string;
-  keySetFingerprint: string;
-  rolesFingerprint: string;
-  initialStateFingerprint: string;
-  genesisHash: string;
-  entrypoints: readonly string[];
-  maintenancePolicy: "locked";
-  maintenanceReceiptFingerprint: string;
-  blockHash: string;
-  blockHeight: number;
-  stateFingerprint: string;
-  observedAt: number;
-  acceptanceDeadlineSeconds: number;
-  deliveryDeadlineSeconds: number;
-  reviewDeadlineSeconds: number;
-  resolutionDeadlineSeconds: number;
-}
+/**
+ * The persisted deployment observation. One definition per concept: this carries exactly
+ * the same field set as the admission policy's ObservedDeployment (32 fields, verified
+ * equal), so it is an alias rather than a restatement that can silently drift from it.
+ */
+export type StoredDeploymentRecord = ObservedDeployment;
 
 export interface DeploymentObservationDb {
   byId(
