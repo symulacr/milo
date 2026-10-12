@@ -107,6 +107,7 @@ import {
 } from "./dust-seed.mjs";
 import { installFeeMath } from "./fee-math.mjs";
 import { createHttpSubmitter } from "./http-submit.mjs";
+import { installLogRedaction } from "./log-redaction.mjs";
 import { miloOrder, run } from "./preprod-actions.mjs";
 import {
   inspectSdkVersions,
@@ -117,6 +118,11 @@ import {
   walletStateDir,
   writeIndexerMarker,
 } from "./wallet-state-verify.mjs";
+
+// Installed before any SDK loads, because the Midnight SDK's RPC logger prints request URLs
+// and the Blockfrost token lives in them. Redacting at the call sites we own cannot cover a
+// dependency's own logger, so the token is stripped at the process boundary instead.
+installLogRedaction(process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID);
 
 const PREPROD = Object.freeze({
   networkId: "preprod",
