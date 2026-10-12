@@ -43,6 +43,10 @@ const result = await Bun.build({
   publicPath: "/",
   minify: true,
   define: { "process.env.NODE_ENV": '"production"' },
+  // Emit lazy chunks. Without this, every module reachable from app.html - including the
+  // whole EVM wallet connector stack that @privy-io/react-auth pulls in statically - lands
+  // in one 5.4 MiB file the browser must fetch before the workspace renders.
+  splitting: true,
   naming: {
     entry: "[dir]/[name].[ext]",
     chunk: "[name]-[hash].[ext]",

@@ -2,9 +2,16 @@ import { lazy, Suspense } from "react";
 import { Link } from "react-router";
 import { LaceStatus, PublicConfigGate } from "../Connections";
 import { PageTitle, Panel } from "../components/ui";
-import { RecoveryKitPanel } from "../RecoveryKitPanel";
 
+// Both privy-dependent panels load on demand. RecoveryKitPanel must stay a lazy import:
+// it reads usePrivy, so importing it statically pulls @privy-io/react-auth - and with it
+// the whole EVM wallet connector stack - into the initial workspace chunk.
 const PrivyConnection = lazy(() => import("../PrivyConnection"));
+const RecoveryKitPanel = lazy(() =>
+  import("../RecoveryKitPanel").then((mod) => ({
+    default: mod.RecoveryKitPanel,
+  })),
+);
 
 /**
  * The real order console. Every fact it shows comes from a source that exists
