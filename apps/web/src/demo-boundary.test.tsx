@@ -86,7 +86,7 @@ describe("public entry import boundary (01 §7.4)", () => {
       "main.tsx",
       "WorkspaceShell.tsx",
       "Connections.tsx",
-      "PrivyConnection.tsx",
+      "SessionConnection.tsx",
       "model.tsx",
     ]) {
       expect(names).not.toContain(unexpected);

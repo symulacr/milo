@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   abandonOperation,
@@ -25,20 +24,16 @@ function checkpointedKit(): RecoveryKit {
   return checkpointAddress(verifiedKit(), "0xdeployed");
 }
 
-type PrivyAuthState = {
-  authenticated: boolean;
-  user: { id: string } | undefined;
-};
-let privyState: PrivyAuthState = {
+import { type QaSessionState, qaAuthClient } from "./qa-auth-mock";
+
+let sessionState: QaSessionState = {
   authenticated: true,
   user: { id: "did:privy:buyer" },
 };
 
 beforeAll(() => {
-  mock.module("@privy-io/react-auth", () => ({
-    usePrivy: () => privyState,
-    useLogin: () => ({ login: () => {} }),
-    PrivyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  mock.module("./auth-client", () => ({
+    useMiloAuth: () => qaAuthClient(sessionState),
   }));
 });
 
@@ -89,7 +84,7 @@ describe("M6: seven recovery-kit ops are wired or justified", () => {
 
   test("panel markup presents the inventory and never silently drops an op", async () => {
     const { RecoveryKitPanel } = await import("./RecoveryKitPanel");
-    privyState = { authenticated: true, user: { id: "did:privy:buyer" } };
+    sessionState = { authenticated: true, user: { id: "did:privy:buyer" } };
     const markup = renderToStaticMarkup(<RecoveryKitPanel />);
     for (const op of SEVEN) {
       expect(markup).toContain(op);
@@ -102,7 +97,7 @@ describe("M6: no-usable-order property holds through the UI", () => {
     const { RecoveryKitPanel, BuyerReserveSection } = await import(
       "./RecoveryKitPanel"
     );
-    privyState = { authenticated: true, user: { id: "did:privy:buyer" } };
+    sessionState = { authenticated: true, user: { id: "did:privy:buyer" } };
 
     const states: Array<{ label: string; kit: RecoveryKit | null }> = [
       { label: "missing", kit: null },

@@ -468,7 +468,7 @@ describe("internal trusted provisioning", () => {
           value: { ...membership.value, privySubject: "unverified" },
         }),
       ),
-    ).rejects.toThrow("Privy subject");
+    ).rejects.toThrow("Subject required");
     await expect(
       insert(
         ctx,

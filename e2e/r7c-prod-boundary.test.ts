@@ -233,11 +233,16 @@ describe("R7C mint — ES256 JWT under the gate", () => {
 });
 
 describe("R7C production config boundary", () => {
-  test("convex/auth.config.ts exists and is Privy-only without the gate", () => {
+  test("convex/auth.config.ts validates the configured provider only", () => {
     const source = readIfExists(AUTH_CONFIG);
     expect(source).not.toBeNull();
-    expect(source).toContain("privy.io");
-    expect(source).toContain("api.privy.io");
+    // The provider is configuration now, not a vendor literal: the issuer comes from
+    // BETTER_AUTH_URL and must be present, so an unconfigured deployment fails closed.
+    expect(source).toContain("BETTER_AUTH_URL");
+    expect(source).toContain("customJwt");
+    // RS256 is what the Better Auth jwks plugin is configured to emit; the plugin default
+    // (EdDSA) is not a Convex-supported algorithm.
+    expect(source).toContain("RS256");
     // Production path must not reference the test issuer gate or local JWKS.
     expect(source).not.toContain("MILO_TEST_ISSUER");
     expect(source).not.toContain("milo-local-test");
@@ -253,13 +258,14 @@ describe("R7C production config boundary", () => {
     expect(PROPOSED_AUTH_CONFIG_SNIPPET).toContain("coordinator");
   });
 
-  test("requireSessionSubject identity contract is documented by the issuer", () => {
-    // session-identity.ts still requires iss=privy.io + did:privy: sub.
-    const privyIdentity = readIfExists(
+  test("the identity gate takes its issuer from configuration", () => {
+    // The gate must read the issuer rather than hard-code a vendor, so the provider can be
+    // swapped without touching a call site.
+    const identity = readIfExists(
       join(REPO, "packages", "backend", "src", "session-identity.ts"),
     );
-    expect(privyIdentity).toContain('issuer !== "privy.io"');
-    expect(privyIdentity).toContain("did:privy:");
+    expect(identity).toContain("BETTER_AUTH_URL");
+    expect(identity).toContain("requireSessionSubject");
   });
 });
 

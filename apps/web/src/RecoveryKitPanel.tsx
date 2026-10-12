@@ -1,4 +1,3 @@
-import { usePrivy } from "@privy-io/react-auth";
 import { useEffect, useMemo, useState } from "react";
 import {
   createKit,
@@ -11,6 +10,7 @@ import {
   LaceWalletConnector,
   type WalletConnectionState,
 } from "../../../packages/midnight-client/src";
+import { useMiloAuth } from "./auth-client";
 import {
   applyCheckpoint,
   assessCheckpoint,
@@ -135,7 +135,9 @@ function contextStatus(kit: RecoveryKit | null): string {
 }
 
 export function RecoveryKitPanel() {
-  const { authenticated, user } = usePrivy();
+  const { data: session } = useMiloAuth().useSession();
+  const authenticated = Boolean(session?.user);
+  const user = session?.user;
   const actorId = user?.id;
   const [nonce, setNonce] = useState("");
   const [kit, setKit] = useState<RecoveryKit | null>(null);

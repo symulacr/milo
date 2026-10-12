@@ -198,13 +198,13 @@ describe("runtime public configuration", () => {
       await loadPublicConfig(
         undefined,
         request({
-          privyAppId: null,
+          betterAuthUrl: null,
           convexUrl: null,
           midnightNetwork: "preprod",
         }),
       ),
     ).toEqual({
-      privyAppId: null,
+      betterAuthUrl: null,
       convexUrl: null,
       midnightNetwork: "preprod",
     });
@@ -214,7 +214,7 @@ describe("runtime public configuration", () => {
           undefined,
           request({ midnightNetwork: "preprod" }),
         )
-      ).privyAppId,
+      ).betterAuthUrl,
     ).toBeUndefined();
   });
   test("only approved public fields are accepted", async () => {

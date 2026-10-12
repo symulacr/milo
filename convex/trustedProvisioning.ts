@@ -124,8 +124,12 @@ export const provision = internalMutationGeneric({
       | GenericId<"approvedQuotes">
       | GenericId<"stripeCustomers">;
     if (input.kind === "membership") {
-      if (!/^did:privy:[a-zA-Z0-9_-]+$/.test(input.value.privySubject))
-        throw new Error("Privy subject required");
+      if (
+        !/^(?:[A-Za-z0-9_-]{16,}|did:privy:[a-zA-Z0-9_-]+)$/.test(
+          input.value.privySubject,
+        )
+      )
+        throw new Error("Subject required");
       const row = await ctx.db
         .query("memberships")
         .withIndex("by_subject_scope", (q) =>

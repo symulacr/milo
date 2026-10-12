@@ -18,7 +18,7 @@ import {
   type PublicConfig,
 } from "./connection-runtime";
 
-const PrivyConnection = lazy(() => import("./PrivyConnection"));
+const SessionConnection = lazy(() => import("./SessionConnection"));
 
 class IdentityBoundary extends Component<
   { children: ReactNode },
@@ -31,8 +31,8 @@ class IdentityBoundary extends Component<
   render() {
     return this.state.failed ? (
       <p role="alert">
-        Privy could not initialize. Check configuration and network access, then
-        reload this page.
+        Sign-in could not initialize. Check configuration and network access,
+        then reload this page.
       </p>
     ) : (
       this.props.children
@@ -175,20 +175,20 @@ export function Connections({
               aria-labelledby="identity-title"
             >
               <h2 id="identity-title">Email identity</h2>
-              {config.privyAppId ? (
+              {config.betterAuthUrl ? (
                 <IdentityBoundary>
-                  <Suspense fallback={<p role="status">Loading Privy…</p>}>
-                    <PrivyConnection
-                      appId={config.privyAppId}
+                  <Suspense fallback={<p role="status">Loading sign-in…</p>}>
+                    <SessionConnection
+                      authUrl={config.betterAuthUrl}
                       convexUrl={config.convexUrl}
                     />
                   </Suspense>
                 </IdentityBoundary>
               ) : (
                 <p role="status">
-                  Privy is not configured. The operator must set PRIVY_APP_ID
-                  and allow this origin in the Privy dashboard before email
-                  sign-in is available.
+                  Sign-in is not configured. The operator must set
+                  BETTER_AUTH_URL and allow this origin at the auth service
+                  before email sign-in is available.
                 </p>
               )}
             </section>
@@ -206,9 +206,9 @@ export function Connections({
               <h2 id="records-title">Application records</h2>
               <p>
                 {config.convexUrl
-                  ? config.privyAppId
+                  ? config.betterAuthUrl
                     ? "After backend identity verification, the order console loads the chain-backed order record (phase + checkpoint address) from the Convex projection written by the A1 ingest path, and can observe a real quote’s payment monitoring below. No order is created or modified by these controls. No phase label is shown without a backing order record."
-                    : "Convex is configured, but Privy is missing. Backend session verification is unavailable."
+                    : "Convex is configured, but the auth service is missing. Backend session verification is unavailable."
                   : "Convex is not configured. No authenticated application records are connected. No phase label is shown without a backing order record."}
               </p>
               <p>

@@ -423,7 +423,7 @@ describe("M7 auth inventory — HTTP routes", () => {
       "../src/public-config"
     );
     const config = publicConfig({
-      PRIVY_APP_ID: "app",
+      BETTER_AUTH_URL: "https://auth.example.com",
       PRIVY_APP_SECRET: "super-secret",
       STRIPE_SECRET_KEY: "sk_test_secret",
     });

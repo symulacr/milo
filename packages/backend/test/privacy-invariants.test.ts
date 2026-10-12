@@ -165,7 +165,7 @@ describe("M9.2 no PII/secrets in logs or public projections", () => {
     const res = publicConfigResponse(
       new Request("https://milo.example/api/public-config"),
       {
-        privyAppId: "app",
+        betterAuthUrl: "https://auth.example.com",
         convexUrl: "https://x.convex.cloud",
         midnightNetwork: "preprod",
         privyAppSecret: "PRIVY_SECRET",

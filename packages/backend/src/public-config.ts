@@ -6,9 +6,9 @@ import { z } from "zod";
 // fetch therefore share one definition of the trust boundary.
 export const publicConfigSchema = z
   .object({
-    privyAppId: z
-      .string()
-      .regex(/^[a-zA-Z0-9_-]{1,128}$/)
+    betterAuthUrl: z
+      .url()
+      .refine((value: string) => /^https?:$/.test(new URL(value).protocol))
       .nullish(),
     convexUrl: z
       .url()
@@ -38,7 +38,7 @@ export function publicConfig(
   }
   // Empty strings mean unset, as the previous hand-written checks did.
   return publicConfigSchema.parse({
-    privyAppId: env.PRIVY_APP_ID || null,
+    betterAuthUrl: env.BETTER_AUTH_URL || null,
     convexUrl: env.CONVEX_URL || null,
     midnightNetwork: "preprod",
   });
@@ -61,7 +61,7 @@ export function publicConfigResponse(
   // Select fields again so even an extended server object cannot expose secrets.
   return Response.json(
     {
-      privyAppId: config.privyAppId,
+      betterAuthUrl: config.betterAuthUrl,
       convexUrl: config.convexUrl,
       midnightNetwork: config.midnightNetwork,
     },

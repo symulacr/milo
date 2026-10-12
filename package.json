@@ -23,11 +23,12 @@
     "test:native-node": "sh scripts/with-bun.sh scripts/test-native-network.ts"
   },
   "dependencies": {
+    "@convex-dev/better-auth": "0.12.5",
     "@midnight-ntwrk/compact-runtime": "0.16.0",
     "@midnight-ntwrk/dapp-connector-api": "4.0.1",
     "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
     "@noble/hashes": "1.8.0",
-    "@privy-io/react-auth": "3.40.0",
+    "better-auth": "1.6",
     "convex": "1.46.0",
     "radix-ui": "1.6.7",
     "react": "19.3.0",

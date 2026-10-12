@@ -1,26 +1,5 @@
-import { describe, expect, mock, test } from "bun:test";
-import {
-  backendSessionStatus,
-  fetchPrivyAccessToken,
-} from "./convex-session-runtime";
-
-describe("Privy token adapter", () => {
-  test("calls the SDK on each request without caching or invented refresh arguments", async () => {
-    const getAccessToken = mock(async () => "test-token");
-    expect(await fetchPrivyAccessToken(getAccessToken)).toBe("test-token");
-    await fetchPrivyAccessToken(getAccessToken);
-    expect(getAccessToken).toHaveBeenCalledTimes(2);
-    expect(getAccessToken).toHaveBeenCalledWith();
-  });
-  test("missing tokens and provider failures fail closed", async () => {
-    expect(await fetchPrivyAccessToken(async () => null)).toBeNull();
-    expect(
-      await fetchPrivyAccessToken(async () => {
-        throw new Error("private provider detail");
-      }),
-    ).toBeNull();
-  });
-});
+import { describe, expect, test } from "bun:test";
+import { backendSessionStatus } from "./convex-session-runtime";
 
 describe("backend verification presentation", () => {
   const result = { subject: "did:privy:synthetic-user" };

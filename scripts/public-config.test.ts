@@ -7,13 +7,13 @@ import {
 describe("browser public configuration", () => {
   test("allowlists public fields, never provider secrets", async () => {
     const config = publicConfig({
-      PRIVY_APP_ID: "test-public-app",
+      BETTER_AUTH_URL: "https://auth.example.com",
       CONVEX_URL: "https://example.convex.cloud",
       PRIVY_APP_SECRET: "fixture-private-value",
       STRIPE_SECRET_KEY: "fixture-stripe-value",
     });
     expect(config).toEqual({
-      privyAppId: "test-public-app",
+      betterAuthUrl: "https://auth.example.com",
       convexUrl: "https://example.convex.cloud",
       midnightNetwork: "preprod",
     });
@@ -29,7 +29,7 @@ describe("browser public configuration", () => {
   });
   test("missing configuration stays missing", () => {
     expect(publicConfig({})).toEqual({
-      privyAppId: null,
+      betterAuthUrl: null,
       convexUrl: null,
       midnightNetwork: "preprod",
     });
@@ -58,8 +58,8 @@ describe("browser public configuration", () => {
 });
 
 test("empty-string settings mean unset, as before the shared schema", () => {
-  expect(publicConfig({ PRIVY_APP_ID: "", CONVEX_URL: "" })).toEqual({
-    privyAppId: null,
+  expect(publicConfig({ BETTER_AUTH_URL: "", CONVEX_URL: "" })).toEqual({
+    betterAuthUrl: null,
     convexUrl: null,
     midnightNetwork: "preprod",
   });

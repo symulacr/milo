@@ -1,6 +1,5 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   checkpointAddress,
@@ -33,18 +32,13 @@ async function loadSections() {
   };
 }
 
-type PrivyAuthState = {
-  authenticated: boolean;
-  user: { id: string } | undefined;
-};
+import { type QaSessionState, qaAuthClient } from "./qa-auth-mock";
 
-let privyState: PrivyAuthState = { authenticated: false, user: undefined };
+let sessionState: QaSessionState = { authenticated: false, user: undefined };
 
 beforeAll(() => {
-  mock.module("@privy-io/react-auth", () => ({
-    usePrivy: () => privyState,
-    useLogin: () => ({ login: () => {} }),
-    PrivyProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  mock.module("./auth-client", () => ({
+    useMiloAuth: () => qaAuthClient(sessionState),
   }));
 });
 
@@ -150,7 +144,7 @@ describe("BuyerReserveSection blocked states", () => {
 
 describe("RecoveryKitPanel honesty under mocked Privy", () => {
   test("unauthenticated panel does not offer reserve or checkpoint", async () => {
-    privyState = { authenticated: false, user: undefined };
+    sessionState = { authenticated: false, user: undefined };
     const { RecoveryKitPanel } = await loadSections();
     const markup = renderToStaticMarkup(<RecoveryKitPanel />);
     expect(markup).toContain("Sign in above to bind the order actor");
@@ -160,7 +154,7 @@ describe("RecoveryKitPanel honesty under mocked Privy", () => {
   });
 
   test("authenticated panel surfaces blocked reserve copy and honest lifecycle", async () => {
-    privyState = { authenticated: true, user: { id: "did:privy:buyer" } };
+    sessionState = { authenticated: true, user: { id: "did:privy:buyer" } };
     const { RecoveryKitPanel } = await loadSections();
     const markup = renderToStaticMarkup(<RecoveryKitPanel />);
     expect(markup).toContain("Order recovery context");
