@@ -53,7 +53,19 @@ was not authorized. So the duplication stands, and the row is closed on this bas
   auth service. Either way the deployment must be updated — no replacement provider can be
   reached without one — but the second is a materially smaller ask, and it is the route to
   prefer if the goal is to retire `@privy-io/react-auth` with the least deployment surgery.
-- **Why it was not written anyway (2026-10-12)**: the frontend half was attempted and reverted.
+- **Wallet auth in Better Auth — checked, and it does not help here (2026-10-12)**: Better Auth
+  ships an official **SIWE** plugin (`better-auth/plugins/siwe`, ERC-4361) with a
+  `walletAddress` table, and there are community Solana equivalents (`better-auth-solana`,
+  namespace `siws`). What it does *not* have is any Midnight or non-EVM support, and SIWE is
+  intrinsically EVM-shaped: `0x` addresses, an EIP-155 `chainId`, and a `verifyMessage`
+  function the adopter must supply — in practice via viem, which is one of the five EVM
+  packages (560 KB of the workspace bundle, 35 MB on disk) that replacing Privy is meant to
+  remove. Adopting SIWE would therefore trade Privy's EVM stack for SIWE's EVM crypto rather
+  than retire it. For a Midnight app the wallet-native route remains the one that fits:
+  1AM's `signData` verified by `ledger.verifySignature`, which needs no EVM dependency at all
+  and was proved to round-trip locally. Better Auth's value here is email, social and passkey
+  identity, none of which requires a wallet plugin.
+- **Why the frontend half was not written anyway (2026-10-12)**: it was attempted and reverted.
   It means authoring the Better Auth integration against an API that has never been executed
   here, for a token flow whose `iss`/`aud` claim values only a running Better Auth instance
   reveals. The failure mode is silent: the suite mocks the auth provider, so a broken
