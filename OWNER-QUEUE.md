@@ -53,6 +53,13 @@ was not authorized. So the duplication stands, and the row is closed on this bas
   auth service. Either way the deployment must be updated — no replacement provider can be
   reached without one — but the second is a materially smaller ask, and it is the route to
   prefer if the goal is to retire `@privy-io/react-auth` with the least deployment surgery.
+  **The claim values are now MEASURED, not assumed** (2026-10-12, `hardening/auth-probe/`):
+  `iss` and `aud` are both the Better Auth base URL, so the config needs **one** environment
+  variable, not three - `BETTER_AUTH_URL`, with the JWKS at `${BETTER_AUTH_URL}/api/auth/jwks`.
+  `sub` is a 32-character opaque id, and tokens live 900 s. Two traps were confirmed against a
+  real instance: the `jwt()` plugin defaults to `EdDSA`/`Ed25519` which Convex REJECTS, and the
+  fix must be nested as `jwt({ jwks: { keyPairConfig: { alg: "RS256" } } })` - passing
+  `keyPairConfig` at the top level is silently ignored, with no error.
 - **Wallet auth in Better Auth — checked, and it does not help here (2026-10-12)**: Better Auth
   ships an official **SIWE** plugin (`better-auth/plugins/siwe`, ERC-4361) with a
   `walletAddress` table, and there are community Solana equivalents (`better-auth-solana`,
