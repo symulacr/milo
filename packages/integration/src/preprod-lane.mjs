@@ -74,9 +74,13 @@
 //
 // Snapshots are not portable between indexers. A snapshot written against the Midnight-hosted
 // indexer cannot be restored against Blockfrost (event and transaction ids differ), so the
-// first run after this migration is a full genesis sync (~67 min measured on Blockfrost). The
 // lane records the indexer host beside each snapshot and refuses to restore one whose host
-// does not match the indexer in use.
+// does not match the indexer in use. That refusal is correct and stays fail-closed, but it
+// must NOT force a genesis sync: the DUST trees are instead seeded from the CURRENT collapsed
+// update (see below and buildSession), so the dust wallet starts at the chain tip even on the
+// first run after the migration. Only the shielded and unshielded roles have no late-start
+// mechanism (Blockfrost exposes no zswap collapsed update), so they replay their own history;
+// the dust replay, which dominates a genesis sync, is skipped.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -699,17 +703,52 @@ async function buildSession(config, options = {}) {
     provingServerUrl: new URL(config.proofServer),
     relayURL: new URL(config.node.replace(/^https/, "wss")),
   };
-  // A complete, gate-verified snapshot wins outright. Otherwise a seeded dust snapshot
-  // (from --seed-dust) restores just the dust role while shielded and unshielded start
-  // fresh; the seeder proved that snapshot's roots equal the chain's before it was written.
+  // A complete, gate-verified snapshot wins outright. Otherwise the dust role is seeded from
+  // the chain's CURRENT collapsed update, so the dust wallet starts at the tip and never
+  // replays genesis (the operator rule: always start from the latest chain state to save
+  // time). The seeder proved the seeded roots equal the chain's before the snapshot was
+  // written, and its output carries no stored event cursor, so it is portable across
+  // indexers. Shielded and unshielded still start fresh: the Blockfrost schema exposes no
+  // zswap collapsed update, so there is no late-start mechanism for them.
   const restored = await loadWalletState(config);
-  const dustSnapshot = options.dustSnapshot ?? null;
+  let dustSnapshot = options.dustSnapshot ?? null;
+  let dustSeedOutcome = options.dustSeedOutcome ?? "not-attempted";
+  if (
+    restored === null &&
+    dustSnapshot === null &&
+    options.autoSeedDust === true &&
+    // Never re-seed after an explicit --seed-dust attempt already ran and was refused: that
+    // would repeat a known failure and double the indexer work. The explicit mode owns its
+    // own attempt and its own fallback receipt.
+    options.dustSeedOutcome !== "refused"
+  ) {
+    await emitBestEffort(config.runDir, {
+      event: "dust-seed-mode",
+      network: config.networkId,
+      indexer: redactBlockfrostUrl(config.indexer),
+      trigger: options.dustSeedTrigger ?? "auto",
+      detail:
+        "no restorable snapshot; seeding the dust trees from the current collapsed update so the dust sync starts at the tip, never from genesis",
+    });
+    const seeded = await seedDustForRun(config, keys);
+    if (seeded.ok) {
+      dustSnapshot = seeded.snapshot;
+      dustSeedOutcome = "seeded";
+    } else {
+      dustSeedOutcome = "refused";
+      // Carry the refusal reason onto the fallback receipt so the durable trail shows the
+      // fast path was attempted and why it failed, not merely that no seed was used.
+      await emitBestEffort(config.runDir, {
+        event: "dust-seed-fallback",
+        reason: seeded.reason,
+        name: seeded.name,
+        message: seeded.message,
+        fallback: "ordinary-full-sync",
+        fastPath: "refused",
+      });
+    }
+  }
   const dustSeeded = restored === null && dustSnapshot !== null;
-  // "seeded", "refused" (fast path attempted and fell back) or "not-attempted". Kept on the
-  // session so every progress receipt states whether the fast path failed, not just that the
-  // dust role was not restored from a seed.
-  const dustSeedOutcome =
-    options.dustSeedOutcome ?? (dustSeeded ? "seeded" : "not-attempted");
   if (restored)
     await emit(config.runDir, {
       event: "wallet-state-restored",
@@ -1168,17 +1207,21 @@ async function main() {
         fallback: "ordinary-full-sync",
       });
     }
-    // The seeder reads the collapsed-update fields (`dustCommitmentMerkleTreeUpdate`,
-    // `dustCommitmentEndIndex`, `dustGenerationEndIndex`, and the published tree roots) that
-    // the Midnight-hosted indexer exposed. Blockfrost's published v4 schema does not carry
-    // them, so every seed attempt fails closed here with a DustSeedError from the indexer
-    // request, and the run continues as an ordinary full genesis sync. This is deliberate:
-    // no partial or unverified dust snapshot is ever written.
   }
   const session = await buildSession(config, {
     ...(prepared ?? {}),
     dustSnapshot,
     dustSeedOutcome,
+    // The operator rule: never start from genesis, always from the latest chain state. When
+    // no restorable snapshot exists, seed the dust trees from the CURRENT collapsed update
+    // inside buildSession so the dust wallet starts at the tip. Live-verified against
+    // Blockfrost: the collapsed-update fields and the published roots are present, so the
+    // seed succeeds (and if the indexer ever stops exposing them, seedDustForRun fails
+    // closed and the run falls back to the ordinary full sync). --check, --sync, --seed-dust,
+    // --register-dust, --deploy, --sweep and the maintenance drills all build a session, so
+    // every one of them gets the late start rather than only the explicit --seed-dust mode.
+    autoSeedDust: true,
+    dustSeedTrigger: mode,
   });
   await annotateRunMarker(config, {
     restored: session.restored,

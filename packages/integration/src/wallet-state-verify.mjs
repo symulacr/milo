@@ -763,8 +763,15 @@ async function checkVersionPin(checks, snapshotDir) {
 
 /** G11: the snapshot was written against the indexer currently in use. Saved sync state is
  * NOT portable between indexers (event and transaction ids differ), so a snapshot with no
- * marker, or one recorded against a different indexer host, refuses the fast path and forces
- * a genesis sync. The host is recorded, never the token-bearing URL.
+ * marker, or one recorded against a different indexer host, refuses the fast path. The host
+ * is recorded, never the token-bearing URL.
+ *
+ * Refusing the fast path does NOT mean a genesis sync: the lane seeds the DUST trees from the
+ * chain's current collapsed update, so the dust wallet starts at the tip regardless. Only the
+ * shielded and unshielded roles replay their own history (no zswap collapsed update exists on
+ * Blockfrost). The refusal stays fail-closed on a genuinely stale snapshot: a snapshot whose
+ * host does not match is never restored, so a cursor from the old indexer can never be
+ * replayed into the new dust tree.
  *
  * The decision is a pure function so it can be tested without a network or a snapshot. */
 export function indexerMarkerVerdict(marker, currentHost) {
@@ -781,7 +788,7 @@ export function indexerMarkerVerdict(marker, currentHost) {
       expected: "indexer.json carries an indexerHost string",
       observed: "unreadable or missing indexerHost",
       remedy:
-        "The recorded indexer cannot be trusted. Discard wallet-state and take a fresh from-genesis sync against Blockfrost.",
+        "The recorded indexer cannot be trusted. Discard wallet-state; the lane re-seeds the dust trees from the current collapsed update so the dust sync starts at the tip, and shielded/unshielded replay their own history. Do not restore this snapshot.",
     };
   if (marker.indexerHost !== currentHost)
     return {
@@ -789,7 +796,7 @@ export function indexerMarkerVerdict(marker, currentHost) {
       expected: `indexerHost == ${currentHost}`,
       observed: `indexerHost=${marker.indexerHost}`,
       remedy:
-        "Saved sync state is not portable between indexers. Discard wallet-state and sync from genesis on Blockfrost; do not shift cursors by hand.",
+        "Saved sync state is not portable between indexers. Discard wallet-state; the lane re-seeds the dust trees from the current collapsed update so the dust sync starts at the tip, and shielded/unshielded replay their own history. Do not restore this snapshot and do not shift cursors by hand.",
     };
   return {
     status: "PASS",
@@ -1476,11 +1483,11 @@ export const GATE_DEFINITION = Object.freeze({
     {
       id: "G11",
       check: "indexer-marker",
-      text: "the snapshot records the indexer host that produced it, and that host matches the indexer in use. Saved sync state is not portable between indexers (event and transaction ids differ), so a snapshot with no marker or one from a different indexer refuses the fast path and forces a genesis sync.",
+      text: "the snapshot records the indexer host that produced it, and that host matches the indexer in use. Saved sync state is not portable between indexers (event and transaction ids differ), so a snapshot with no marker or one from a different indexer refuses the fast path. The lane then seeds the DUST trees from the current collapsed update so the dust sync starts at the tip; shielded and unshielded replay their own history. The refusal never restores a stale cursor and never shifts one by hand.",
     },
   ],
   onFailure:
-    "Write the receipt with FAIL and the observed value, refuse the fast path, and take a fresh full from-seed sync (the lane's restore:false path). Never proceed on a partial state.",
+    "Write the receipt with FAIL and the observed value, refuse the fast path, and take the lane's restore:false path: seed the dust trees from the current collapsed update (dust starts at the tip) and let shielded/unshielded replay from their own start. Never restore a partial or stale state.",
   knownLimits: [
     "Dust and shielded wallets need their secret keys to start(); this module must not handle a seed, so their post-restore forward sync to the high-water mark is UNEXERCISED. Only the <= bound is checked.",
     "The indexer exposes no query for a Midnight dust address, so G9 is a consistency check, not an independent chain check.",

@@ -10,18 +10,30 @@
  * Labels: local Convex RUNTIME evidence is not a hosted-provider row.
  */
 
-import { internalMutationGeneric, queryGeneric } from "convex/server";
+import {
+  type DataModelFromSchemaDefinition,
+  type GenericQueryCtx,
+  internalMutationGeneric,
+  queryGeneric,
+} from "convex/server";
 import { type Infer, v } from "convex/values";
 import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
 } from "../packages/backend/src/admission-policy";
+import { requirePrivySubject } from "../packages/backend/src/privy-identity";
+import { isQuoteBuyer } from "./auth/identity";
 import {
   applyChainObservation,
   type ChainObservationDb,
   type ChainObservationResult,
   type ChainOrderRow,
 } from "./observationIngest";
+import type schema from "./schema";
+
+type OrderReadContext = GenericQueryCtx<
+  DataModelFromSchemaDefinition<typeof schema>
+>;
 
 export const recordObservationArgs = v.object({
   orderId: v.string(),
@@ -181,18 +193,59 @@ export const recordObservation = internalMutationGeneric({
 /**
  * Read-model projection for the console. A phase is present only when a
  * backing `chainOrders` row exists; missing quote or missing order is null.
+ *
+ * Authorization mirrors the sibling read paths (`paymentMonitoring.status`,
+ * `files.*`): the caller must present a verified Privy subject, and that
+ * subject must hold an active membership in the quote's scope as its buyer or
+ * its merchant. A missing quote, a missing backing order, or a
+ * non-participant membership row is an ordinary absence, so the query returns
+ * null rather than throwing and keeps its `v.union(record, v.null())`
+ * contract. The `chainOrders` row carries no scope or party columns, so the
+ * quote is resolved first to find the scope; memberships are keyed by
+ * (privySubject, scopeId), so one active merchant membership in the quote's
+ * scope is that quote's merchant. Identity failure alone throws, as every
+ * sibling does.
  */
 export const read = queryGeneric({
   args: { quoteId: v.string() },
   returns: v.union(chainOrderRecord, v.null()),
-  handler: async (ctx, args) => {
+  handler: async (ctx: OrderReadContext, args) => {
     const quoteId = args.quoteId.trim();
     if (!quoteId) return null;
+    const subject = requirePrivySubject(await ctx.auth.getUserIdentity());
+    const quote = ((await ctx.db
+      .query("frozenQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", quoteId))
+      .unique()) ??
+      (await ctx.db
+        .query("approvedQuotes")
+        .withIndex("by_quote", (q) => q.eq("id", quoteId))
+        .unique())) as {
+      scopeId: string;
+      buyerAccountId: string;
+    } | null;
+    if (!quote) return null;
     const doc = (await ctx.db
       .query("chainOrders")
       .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
       .unique()) as ChainOrderDocument | null;
     if (!doc) return null;
+    const membership = (await ctx.db
+      .query("memberships")
+      .withIndex("by_subject_scope", (q) =>
+        q.eq("privySubject", subject).eq("scopeId", quote.scopeId),
+      )
+      .unique()) as {
+      role: "buyer" | "merchant" | "operator";
+      accountId: string;
+      status: "active" | "revoked";
+    } | null;
+    const isBuyer = isQuoteBuyer(membership, quote.buyerAccountId);
+    // Memberships are keyed by (privySubject, scopeId), so one active merchant
+    // membership in the quote's scope is that quote's merchant.
+    const isMerchant =
+      membership?.status === "active" && membership.role === "merchant";
+    if (!isBuyer && !isMerchant) return null;
     const observedAt = doc.observedAt ?? null;
     const fresh =
       observedAt === null

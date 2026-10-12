@@ -747,9 +747,6 @@ h2 {
   font-size: var(--text-micro);
   color: var(--muted);
 }
-.frame-badge {
-  align-self: flex-start;
-}
 .scenario-links {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1013,7 +1010,10 @@ h2 {
 .demo-detail dd {
   margin: var(--space-1) 0 0;
 }
-.demo-window.demo-window details.demo-case {
+/* Specificity 0,2,0 still outranks .demo-window details (0,1,1), which the
+   previous .demo-window.demo-window doubling achieved; no other rule targets
+   this element above 0,1,1, so the computed result is unchanged. */
+.demo-window .demo-case {
   border-top: 0;
   padding-block: var(--space-2);
 }

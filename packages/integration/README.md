@@ -52,18 +52,27 @@ transactions), so a snapshot restored against a different indexer wedges the dus
 `values inserted non-linearly into dust generation tree`. The lane records the indexer host
 beside every snapshot (`<runDir>/wallet-state/indexer.json`) and refuses to restore a
 snapshot whose recorded host does not match the indexer in use, or one with no marker at all.
-**The first run after this migration is a full genesis sync** (about 67 minutes measured on
-Blockfrost Preprod). Discard any `wallet-state` written against the Midnight-hosted indexer;
-do not shift cursors by hand.
+Discard any `wallet-state` written against the Midnight-hosted indexer; do not shift cursors
+by hand.
 
-The `--seed-dust` fast start reads the indexer's collapsed-update fields
-(`dustCommitmentMerkleTreeUpdate`, `dustCommitmentEndIndex`, `dustGenerationEndIndex`), which
-Blockfrost's published v4 schema does not carry. Every seed attempt therefore fails closed
-with a `DustSeedError` and the run continues as an ordinary full genesis sync; no partial or
-unverified dust snapshot is ever written.
+Refusing the snapshot does **not** force a genesis sync. When no snapshot is restorable the
+lane seeds the DUST trees from the chain's **current** collapsed update before building a
+wallet, so the dust sync starts at the tip; shielded and unshielded replay their own history.
+This is automatic in every mode (not only `--seed-dust`). A seed is written only after the
+reconstructed commitment and generation roots are verified equal to the roots the chain
+publishes; any failure falls back to the ordinary full sync and no partial or unverified dust
+snapshot is ever written.
+
+The seeder reads the indexer's collapsed-update fields (`dustCommitmentMerkleTreeUpdate`,
+`dustCommitmentEndIndex`, `dustGenerationEndIndex`). Verified live against Blockfrost
+Preprod (2026-10-12): those fields are present and the seed succeeds in ~6 s, so the first
+run after the migration starts at the tip rather than replaying dust from genesis. If a
+future indexer stops exposing them, the seeder fails closed and the run falls back to the
+full sync.
 
 RPC and GraphQL endpoints are the Blockfrost Preprod services. WS routes use
-`graphql-transport-ws`; WS connectivity is not tested by this HTTP check. Unknown
+`graphql-transport-ws` and carry the token as a `project_id` query parameter; WS connectivity
+is not tested by the HTTP check. Unknown
 `MILO_PREPROD_*` settings and any `MILO_LOCAL_*` settings are rejected rather than silently
 ignored. Run this profile in a separate environment from local diagnostics. Chain identity,
 genesis, finalized block, runtime spec, node version and indexer block agreement must match;

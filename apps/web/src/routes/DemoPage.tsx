@@ -64,18 +64,21 @@ export function DemoPage() {
   const [pendingExample, setPendingExample] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const stepHeading = useRef<HTMLHeadingElement>(null);
-  const titleHeading = useRef<HTMLHeadingElement>(null);
   const mounted = useRef(false);
   const contextChanged = useRef(false);
 
-  // New step headings receive deliberate focus (04 §4.4 dialog rules);
-  // the first render lands on the page heading instead, and a context
-  // switch keeps focus on the selector (04:153).
+  // New step headings receive deliberate focus on in-page navigation (04 §4.4
+  // dialog rules), and a context switch keeps focus on the selector (04:153).
+  //
+  // The page heading is deliberately NOT focused on first mount. Focusing it
+  // here moved the browser's sequential-focus starting point into <main>, so
+  // the first Tab after a cold load skipped the skip link that PublicShell
+  // renders first in the DOM and landed on the next control inside the demo
+  // (WCAG 2.2 SC 2.4.1 Bypass Blocks; see e2e/flows/fl-keyboard.mjs).
   // biome-ignore lint/correctness/useExhaustiveDependencies: step is the intentional focus trigger
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
-      titleHeading.current?.focus();
       return;
     }
     if (contextChanged.current) {
@@ -125,7 +128,7 @@ export function DemoPage() {
         </p>
       </div>
 
-      <h1 tabIndex={-1} className="demo-title" ref={titleHeading}>
+      <h1 tabIndex={-1} className="demo-title">
         Explore a sample order
       </h1>
 

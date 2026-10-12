@@ -335,119 +335,13 @@ export async function stripeWebhookHandler(
   });
 }
 
-/**
- * GET /files — Privy JWT re-auth per request, resolve membership delivery,
- * re-verify retrieved bytes, stream with no-store. Never a storage bearer URL.
- */
-export async function filesGetHandler(
-  _ctx: unknown,
-  request: Request,
-): Promise<Response> {
-  const url = new URL(request.url);
-  const deliveryId = url.searchParams.get("deliveryId");
-  if (!deliveryId) {
-    return new Response("deliveryId is required", { status: 400 });
-  }
-  const resolve = makeFunctionReference<
-    "query",
-    { deliveryId: string },
-    {
-      bytes: Uint8Array | null;
-      contentType: string;
-      membershipScopeId: string;
-    } | null
-  >("files:resolveRead");
-  const runQuery = (
-    globalThis as {
-      __miloRunQuery?: (ref: unknown, args: unknown) => Promise<unknown>;
-    }
-  ).__miloRunQuery;
-  if (!runQuery) {
-    return new Response("File transport is not bound to an action runtime", {
-      status: 503,
-    });
-  }
-  const resolved = (await runQuery(resolve, {
-    deliveryId,
-    authorization: request.headers.get("authorization"),
-  })) as {
-    bytes: Uint8Array | null;
-    contentType: string;
-    membershipScopeId: string;
-  } | null;
-  if (!resolved?.bytes) {
-    return new Response("Not found", { status: 404 });
-  }
-  return new Response(
-    new Blob([new Uint8Array(resolved.bytes)] as BlobPart[]),
-    {
-      status: 200,
-      headers: {
-        "content-type": resolved.contentType || "application/octet-stream",
-        "cache-control": "private, no-store",
-      },
-    },
-  );
-}
-
 export const stripeWebhook = httpActionGeneric(stripeWebhookHandler);
-export const filesGet = httpActionGeneric(filesGetHandler);
 
 const http = httpRouter();
 http.route({
   path: "/webhooks/stripe",
   method: "POST",
   handler: stripeWebhook,
-});
-http.route({
-  path: "/files",
-  method: "GET",
-  handler: filesGet,
-});
-http.route({
-  path: "/debug-hmac",
-  method: "GET",
-  handler: {
-    isHttp: true,
-    invokeHttpAction: async () => {
-      const mac = await hmacSha256HexWeb(
-        "Jefe",
-        "what do ya want for nothing?",
-      );
-      return new Response(JSON.stringify({ mac }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    },
-    _handler: async () => new Response("ok"),
-  } as never,
-});
-http.route({
-  path: "/debug-verify",
-  method: "POST",
-  handler: httpActionGeneric(async (_ctx, request) => {
-    const raw = await request.text();
-    const header = request.headers.get("stripe-signature");
-    const secret = env("STRIPE_WEBHOOK_SECRET") ?? "";
-    const parsed = parseStripeSignatureHeader(header);
-    let expected = "";
-    if (parsed) {
-      expected = await hmacSha256HexWeb(secret, `${parsed.timestamp}.${raw}`);
-    }
-    return new Response(
-      JSON.stringify({
-        rawLen: raw.length,
-        parsedTs: parsed?.timestamp ?? null,
-        candCount: parsed?.v1.length ?? 0,
-        expectedLen: expected.length,
-        secretLen: secret.length,
-        expectedHead: expected.slice(0, 12),
-        candHead: (parsed?.v1[0] ?? "").slice(0, 12),
-        signedLen: parsed ? `${parsed.timestamp}.${raw}`.length : 0,
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  }),
 });
 export default http;
 

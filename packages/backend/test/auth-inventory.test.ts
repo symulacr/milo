@@ -11,7 +11,8 @@ import { requireMembership } from "../../../convex/auth/identity";
 import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
 import * as files from "../../../convex/files";
-import { filesGetHandler, stripeWebhookHandler } from "../../../convex/http";
+import { stripeWebhookHandler } from "../../../convex/http";
+import * as orders from "../../../convex/orders";
 import * as paymentMonitoring from "../../../convex/paymentMonitoring";
 import * as provisioning from "../../../convex/provisioning";
 import { requirePrivySubject } from "../src/privy-identity";
@@ -239,6 +240,11 @@ const PUBLIC_QUERY_MUTATION: Array<{
         files: [],
       }),
   },
+  {
+    name: "orders.read",
+    kind: "query",
+    invoke: (ctx) => handlerOf(orders.read)(ctx, { quoteId: "quote-1" }),
+  },
 ];
 
 async function scanPublicExports() {
@@ -412,33 +418,6 @@ describe("M7 auth inventory — HTTP routes", () => {
     }
   });
 
-  test("GET /files refuses unbound transport and missing deliveryId", async () => {
-    const missing = await filesGetHandler({}, new Request("https://x/files"));
-    expect(missing.status).toBe(400);
-    const unbound = await filesGetHandler(
-      {},
-      new Request("https://x/files?deliveryId=d1"),
-    );
-    expect(unbound.status).toBe(503);
-  });
-
-  test("GET /files 404s when resolve denies the read (no storage leak)", async () => {
-    const prev = (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery;
-    (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery = async () =>
-      null;
-    try {
-      const res = await filesGetHandler(
-        {},
-        new Request("https://x/files?deliveryId=d1", {
-          headers: { authorization: "Bearer forged" },
-        }),
-      );
-      expect(res.status).toBe(404);
-    } finally {
-      (globalThis as { __miloRunQuery?: unknown }).__miloRunQuery = prev;
-    }
-  });
-
   test("public-config HTTP surface is GET-only and secret-free", async () => {
     const { publicConfig, publicConfigResponse } = await import(
       "../src/public-config"
@@ -471,7 +450,6 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       ...PUBLIC_QUERY_MUTATION.map((row) => row.name.replace("/", "/")),
       "admission.bind",
       "http.stripeWebhook",
-      "http.filesGet",
       // admission.bind is admitCanonical — covered below via its handler.
     ]);
     // Map source export names to inventory names.
@@ -489,8 +467,7 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       "files.attachUploadMutation": "files.attachUpload",
       "files.freezeMutation": "files.freeze",
       "http.stripeWebhook": "http.stripeWebhook",
-      "http.filesGet": "http.filesGet",
-      // Public chain-projection read (B3): no identity required; never a write.
+      // Chain-projection read (B3): authenticated buyer/merchant only.
       "orders.read": "orders.read",
     };
     const missing: string[] = [];
@@ -507,7 +484,6 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       const covered =
         PUBLIC_QUERY_MUTATION.some((row) => row.name === target) ||
         target === "admission.bind" ||
-        target === "orders.read" ||
         target.startsWith("http.");
       expect(covered).toBe(true);
     }
@@ -528,15 +504,28 @@ describe("M7 auth inventory — completeness vs source exports", () => {
     ).rejects.toThrow("Authenticated Privy identity required");
   });
 
-  test("HTTP route table includes stripe webhook, files, and debug endpoints", async () => {
+  test("HTTP route table declares only the authenticated stripe webhook", async () => {
     const text = await readFile(join(CONVEX_DIR, "http.ts"), "utf8");
-    for (const path of [
-      "/webhooks/stripe",
-      "/files",
-      "/debug-hmac",
-      "/debug-verify",
-    ]) {
-      expect(text).toContain(`path: "${path}"`);
+    expect(text).toContain('path: "/webhooks/stripe"');
+    // The debug HMAC oracles and the unwired file transport are removed, not
+    // merely gated: a route that cannot authenticate its caller must not exist.
+    for (const path of ["/files", "/debug-hmac", "/debug-verify"]) {
+      expect(text).not.toContain(`path: "${path}"`);
     }
+  });
+
+  test("the debug oracles and unwired file transport are gone, not gated", async () => {
+    const mod = (await import("../../../convex/http")) as Record<
+      string,
+      unknown
+    >;
+    // No exported handler remains for either removed surface.
+    expect("filesGet" in mod).toBe(false);
+    expect("filesGetHandler" in mod).toBe(false);
+    const text = await readFile(join(CONVEX_DIR, "http.ts"), "utf8");
+    // The test-only runner global the /files route depended on is gone too.
+    expect(text).not.toContain("__miloRunQuery");
+    expect(text).not.toContain("debug-hmac");
+    expect(text).not.toContain("debug-verify");
   });
 });

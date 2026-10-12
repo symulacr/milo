@@ -38,6 +38,21 @@ test("a snapshot from a different indexer fails the marker gate", () => {
   assert.match(verdict.observed, new RegExp(OLD_HOST));
 });
 
+test("the refusal remedy never prescribes a genesis sync", () => {
+  // The operator rule forbids starting from genesis. Refusing the fast path must point at
+  // the dust re-seed from the current collapsed update, not at a full from-genesis sync.
+  for (const marker of [
+    { exists: true, indexerHost: OLD_HOST, path: "/x" },
+    { exists: true, indexerHost: null, path: "/x" },
+  ]) {
+    const verdict = indexerMarkerVerdict(marker, HOST);
+    assert.equal(verdict.status, "FAIL");
+    assert.doesNotMatch(verdict.remedy, /genesis/i);
+    assert.match(verdict.remedy, /collapsed update/);
+    assert.match(verdict.remedy, /tip/);
+  }
+});
+
 test("a snapshot with no marker is unexercised, so the fast path is refused", () => {
   const verdict = indexerMarkerVerdict(
     { exists: false, indexerHost: null, path: "/x/indexer.json" },

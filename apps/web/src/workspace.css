@@ -487,34 +487,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
 }
-.studio-note {
-  display: flex;
-  gap: 14px;
-}
-.studio-avatar {
-  font-family: var(--font-display);
-  font-size: 22px;
-  background: var(--art-deep);
-  border-radius: 50%;
-  width: 38px;
-  height: 38px;
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-.studio-note :where(strong) {
-  font-size: var(--text-micro);
-  font-weight: 500;
-}
-.studio-note :where(.micro) {
-  font-size: var(--text-micro);
-}
-.studio-note :where(p) {
-  font-size: 14px;
-  color: var(--muted);
-  margin-top: 8px;
-  line-height: 1.8;
-}
 .privacy-inline {
   display: flex;
   gap: 10px;
@@ -883,7 +855,10 @@ dd {
   font-size: 12px;
   font-weight: 400;
 }
-.form-error.form-error {
+/* Scoped to the panel that owns it (same convention as .reading-panel
+   .intro-copy); specificity 0,2,0 still outranks .reading-panel p (0,1,1),
+   which the previous .form-error.form-error doubling achieved. */
+.reading-panel .form-error {
   color: var(--danger);
   font-size: 12px;
 }
@@ -1254,7 +1229,6 @@ dd {
   .quiet-button {
     font-size: 12px;
   }
-  .studio-note p,
   .privacy-inline {
     font-size: 12px;
   }
