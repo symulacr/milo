@@ -14,10 +14,6 @@ import {
 
 const WHSEC = "whsec_abcdefghijklmnopqrstuvwxyz012345";
 
-function hex(buf: Uint8Array | Buffer): string {
-  return Buffer.from(buf).toString("hex");
-}
-
 function nodeHmacHex(secret: string, payload: string): string {
   return createHmac("sha256", secret).update(payload, "utf8").digest("hex");
 }
@@ -55,7 +51,7 @@ describe("RFC 4231 HMAC-SHA256 known answers", () => {
 });
 
 describe("Stripe documented signature shape", () => {
-  test("payload is `${timestamp}.${body}` and v1 is HMAC-SHA256 hex", () => {
+  test("payload is timestamp.body and v1 is HMAC-SHA256 hex", () => {
     const t = 1_700_000_000;
     const body = '{"id":"evt_1","type":"payment_intent.succeeded"}';
     const signed = `${t}.${body}`;

@@ -775,7 +775,7 @@ describe("Trusted provisioning — explicit doubles", () => {
       currency: "usd",
       capture_method: "manual",
       confirm: false,
-      payment_method_types: ["card"],
+      allowed_payment_method_types: ["card"],
     });
     expect(calls[0][1]).toEqual({
       idempotencyKey: `milo-test-intent:${db.jobId}`,

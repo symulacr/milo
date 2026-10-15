@@ -6,7 +6,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { admissionArgs } from "../../../convex/admissionValidators";
 import { requireMembership } from "../../../convex/auth/identity";
 import * as authSession from "../../../convex/auth/session";
 import * as diagnostics from "../../../convex/diagnostics";
@@ -141,10 +140,6 @@ function ctxDouble(identity: Identity, tables = emptyTables()) {
 
 const ANON: Identity = null;
 const BUYER: Identity = { issuer: "privy.io", subject: "did:privy:buyer" };
-const MERCHANT: Identity = {
-  issuer: "privy.io",
-  subject: "did:privy:merchant",
-};
 const STRANGER: Identity = {
   issuer: "privy.io",
   subject: "did:privy:stranger",
@@ -446,12 +441,6 @@ describe("M7 auth inventory — HTTP routes", () => {
 describe("M7 auth inventory — completeness vs source exports", () => {
   test("every public queryGeneric/mutationGeneric/actionGeneric/httpActionGeneric is inventoried", async () => {
     const found = await scanPublicExports();
-    const inventoried = new Set([
-      ...PUBLIC_QUERY_MUTATION.map((row) => row.name.replace("/", "/")),
-      "admission.bind",
-      "http.stripeWebhook",
-      // admission.bind is admitCanonical — covered below via its handler.
-    ]);
     // Map source export names to inventory names.
     const alias: Record<string, string> = {
       "auth/session.current": "auth/session.current",

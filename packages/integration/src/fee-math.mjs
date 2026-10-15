@@ -123,7 +123,7 @@ export async function probeFeesWithMargin(
         fee: null,
         ms: Date.now() - started,
         timedOut: false,
-        error: error && error.message ? error.message : String(error),
+        error: error?.message ?? String(error),
       };
     }
   })();

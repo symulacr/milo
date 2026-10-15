@@ -19,7 +19,7 @@
  * Lane lock: flock on .locks/local-circuit-sweep.lock (run script wraps this).
  */
 import assert from "node:assert/strict";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
   mkdirSync,
@@ -39,8 +39,8 @@ const TRAIL =
 mkdirSync(RUN_DIR, { recursive: true });
 const trail = (event, fields = {}) => {
   const line = JSON.stringify({ event, at: Date.now(), ...fields });
-  appendFileSync(TRAIL, line + "\n");
-  process.stdout.write(line + "\n");
+  appendFileSync(TRAIL, `${line}\n`);
+  process.stdout.write(`${line}\n`);
 };
 
 let stage = "configuration";
@@ -48,11 +48,8 @@ const emit = (event, fields = {}) => trail(event, { stage, ...fields });
 const fail = (error) => {
   emit("failed", {
     ...errorDiagnostics(error),
-    message: (error && error.message) || String(error),
-    stack:
-      error && error.stack
-        ? error.stack.split("\n").slice(0, 8).join(" | ")
-        : null,
+    message: error?.message || String(error),
+    stack: error?.stack?.split("\n").slice(0, 8).join(" | ") ?? null,
   });
   process.exit(1);
 };
@@ -60,7 +57,6 @@ process.on("uncaughtException", fail);
 process.on("unhandledRejection", fail);
 
 const bytes32 = () => new Uint8Array(randomBytes(32));
-const sha256hex = (text) => createHash("sha256").update(text).digest("hex");
 
 function withTimeout(promise, ms, label) {
   let timer;

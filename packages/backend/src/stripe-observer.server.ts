@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import type { PaymentAuthorization } from "./admission-policy";
 import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "./admission-policy";
 
-export const STRIPE_API_VERSION = "2026-08-26.dahlia" as const;
+export const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 
 export interface TestPaymentBinding {
   id: string;

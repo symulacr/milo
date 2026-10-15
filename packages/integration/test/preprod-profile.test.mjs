@@ -9,7 +9,7 @@ import {
 } from "../src/preprod-profile.mjs";
 
 const hash = "a".repeat(64);
-const TOKEN = "nightpreprod" + "a".repeat(24);
+const TOKEN = `nightpreprod${"a".repeat(24)}`;
 const env = {
   MILO_PREPROD_NETWORK_ID: "preprod",
   MILO_PREPROD_GENESIS_HASH: `0x${hash}`,
@@ -77,10 +77,10 @@ for (const [name, overrides] of Object.entries({
   missingToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: undefined },
   emptyToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "   " },
   mainnetToken: {
-    MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightmainnet" + "a".repeat(24),
+    MILO_PREPROD_BLOCKFROST_PROJECT_ID: `nightmainnet${"a".repeat(24)}`,
   },
   wrongPrefixToken: {
-    MILO_PREPROD_BLOCKFROST_PROJECT_ID: "preprod" + "a".repeat(24),
+    MILO_PREPROD_BLOCKFROST_PROJECT_ID: `preprod${"a".repeat(24)}`,
   },
   malformedToken: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightpreprod!!" },
   tokenWithSpace: { MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightpreprod abc" },

@@ -95,15 +95,6 @@ type ChainOrderDocument = Omit<ChainOrderRow, "phase"> & {
   phase: ChainOrderPhase;
 };
 
-type ChainObservationDocument = {
-  _id: string;
-  orderId: string;
-  phase: string;
-  revision: number;
-  observedAt: number;
-  kind: string;
-};
-
 function toChainOrderRow(doc: ChainOrderDocument): ChainOrderRow {
   return {
     orderId: doc.orderId,

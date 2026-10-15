@@ -7,8 +7,8 @@
 // HMAC-SHA256 via @noble/hashes (maintained). WebCrypto is preferred in
 // verifyStripeSignatureAsync; the sync path exists for tests and non-async call
 // sites. Convex default runtime allows pure-JS packages (no "use node").
-import { hmac } from "@noble/hashes/hmac";
-import { sha256 } from "@noble/hashes/sha256";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import {
   httpActionGeneric,
   httpRouter,

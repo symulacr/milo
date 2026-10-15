@@ -68,7 +68,7 @@ export async function provisionTestIntent(
       currency: quote.currency.toLowerCase(),
       customer: request.stripeCustomerId,
       capture_method: "manual",
-      payment_method_types: ["card"],
+      allowed_payment_method_types: ["card"],
       confirm: false,
       metadata: {
         provisioningJob: request.jobId,

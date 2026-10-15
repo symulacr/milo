@@ -17,7 +17,7 @@ import {
   withBlockfrostKey,
 } from "../src/blockfrost.mjs";
 
-const TOKEN = "nightpreprod" + "a".repeat(24);
+const TOKEN = `nightpreprod${"a".repeat(24)}`;
 
 test("blockfrostProjectId accepts a well-formed Midnight Preprod token", () => {
   assert.equal(
@@ -37,8 +37,8 @@ for (const [name, value] of Object.entries({
   missing: undefined,
   empty: "",
   whitespace: "   ",
-  mainnet: "nightmainnet" + "a".repeat(24),
-  wrongPrefix: "preprod" + "a".repeat(24),
+  mainnet: `nightmainnet${"a".repeat(24)}`,
+  wrongPrefix: `preprod${"a".repeat(24)}`,
   barePrefix: "nightpreprod",
   malformed: "nightpreprod!!",
   internalSpace: "nightpreprod abc",
@@ -56,7 +56,7 @@ test("a Mainnet token is rejected by name, not as a generic prefix error", () =>
   assert.throws(
     () =>
       blockfrostProjectId({
-        MILO_PREPROD_BLOCKFROST_PROJECT_ID: "nightmainnet" + "a".repeat(24),
+        MILO_PREPROD_BLOCKFROST_PROJECT_ID: `nightmainnet${"a".repeat(24)}`,
       }),
     /nightmainnet/,
   );
@@ -121,16 +121,16 @@ test("blockfrostPreprodEndpoints resolves the four Blockfrost bases with the tok
   }
   assert.equal(
     ep.indexer,
-    "https://midnight-preprod.blockfrost.io/api/v0?project_id=" + TOKEN,
+    `https://midnight-preprod.blockfrost.io/api/v0?project_id=${TOKEN}`,
   );
   assert.equal(
     ep.indexerWS,
-    "wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=" + TOKEN,
+    `wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=${TOKEN}`,
   );
   // A bare-host base canonicalises to a trailing slash before the query.
   assert.equal(
     ep.node,
-    "https://rpc.midnight-preprod.blockfrost.io/?project_id=" + TOKEN,
+    `https://rpc.midnight-preprod.blockfrost.io/?project_id=${TOKEN}`,
   );
 });
 

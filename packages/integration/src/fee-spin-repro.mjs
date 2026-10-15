@@ -135,7 +135,7 @@ async function syntheticRepro() {
   } catch (error) {
     step("empty-tx-feesWithMargin", {
       ok: false,
-      error: error && error.message ? error.message : String(error),
+      error: error?.message ?? String(error),
       note: "synthetic proven-call construction not available without proof server; static root-cause stands",
     });
   }
@@ -152,7 +152,7 @@ async function syntheticRepro() {
   } catch (error) {
     step("install-erase-proofs", {
       ok: false,
-      error: error && error.message ? error.message : String(error),
+      error: error?.message ?? String(error),
     });
   }
   try {
@@ -170,7 +170,7 @@ async function syntheticRepro() {
   } catch (error) {
     step("install-local-fixed", {
       ok: false,
-      error: error && error.message ? error.message : String(error),
+      error: error?.message ?? String(error),
     });
   }
   try {
@@ -188,7 +188,7 @@ async function syntheticRepro() {
     step("install-local-fixed-on-preprod", {
       ok: true,
       refused: true,
-      error: error && error.message ? error.message : String(error),
+      error: error?.message ?? String(error),
     });
     resetFeeMathForTests();
   }
@@ -200,7 +200,7 @@ async function syntheticRepro() {
 function writeEvidence() {
   mkdirSync(OUT_DIR, { recursive: true });
   const path = join(OUT_DIR, "R8-fee-spin-repro.json");
-  writeFileSync(path, JSON.stringify(evidence, null, 2) + "\n");
+  writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`);
   const md = join(OUT_DIR, "R8-fee-spin-repro.md");
   writeFileSync(
     md,
@@ -250,8 +250,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(
-    String(error && error.stack ? error.stack : error) + "\n",
-  );
+  process.stderr.write(`${String(error?.stack ?? error)}\n`);
   process.exit(1);
 });

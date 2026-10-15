@@ -20,10 +20,6 @@
 
 import {
   classifyMidnightClientError,
-  InsufficientDustError,
-  LockedWalletError,
-  type MidnightClientErrorCode,
-  RejectedSignatureError,
   rethrowAsMidnightClientError,
 } from "./errors.ts";
 import {

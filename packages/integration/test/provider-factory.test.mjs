@@ -16,9 +16,6 @@ import {
 import {
   assembleProviderFactory,
   assembleProvidersFromSlots,
-  buildMidnightProvider,
-  buildProofProvider,
-  buildWalletProvider,
   classifyMidnightClientError,
   InsufficientDustError,
   isInsufficientDustError,

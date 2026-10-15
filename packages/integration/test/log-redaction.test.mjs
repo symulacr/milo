@@ -14,7 +14,7 @@ import {
   redactText,
 } from "../src/log-redaction.mjs";
 
-const TOKEN = "nightpreprod" + "a".repeat(24);
+const TOKEN = `nightpreprod${"a".repeat(24)}`;
 
 class Capture extends Writable {
   constructor() {

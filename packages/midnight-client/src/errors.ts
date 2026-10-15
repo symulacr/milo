@@ -132,7 +132,7 @@ function walkErrorGraph(error: unknown, limit = 16): object[] {
 function firstTag(nodes: object[]): string | undefined {
   for (const node of nodes) {
     try {
-      const tag = (node as Record<string, unknown>)["_tag"];
+      const tag = (node as Record<string, unknown>)._tag;
       if (typeof tag === "string") return tag;
     } catch {
       /* hostile getter: skip */
@@ -144,7 +144,7 @@ function firstTag(nodes: object[]): string | undefined {
 function hasTag(nodes: object[], tag: string): boolean {
   return nodes.some((node) => {
     try {
-      return (node as Record<string, unknown>)["_tag"] === tag;
+      return (node as Record<string, unknown>)._tag === tag;
     } catch {
       return false;
     }
@@ -159,8 +159,8 @@ export function isInsufficientDustError(error: unknown): boolean {
     try {
       const record = node as Record<string, unknown>;
       return (
-        record["_tag"] === "Wallet.InsufficientFunds" &&
-        record["tokenType"] === "dust"
+        record._tag === "Wallet.InsufficientFunds" &&
+        record.tokenType === "dust"
       );
     } catch {
       return false;
@@ -179,7 +179,7 @@ export function isRejectedSignatureError(error: unknown): boolean {
   if (hasTag(nodes, "Wallet.Sign")) return true;
   return nodes.some((node) => {
     try {
-      const name = (node as Record<string, unknown>)["name"];
+      const name = (node as Record<string, unknown>).name;
       return name === "RejectedSignatureError";
     } catch {
       return false;
@@ -197,8 +197,8 @@ export function isLockedWalletError(error: unknown): boolean {
   return nodes.some((node) => {
     try {
       const record = node as Record<string, unknown>;
-      const name = record["name"];
-      const message = record["message"];
+      const name = record.name;
+      const message = record.message;
       if (name === "LockedWalletError" || name === "ConnectionError") {
         return true;
       }
@@ -218,8 +218,8 @@ export function isWrongNetworkError(error: unknown): boolean {
   return nodes.some((node) => {
     try {
       const record = node as Record<string, unknown>;
-      if (record["name"] === "WrongNetworkError") return true;
-      const message = record["message"];
+      if (record.name === "WrongNetworkError") return true;
+      const message = record.message;
       return (
         typeof message === "string" &&
         /unsupported midnight network|network guard|only preprod/i.test(message)

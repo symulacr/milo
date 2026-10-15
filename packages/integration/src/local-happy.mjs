@@ -7,7 +7,7 @@
  * - appendFileSync trail so progress is never lost to stdout buffering
  */
 import assert from "node:assert/strict";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
@@ -19,8 +19,8 @@ const TRAIL = "/tmp/d2a-happy-trail.jsonl";
 mkdirSync("/tmp/d2a-happy-run", { recursive: true });
 const trail = (event, fields = {}) => {
   const line = JSON.stringify({ event, at: Date.now(), ...fields });
-  appendFileSync(TRAIL, line + "\n");
-  process.stdout.write(line + "\n");
+  appendFileSync(TRAIL, `${line}\n`);
+  process.stdout.write(`${line}\n`);
 };
 
 let stage = "configuration";
@@ -28,11 +28,8 @@ const emit = (event, fields = {}) => trail(event, { stage, ...fields });
 const fail = (error) => {
   emit("failed", {
     ...errorDiagnostics(error),
-    message: (error && error.message) || String(error),
-    stack:
-      error && error.stack
-        ? error.stack.split("\n").slice(0, 8).join(" | ")
-        : null,
+    message: error?.message || String(error),
+    stack: error?.stack?.split("\n").slice(0, 8).join(" | ") ?? null,
   });
   process.exit(1);
 };

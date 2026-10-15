@@ -1,4 +1,5 @@
-import { sha256 } from "@noble/hashes/sha256";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 import { bytesToHex, HEX64, hexToBytes } from "./encoding.ts";
 
 // v1: lowercase hex Bytes<32>, UTF-8 network right-padded with zeros,
@@ -28,7 +29,11 @@ const nonzeroHex = (value: unknown) =>
   typeof value === "string" && HEX64.test(value) && value !== "0".repeat(64);
 const fingerprint = (kind: string, value: unknown) =>
   bytesToHex(
-    sha256(JSON.stringify(["milo:admission-observation:v2", kind, value])),
+    sha256(
+      utf8ToBytes(
+        JSON.stringify(["milo:admission-observation:v2", kind, value]),
+      ),
+    ),
   );
 
 export function reconstructPublicConstructor(quote: ConstructorQuote) {

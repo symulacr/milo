@@ -5,7 +5,7 @@
  * can prove; network label is `undeployed` to match MILO_LOCAL_NETWORK_ID.
  */
 import assert from "node:assert/strict";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
 import { errorDiagnostics } from "./diagnostics.mjs";
@@ -28,7 +28,6 @@ process.on("uncaughtException", fail);
 process.on("unhandledRejection", fail);
 
 const bytes32 = () => new Uint8Array(randomBytes(32));
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 async function graphql(env, query, variables) {
   const response = await fetch(env.indexer, {
