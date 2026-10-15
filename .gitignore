@@ -206,3 +206,58 @@ convex/_generated/
 e2e/**/out/
 packages/integration/src/p0-*.mjs
 release-manifest.json
+
+# ---------------------------------------------------------------------------
+# 7. Local-only junk kept on disk, never published (wave-6 cleanup, 2026-10-15).
+#    These were tracked but are scratch: throwaway debug probes, run result
+#    dumps, internal campaign bookkeeping, the audit corpus, and one-off
+#    workflow scripts. Removed from the index with `git rm --cached`; they stay
+#    on disk for local use. Tag `w6-pre-ignore-cleanup` restores the old state.
+#    NOTE: this is a deny-by-default allowlist, so these rules sit AFTER the
+#    `!` re-includes in section 4/5 and re-ignore what those re-included.
+
+# 7a. Throwaway debug probes (hardcoded /usr/bin/google-chrome, 0 referrers).
+/e2e/flows/debug-*.mjs
+
+# 7b. Generated run-result dumps (regenerable evidence, not source).
+/e2e/flows/*-result.json
+
+# 7c. Internal campaign bookkeeping. The eight 0X-*.md planning docs DO ship
+#     (scripts/check-plan.ts reads them) and are re-included in section 3.
+/ARCHITECTURE_AUDIT.md
+/BLOCKERS.md
+/CLAIMS-CHECK-SUBMISSION.md
+/COHORT-UPGRADE.md
+/CONVERGENCE-MAP.md
+/COVERAGE.md
+/DEAD-CODE-REPORT.md
+/DRIFT-CHECK.md
+/FLOW-READINESS.md
+/HANDOFF.md
+/JUDGE-STEPS.md
+/LIVE-READINESS-MATRIX.md
+/ROADMAP-LIVE.md
+/RUBRIC-MAP.md
+/SECURITY-INVENTORY.md
+/STAGE-MAP.md
+/WALLET-MATRIX.md
+/WAVE-DELTA.md
+/WORKLOG.md
+
+# 7d. The audit corpus: internal investigation notes and raw evidence.
+/audit/
+
+# 7e. One-off audit/workflow scripts, not part of build, test or run.
+/scripts/g4-negative-controls.sh
+/scripts/judging-minimum.sh
+/scripts/m11-verify-all.mjs
+/scripts/m11-verify.mjs
+/scripts/master-ledger-rebuild.sh
+/scripts/net-health.sh
+/scripts/next-task.sh
+/scripts/ownership-check.sh
+/scripts/post-push-verify.sh
+/scripts/pr7-axe-all.mjs
+/scripts/pr7-axe.mjs
+/scripts/todo-check.sh
+/scripts/todo_lib.py
