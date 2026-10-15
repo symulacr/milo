@@ -155,7 +155,7 @@ export async function validateCohort() {
       sdkPackages.map((name) => [`@midnight-ntwrk/${name}`, "4.1.1"]),
     ),
     "@midnight-ntwrk/compact-runtime": TOOLCHAIN.runtime,
-    "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.1.2",
     "@midnight-ntwrk/ledger-v8": "8.1.2",
     "@midnight-ntwrk/wallet-sdk": "1.2.0",
     "@polkadot/api": "16.5.6",

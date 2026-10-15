@@ -5,6 +5,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { App } from "./App";
 
+/** The DOM-backed slice of globalThis the tests swap for a happy-dom window. */
+type GlobalSlot = Record<string, unknown>;
+
 declare global {
   // React's act reads IS_REACT_ACT_ENVIRONMENT to allow act() outside test runners.
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -17,8 +20,7 @@ let container: HTMLDivElement;
 
 async function renderApp(route: string) {
   window = new Window({ url: `http://localhost${route}` });
-  // @ts-expect-error happy-dom window as global
-  globalThis.window = window;
+  (globalThis as GlobalSlot).window = window;
   // Serve the real sample images from disk so the byte check verifies the
   // pinned SHA-256 digests end to end, without a dev server.
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -50,8 +52,8 @@ async function renderApp(route: string) {
     "MouseEvent",
     "Event",
   ]) {
-    // @ts-expect-error wiring happy-dom globals
-    globalThis[key] = window[key] ?? globalThis[key];
+    (globalThis as GlobalSlot)[key] =
+      (window as unknown as GlobalSlot)[key] ?? (globalThis as GlobalSlot)[key];
   }
   container = window.document.createElement("div") as unknown as HTMLDivElement;
   window.document.body.appendChild(

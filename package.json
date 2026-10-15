@@ -26,7 +26,7 @@
     "@convex-dev/better-auth": "0.12.5",
     "@midnight-ntwrk/compact-runtime": "0.16.0",
     "@midnight-ntwrk/dapp-connector-api": "4.0.1",
-    "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.1.2",
     "@noble/hashes": "2.4.0",
     "better-auth": "1.6",
     "convex": "1.47.0",

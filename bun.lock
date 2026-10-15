@@ -8,7 +8,7 @@
         "@convex-dev/better-auth": "0.12.5",
         "@midnight-ntwrk/compact-runtime": "0.16.0",
         "@midnight-ntwrk/dapp-connector-api": "4.0.1",
-        "@midnight-ntwrk/onchain-runtime-v3": "3.1.1",
+        "@midnight-ntwrk/onchain-runtime-v3": "3.1.2",
         "@noble/hashes": "2.4.0",
         "better-auth": "1.6",
         "convex": "1.47.0",
@@ -135,7 +135,7 @@
 
     "@midnight-ntwrk/dapp-connector-api": ["@midnight-ntwrk/dapp-connector-api@4.0.1", "", {}, "sha512-IstRo8xfmlJlGgUcAJeRzPUmGCp0/xZR3/bfTOk33MHrzbGmB79r/zYziGavcclo1pkkoBHAodX4vz3xgFxczw=="],
 
-    "@midnight-ntwrk/onchain-runtime-v3": ["@midnight-ntwrk/onchain-runtime-v3@3.1.1", "", {}, "sha512-3H5soWI8fWrngV/BzFpZMbx/JsyaK0us8MYe+P8ruwR01SdVMZiypWZRmKq2Dmwn0ZurE3mOdyOd+oYPH7VvTA=="],
+    "@midnight-ntwrk/onchain-runtime-v3": ["@midnight-ntwrk/onchain-runtime-v3@3.1.2", "", {}, "sha512-BQjmK6yVbHnRt9/l013ek3doLbmjaP08fbwSsphhIbEKIhaUZ5eW7oj8mc7DFDU7qtK35oLNr9GaiujHMXKZvQ=="],
 
     "@noble/ciphers": ["@noble/ciphers@2.4.0", "", {}, "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw=="],
 

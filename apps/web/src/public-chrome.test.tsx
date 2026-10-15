@@ -11,6 +11,9 @@ import { DemoPage } from "./routes/DemoPage";
 import { InfoPage } from "./routes/InfoPage";
 import { PublicShell } from "./shells/PublicShell";
 
+/** The DOM-backed slice of globalThis the tests swap for a happy-dom window. */
+type GlobalSlot = Record<string, unknown>;
+
 declare global {
   // React's act reads IS_REACT_ACT_ENVIRONMENT to allow act() outside test runners.
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -86,8 +89,7 @@ describe("public chrome parity", () => {
 describe("public skip link is the first focusable element", () => {
   async function mountDemoAt(path: string) {
     const window = new Window({ url: `http://localhost${path}` });
-    // @ts-expect-error happy-dom window as global
-    globalThis.window = window;
+    (globalThis as GlobalSlot).window = window;
     for (const key of [
       "document",
       "HTMLElement",
@@ -110,8 +112,9 @@ describe("public skip link is the first focusable element", () => {
       "MouseEvent",
       "Event",
     ]) {
-      // @ts-expect-error wiring happy-dom globals
-      globalThis[key] = window[key] ?? globalThis[key];
+      (globalThis as GlobalSlot)[key] =
+        (window as unknown as GlobalSlot)[key] ??
+        (globalThis as GlobalSlot)[key];
     }
     const container = window.document.createElement("div");
     window.document.body.appendChild(container as never);
@@ -147,8 +150,7 @@ describe("public skip link is the first focusable element", () => {
     // focus start past the skip link PublicShell renders first in the DOM (WCAG 2.2
     // SC 2.4.1 Bypass Blocks). It now focuses only on navigation.
     const window = new Window({ url: "http://localhost/privacy" });
-    // @ts-expect-error happy-dom window as global
-    globalThis.window = window;
+    (globalThis as GlobalSlot).window = window;
     for (const key of [
       "document",
       "HTMLElement",
@@ -171,8 +173,9 @@ describe("public skip link is the first focusable element", () => {
       "MouseEvent",
       "Event",
     ]) {
-      // @ts-expect-error wiring happy-dom globals
-      globalThis[key] = window[key] ?? globalThis[key];
+      (globalThis as GlobalSlot)[key] =
+        (window as unknown as GlobalSlot)[key] ??
+        (globalThis as GlobalSlot)[key];
     }
     const document = window.document;
     const container = document.createElement("div");
