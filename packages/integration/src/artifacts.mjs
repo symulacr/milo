@@ -137,7 +137,7 @@ export async function validateArtifacts(directory = contractDirectory) {
 export async function validateCohort() {
   assert.equal(
     process.versions.node,
-    "24.20.0",
+    "26.11.1",
     "Canonical isolated Node runtime required",
   );
   const sdkPackages = [
@@ -171,8 +171,8 @@ export async function validateCohort() {
   const lock = JSON.parse(lockBytes);
   assert.deepEqual(manifest.dependencies, expected);
   assert.deepEqual(lock.packages[""].dependencies, expected);
-  assert.equal(manifest.engines.node, "24.20.0");
-  assert.equal(lock.packages[""].engines.node, "24.20.0");
+  assert.equal(manifest.engines.node, "26.11.1");
+  assert.equal(lock.packages[""].engines.node, "26.11.1");
   for (const [name, version] of Object.entries(expected)) {
     assert.equal(lock.packages[`node_modules/${name}`].version, version);
     const entry =

@@ -66,7 +66,7 @@ test("MID-T01 validates all 60 actual compiler artifacts and the installed canon
   const receipt = await validateArtifacts();
   const cohort = await validateCohort();
   assert.equal(receipt.artifactCount, 60);
-  assert.equal(cohort.node, "24.20.0");
+  assert.equal(cohort.node, "26.11.1");
   assert.match(receipt.sourceSha256, HEX64);
   assert.match(cohort.compilerFilesSha256["compactc.bin"], HEX64);
 });

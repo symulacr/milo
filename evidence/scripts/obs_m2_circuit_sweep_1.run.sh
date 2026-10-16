@@ -19,8 +19,8 @@ export MILO_SWEEP_RUN_DIR="${MILO_SWEEP_RUN_DIR:-/tmp/m2-circuit-sweep}"
 export MILO_SWEEP_TRAIL="${MILO_SWEEP_TRAIL:-/tmp/m2-circuit-sweep-trail.jsonl}"
 mkdir -p "$MILO_SWEEP_RUN_DIR"
 # Share the local lane safely with other agents.
-# Canonical isolated Node runtime (artifacts.validateCohort asserts 24.20.0).
-NODE_BIN="${MILO_NODE_BIN:-.tools/node-runtime/node-v24.20.0-linux-x64/bin/node}"
+# Canonical isolated Node runtime (artifacts.validateCohort asserts 26.11.1).
+NODE_BIN="${MILO_NODE_BIN:-.tools/node-runtime/node-v26.11.1-linux-x64/bin/node}"
 if [ ! -x "$NODE_BIN" ]; then
   echo "missing $NODE_BIN (run scripts/setup-integration-runtime.ts)" >&2
   exit 1

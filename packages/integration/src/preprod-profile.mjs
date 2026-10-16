@@ -27,7 +27,7 @@ export const preprodServiceExpectations = Object.freeze({
 export function preprodConfig(env) {
   assert.equal(
     process.versions.node,
-    "24.20.0",
+    "26.11.1",
     "Canonical isolated Node runtime required",
   );
   assert.equal(

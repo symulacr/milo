@@ -25,7 +25,7 @@ test("installed wallet barrel is the exact official Preprod cohort pin", async (
 });
 
 test("installed 1.2.0 codec round-trips preprod and rejects cross-network decoding", () => {
-  assert.equal(process.versions.node, "24.20.0");
+  assert.equal(process.versions.node, "26.11.1");
   const address = new UnshieldedAddress(Buffer.alloc(32, 7));
   const encoded = MidnightBech32m.encode("preprod", address).asString();
   assert.equal(

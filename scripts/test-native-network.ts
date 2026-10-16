@@ -1,4 +1,4 @@
-// Runs the REAL local Midnight lane: the pinned Node 24.20.0 runtime, the
+// Runs the REAL local Midnight lane: the pinned Node 26.11.1 runtime, the
 // integration package's own dependency set, the pinned native node/indexer/
 // prover services, then local.mjs with the documented staged flags. This is
 // the only automated path that exercises real proof generation and submission;

@@ -1,7 +1,7 @@
 // Runs packages/integration under its own pinned runtime: the suite's package
 // set is provisioned by `npm ci` from its own lockfile (its order.mjs Node hook
 // exists to prevent duplicate ledger-WASM identities with the root graph), and
-// artifacts.mjs hard-asserts the plan-pinned Node 24.20.0 that
+// artifacts.mjs hard-asserts the plan-pinned Node 26.11.1 that
 // setup-integration-runtime provisions and verifies.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

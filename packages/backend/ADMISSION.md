@@ -98,7 +98,7 @@ For tamper and SIGINT/SIGTERM cleanup verification:
 
 ```sh
 npm run setup:integration-runtime
-PATH="$PWD/.tools/node-runtime/node-v24.20.0-linux-x64/bin:$PATH" python3 scripts/convex-local-lifecycle-check.py
+PATH="$PWD/.tools/node-runtime/node-v26.11.1-linux-x64/bin:$PATH" python3 scripts/convex-local-lifecycle-check.py
 ```
 
 No surviving owned process or lock was observed; an unrelated process remained

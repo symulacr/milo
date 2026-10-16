@@ -3,7 +3,7 @@
 ## Separate Preprod profile
 
 `node src/preprod-profile.mjs` (run from this package) is a read-only profile
-check in this package's pinned Node 24.20.0 process. It never constructs a testkit wallet, reads a seed, signs,
+check in this package's pinned Node 26.11.1 process. It never constructs a testkit wallet, reads a seed, signs,
 submits, deploys, or records order admission. `local.mjs`, `bootstrap.mjs` and the
 native admission observer retain their `undeployed` guards unchanged.
 
@@ -113,7 +113,7 @@ Remote indexer/prover versions and actual SDK transaction compatibility
 remain unverified. A consented deployment and independently verified locked state
 against a trusted frozen quote are still required before reservation.
 
-Scope: blueprint §§3.3, 3.7, 4; roadmap M-01–M-03/R1; building guide §3.2; audit §5. This is a separate **Node 24.20.0 LTS process**, following the blueprint's authoritative tool pin, not the incidental host runtime. It is not a browser adapter, backend, payment flow or pilot. It uses the original `packages/contract/generated` output without editing/copying it. Compile all contract keys first using the contract README.
+Scope: blueprint §§3.3, 3.7, 4; roadmap M-01–M-03/R1; building guide §3.2; audit §5. This is a separate **Node 26.11.1 LTS process**, following the blueprint's authoritative tool pin, not the incidental host runtime. It is not a browser adapter, backend, payment flow or pilot. It uses the original `packages/contract/generated` output without editing/copying it. Compile all contract keys first using the contract README.
 
 See the [SDK → chain → Milo integration map](../../docs/midnight-integration-map.md)
 for the six providers, runtime/privacy boundaries, native evidence and remaining
@@ -154,7 +154,7 @@ npm --prefix packages/integration test
 node packages/integration/src/local.mjs
 ```
 
-Run these commands with the parent-provisioned Node 24.20.0 runtime on `PATH`; the parent owns runtime installation and service lifecycle. The service owner must supply all environment values explicitly. Only literal loopback HTTP/WS URLs are accepted; no remote Preview, faucet, DNS alias, credential-bearing URL or default endpoint is used.
+Run these commands with the parent-provisioned Node 26.11.1 runtime on `PATH`; the parent owns runtime installation and service lifecycle. The service owner must supply all environment values explicitly. Only literal loopback HTTP/WS URLs are accepted; no remote Preview, faucet, DNS alias, credential-bearing URL or default endpoint is used.
 
 | Environment | Meaning |
 | --- | --- |
@@ -170,7 +170,7 @@ The parent lifecycle owns node/indexer/prover, verifies their readiness and inde
 
 ## Behavior and evidence boundary
 
-1. Before any wallet construction or network request, validate `generated/compile-receipt.json` against the actual Compact source and exact 60-file artifact inventory (all hashes, no missing/extra files or symlinks). Verify compiler 0.31.1/language 0.23.0/runtime 0.16.0 metadata and the complete 14-circuit set. Check canonical Node 24.20.0, direct installed SDK/runtime versions and package/lock metadata. Emit source, compile-receipt, artifact-set, compiler launcher/binary/ZK executable and package/lock fingerprints. Then verify the explicitly supplied genesis hash and load the original generated module; compare loaded verifier bytes with the validated receipt.
+1. Before any wallet construction or network request, validate `generated/compile-receipt.json` against the actual Compact source and exact 60-file artifact inventory (all hashes, no missing/extra files or symlinks). Verify compiler 0.31.1/language 0.23.0/runtime 0.16.0 metadata and the complete 14-circuit set. Check canonical Node 26.11.1, direct installed SDK/runtime versions and package/lock metadata. Emit source, compile-receipt, artifact-set, compiler launcher/binary/ZK executable and package/lock fingerprints. Then verify the explicitly supplied genesis hash and load the original generated module; compare loaded verifier bytes with the validated receipt.
 2. Use testkit's **public** `new LocalTestEnvironment(logger).genesisMintWalletSeed[0]` to build only the funding wallet with the supplied endpoints. The constructor only captures configuration; no `start`, injected Docker environment or container-discovery method is called. No seed literal is copied into tracked code or receipts.
 3. Register local genesis NIGHT for DUST using testkit's `waitForFunds` if needed. Create a fresh random buyer wallet in memory; transfer **50000 NIGHT (50000000000 smallest units)** with wallet SDK's typed transfer recipe, sign/finalize/submit it, and observe the funding transaction through the indexer. This matches the [pinned upstream local-dev funding default](https://github.com/midnightntwrk/midnight-local-dev/blob/902561ddc27a4b096f19835ab1528f38ace515f1/README.md#funding-options), not a measured fee requirement. Register the buyer's NIGHT for DUST; positive observed DUST establishes registration/accrual only, never transaction affordability.
 4. Deploy the original generated Milo contract with a random nonce, salt and role commitments. Private buyer witnesses are in the in-memory provider; merchant/operator openings are not retained because this bounded harness does not execute their operations.
@@ -216,11 +216,11 @@ Authoritative implementation/declarations inspected from the exact installed pac
 
 ## Verification
 
-Twenty-eight tests passed at that checkpoint on canonical **Node 24.20.0**; as of 18 September 2026 the suite is 106 tests, and `bun run test:integration` from the repository root provisions the pinned runtime, runs `npm ci --prefix packages/integration` and executes all of them (see `scripts/test-integration.ts`): the earlier sixteen artifact/cohort, privacy, funding, receipt and generated-runtime/SDK tests; six read-only resource guard tests; and six staged-bootstrap/configuration tests. The new tests cover original state/key preservation, exact entrypoints, false locks, unexpected balances, signed address/counter/key binding, opt-in mode, and transport interruption/unknown/tampered-state refusal. They require real generated artifacts and never skip if absent. They are local construction/boundary tests, **not live failure or recovery evidence**. Native staged observations are recorded separately in the linked experiment.
+Twenty-eight tests passed at that checkpoint on canonical **Node 26.11.1**; as of 18 September 2026 the suite is 106 tests, and `bun run test:integration` from the repository root provisions the pinned runtime, runs `npm ci --prefix packages/integration` and executes all of them (see `scripts/test-integration.ts`): the earlier sixteen artifact/cohort, privacy, funding, receipt and generated-runtime/SDK tests; six read-only resource guard tests; and six staged-bootstrap/configuration tests. The new tests cover original state/key preservation, exact entrypoints, false locks, unexpected balances, signed address/counter/key binding, opt-in mode, and transport interruption/unknown/tampered-state refusal. They require real generated artifacts and never skip if absent. They are local construction/boundary tests, **not live failure or recovery evidence**. Native staged observations are recorded separately in the linked experiment.
 
 The parent's first native run (`run-OsIsLO`, incidental Node 24.19.0) observed funding finalization and positive buyer NIGHT/DUST, then deployment proof-provider completion followed by failure before deployment submission. The exact 4.1.1 SDK executes `proveTx → walletProvider.balanceTx → midnightProvider.submitTx`; these receipts narrow failure to post-proof wallet balancing, not proof-provider construction. The old error boundary discarded the underlying classification, so the specific cause cannot be recovered from that receipt. Positive DUST alone does not establish transaction affordability. No deployment, reserve, maintenance-lock or R1 success is established by the first run.
 
-The subsequent parent-owned Node 24.20.0 run (`run-nacq7y`) identified `Wallet.InsufficientFunds` in `wallet-sdk-dust-wallet/dist/v1/Transacting.js:279:32` at `MID-T01-deploy` / `walletProvider.balanceTx`. This confirms insufficient DUST, not a signature or proof-provider API mismatch.
+The subsequent parent-owned Node 26.11.1 run (`run-nacq7y`) identified `Wallet.InsufficientFunds` in `wallet-sdk-dust-wallet/dist/v1/Transacting.js:279:32` at `MID-T01-deploy` / `walletProvider.balanceTx`. This confirms insufficient DUST, not a signature or proof-provider API mismatch.
 
 ### Confirmed node resource rejection; targeted next experiment
 
