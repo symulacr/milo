@@ -97,7 +97,7 @@ import {
   blockfrostPreprodEndpoints,
   redactBlockfrostUrl,
 } from "./blockfrost.mjs";
-import { HEX64 } from "./config.mjs";
+import { HEX64, isLoopbackHostname } from "./config.mjs";
 import {
   DustSeedError,
   DustSeedTimeoutError,
@@ -152,11 +152,21 @@ function preprodConfig(env) {
     env.MIDNIGHT_PREPROD_PROOF_HTTP ?? "http://127.0.0.1:6300"
   ).replace(/\/$/, "");
   const url = new URL(proofServer);
-  assert.equal(url.protocol, "http:");
-  assert.ok(
-    ["127.0.0.1", "[::1]"].includes(url.hostname),
-    "loopback proof server required",
+  // Strengthened to match preprod-profile.mjs: a loopback HOST is not enough - the URL must
+  // also carry no credentials, query, fragment or subpath. The proof server receives the full
+  // serialized witness in the POST body, so anything beyond a bare loopback origin is a
+  // privacy hazard. isLoopbackHostname is the package single loopback guard.
+  assert.equal(
+    url.protocol,
+    "http:",
+    "proof server must be plain http on loopback",
   );
+  assert.ok(isLoopbackHostname(url.hostname), "loopback proof server required");
+  assert.equal(url.username, "", "proof server URL must not carry credentials");
+  assert.equal(url.password, "", "proof server URL must not carry credentials");
+  assert.equal(url.search, "", "proof server URL must not carry a query");
+  assert.equal(url.hash, "", "proof server URL must not carry a fragment");
+  assert.equal(url.pathname, "/", "proof server URL must be a bare origin");
   // Blockfrost Preprod endpoints, with the token appended once. A missing, malformed, or
   // Mainnet token fails here with a named error, before any network I/O. The
   // MIDNIGHT_PREPROD_INDEXER_HTTP/_INDEXER_WS/_NODE overrides still point at a local stub

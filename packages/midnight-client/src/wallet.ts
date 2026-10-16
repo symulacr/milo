@@ -187,6 +187,11 @@ export class LaceWalletConnector implements WalletConnector {
     ++this.revision;
     this.api = undefined;
     // Connector v4 has no revoke/disconnect method; forget the handle only.
+    // `notify` controls the subscriber callback, NOT the state: previously the false branch
+    // returned this.current unchanged, so a connector whose handle had just been dropped still
+    // reported {status: "connected"}. Connections.tsx calls exactly this form on unmount, which
+    // left a stale connected state behind a dead handle.
+    this.current = { status: "disconnected" };
     if (notify) return this.update({ status: "disconnected" });
     return this.current;
   }

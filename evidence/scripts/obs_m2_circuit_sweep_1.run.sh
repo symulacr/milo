@@ -13,8 +13,11 @@ export MILO_LOCAL_INDEXER_WS=ws://127.0.0.1:8088/api/v4/graphql/ws
 export MILO_LOCAL_PROOF_HTTP=http://127.0.0.1:6300/
 export MILO_LOCAL_BOOTSTRAP_MODE=staged
 export MILO_LOCAL_TIMEOUT_MS=1800000
-# Local disposable only: fixed fee escape hatch (fee-math refuses other networks).
-export MILO_ALLOW_FIXED_LOCAL_FEE=local-disposable-only
+# Use the PRODUCT fee fix (erase-proofs), not the local fixed-fee escape hatch.
+# MEASURED (W13C): MILO_ALLOW_FIXED_LOCAL_FEE=local-disposable-only fails at buyer-funding
+# with rpc 1010 / runtime custom error 138 -- 0 of 14 circuits reachable. With the escape
+# hatch unset, fee-math.mjs prices the proof-erased copy and all 14 circuits land.
+# Leave MILO_ALLOW_FIXED_LOCAL_FEE unset so localFixedFeeConfig() returns erase-proofs.
 export MILO_SWEEP_RUN_DIR="${MILO_SWEEP_RUN_DIR:-/tmp/m2-circuit-sweep}"
 export MILO_SWEEP_TRAIL="${MILO_SWEEP_TRAIL:-/tmp/m2-circuit-sweep-trail.jsonl}"
 mkdir -p "$MILO_SWEEP_RUN_DIR"
