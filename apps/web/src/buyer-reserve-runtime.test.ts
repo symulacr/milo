@@ -74,7 +74,9 @@ function verifiedKit(): RecoveryKit {
   return verifyKit(createKit(scope), scope);
 }
 
-function checkpointedKit(address = "0xdeployed"): RecoveryKit {
+function checkpointedKit(
+  address = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+): RecoveryKit {
   return checkpointAddress(verifiedKit(), address);
 }
 

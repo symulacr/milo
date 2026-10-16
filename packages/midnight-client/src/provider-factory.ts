@@ -178,6 +178,14 @@ function assertContractAddress(contractAddress: string): void {
   if (typeof contractAddress !== "string" || contractAddress.length === 0) {
     throw new Error("A deployed contract address is required.");
   }
+  // A length check alone accepted "x", "0x", "not-an-address", "../etc/passwd" and the
+  // all-zero address. This is the one browser-facing boundary, and seven other call sites in
+  // this repo already use the same 64-hex guard, so match them rather than inventing a shape.
+  if (!/^[0-9a-f]{64}$/.test(contractAddress)) {
+    throw new Error(
+      "A deployed contract address must be 64 lowercase hex characters (no 0x prefix).",
+    );
+  }
 }
 
 /**

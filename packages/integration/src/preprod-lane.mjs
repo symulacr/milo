@@ -93,6 +93,7 @@ import {
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { proofCircuits } from "./artifacts.mjs";
+import { AwaitStallError, resolveAwaitTimeoutMs } from "./await-watchdog.mjs";
 import {
   blockfrostPreprodEndpoints,
   redactBlockfrostUrl,
@@ -1005,9 +1006,34 @@ async function awaitSync(config, session) {
   writeReceipt();
   const receiptTimer = setInterval(writeReceipt, config.progressIntervalMs);
   let state;
+  // Bounded sync. This await had NO deadline, and a dropped subscription left a silent live
+  // process forever: preprod-actions.mjs already imports the watchdog for exactly this failure,
+  // but this file did not. resolveAwaitTimeoutMs honours MILO_AWAIT_TIMEOUT_MS (0 disables it
+  // deliberately, blank keeps the 10-minute default), and AwaitStallError names the stall.
+  const syncDeadlineMs = resolveAwaitTimeoutMs(process.env);
+  let syncTimer;
   try {
-    state = await session.wallet.waitForSyncedState();
+    const syncPromise = session.wallet.waitForSyncedState();
+    if (syncDeadlineMs === 0) {
+      state = await syncPromise;
+    } else {
+      state = await Promise.race([
+        syncPromise,
+        new Promise((_, reject) => {
+          syncTimer = setTimeout(
+            () =>
+              reject(
+                new AwaitStallError(
+                  `waitForSyncedState exceeded ${syncDeadlineMs} ms with no sync; the subscription may have dropped`,
+                ),
+              ),
+            syncDeadlineMs,
+          );
+        }),
+      ]);
+    }
   } finally {
+    if (syncTimer) clearTimeout(syncTimer);
     clearInterval(ticker);
     clearInterval(receiptTimer);
     await receiptQueue;
