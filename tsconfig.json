@@ -11,7 +11,8 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "node"],
+    "noImplicitOverride": true
   },
   "include": [
     "apps/**/*.ts",
