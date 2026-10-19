@@ -13,7 +13,7 @@ import { REVIEW_DEADLINE } from "../reviewDeadline";
  * itself lives in ../reviewDeadline (boundary-clean; 01 §7.4).
  */
 
-export type PhaseFrame = {
+type PhaseFrame = {
   heading: string;
   next: string;
   due: string | null;
@@ -96,6 +96,16 @@ export function phaseFrame(phase: Phase, role: Role): PhaseFrame {
       };
   }
 }
+
+/** Payment badge labels; total map so a new payment state fails typecheck. */
+export const paymentBadge: Record<Payment, string> = {
+  none: "No payment attempt",
+  authorized: "Hold authorized",
+  captured: "Captured",
+  voided: "Hold released",
+  expired: "Hold expired",
+  failed: "Payment failed",
+};
 
 /** Payment as a human clause, kept separate from order state (04 §7.2/§11). */
 export function paymentLine(payment: Payment): string {

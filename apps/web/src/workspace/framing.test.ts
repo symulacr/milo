@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { Payment } from "../../../../packages/domain/src/prototype";
-import { paymentLine, phaseFrame } from "./framing";
+import { paymentBadge, paymentLine, phaseFrame } from "./framing";
+
+describe("paymentBadge", () => {
+  test("labels every payment state in sentence case", () => {
+    expect(paymentBadge.none).toBe("No payment attempt");
+    expect(paymentBadge.voided).toBe("Hold released");
+    for (const label of Object.values(paymentBadge)) {
+      expect(label[0]).toBe(label[0].toUpperCase());
+    }
+  });
+});
 
 describe("paymentLine", () => {
   test("covers every payment state with a non-empty clause", () => {

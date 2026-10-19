@@ -25,7 +25,7 @@ export function NewQuote() {
               );
               return;
             }
-            reset("fresh", result.data);
+            reset("fresh", result.data, "merchant");
             navigate("/quotes/sample-001");
           }}
         >

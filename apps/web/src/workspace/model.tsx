@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
 import {
@@ -15,7 +22,7 @@ import {
 import { sampleFiles, verifySampleFiles } from "../assets";
 import { workspaceRoutes } from "../route-table";
 
-export const originalQuote = {
+const originalQuote = {
   name: "Still — a quieter kind of care",
   brief:
     "A considered three-image product pack for Still Studio. Warm natural tones, sculptural composition and a clear focus on the ceramic vessel. One hero, one detail and one collection image.",
@@ -94,6 +101,12 @@ export function routeTitle(pathname: string): string {
 
 const roles: Role[] = ["buyer", "merchant", "operator"];
 
+const usd = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
 /** Deep links: ?scenario=review&role=buyer restore a sample state on refresh. */
 function parseDeepLink(params: URLSearchParams): {
   scenario: Scenario;
@@ -143,38 +156,44 @@ export function useModel() {
     }
     updateModal(value);
   }
-  const money = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(quote.amount);
-  const actions = availableActions(state);
-  const can = (action: Action) => actions.includes(action);
+  const money = usd.format(quote.amount);
+  const actions = useMemo(() => new Set(availableActions(state)), [state]);
+  const can = (action: Action) => actions.has(action);
 
   function commit(next: SimState) {
     latestState.current = next;
     setState(next);
   }
-  function invalidate() {
+  function cancelFileCheck() {
     generation.current++;
     request.current?.abort();
+    request.current = null;
     setChecking(false);
+  }
+  function invalidate() {
+    cancelFileCheck();
     setModal(null);
     setConsent(false);
     setNotice("");
   }
+  // Query string last applied or written by the model, so our own URL writes
+  // do not re-trigger the deep-link effect.
+  const appliedLink = useRef(searchParams.toString());
   function syncDeepLink(nextScenario: Scenario, nextRole: Role) {
-    setSearchParams(
-      { scenario: nextScenario, role: nextRole },
-      { replace: true },
-    );
+    const params = new URLSearchParams({
+      scenario: nextScenario,
+      role: nextRole,
+    });
+    appliedLink.current = params.toString();
+    setSearchParams(params, { replace: true });
   }
-  function reset(value: Scenario, nextQuote = originalQuote) {
+  function reset(value: Scenario, nextQuote = originalQuote, role?: Role) {
     invalidate();
     setScenario(value);
     setQuote(nextQuote);
     setTab("delivery");
-    const next = createScenario(value);
+    const base = createScenario(value);
+    const next = role && role !== base.role ? changeRole(base, role) : base;
     commit(next);
     syncDeepLink(value, next.role);
   }
@@ -184,6 +203,9 @@ export function useModel() {
     syncDeepLink(scenario, role);
   }
   function act(action: Action) {
+    // A state change makes any in-flight check stale; let it finish silently
+    // instead of reporting a spurious failure.
+    if (request.current) cancelFileCheck();
     try {
       commit(transition(latestState.current, action));
       setNotice(
@@ -216,6 +238,7 @@ export function useModel() {
       setFileCheckError("");
       setNotice("All three files match the submitted manifest.");
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       if (generation.current === current) {
         // Persistent state, not a transient toast (04 §8.1/§10).
         const message =
@@ -226,10 +249,24 @@ export function useModel() {
         setNotice(message);
       }
     } finally {
-      if (generation.current === current) setChecking(false);
+      if (generation.current === current) {
+        request.current = null;
+        setChecking(false);
+      }
     }
   }
   useEffect(() => () => request.current?.abort(), []);
+  const linkKey = searchParams.toString();
+  // In-app links such as ?scenario=lost-capability from Account arrive after mount;
+  // apply them when they differ from what the model last applied or wrote.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the query string only
+  useEffect(() => {
+    if (!searchParams.has("scenario") || linkKey === appliedLink.current)
+      return;
+    appliedLink.current = linkKey;
+    const link = parseDeepLink(searchParams);
+    reset(link.scenario, originalQuote, link.role ?? undefined);
+  }, [linkKey]);
   useEffect(() => {
     document.title = routeTitle(location.pathname);
     // Focus the heading on NAVIGATION, not on first load: focusing it on mount moved
@@ -274,9 +311,7 @@ export function useModel() {
   return {
     state,
     quote,
-    setQuote,
     scenario,
-    setScenario,
     notice,
     checking,
     fileCheckError,
@@ -293,8 +328,6 @@ export function useModel() {
     modalOrigin,
     money,
     can,
-    commit,
-    invalidate,
     reset,
     chooseRole,
     act,
@@ -303,7 +336,7 @@ export function useModel() {
   };
 }
 
-export type WorkspaceModel = ReturnType<typeof useModel>;
+type WorkspaceModel = ReturnType<typeof useModel>;
 
 export const WorkspaceContext = createContext<WorkspaceModel | null>(null);
 

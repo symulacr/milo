@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import type { Action } from "../../../../packages/domain/src/prototype";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
+import { paymentBadge } from "../workspace/framing";
 import { actionLabels, useWorkspace } from "../workspace/model";
 import { Badge, Icon, Panel } from "./ui";
 
@@ -176,7 +177,7 @@ export function PaymentPanel() {
       {/* No single green "Success": capture is an independent observation,
           and an expired hold is warning, not neutral (04 §7.3, 05 §5.3). */}
       <Badge tone={state.payment === "expired" ? "warning" : "neutral"}>
-        {state.payment === "none" ? "No payment attempt" : state.payment}
+        {paymentBadge[state.payment]}
       </Badge>
       <p>
         {state.payment === "authorized"

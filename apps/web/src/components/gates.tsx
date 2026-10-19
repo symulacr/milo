@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { useParams } from "react-router";
 import type { Role } from "../../../../packages/domain/src/prototype";
-import { NotFound } from "../routes/NotFound";
+import { WorkspaceNotFound } from "../routes/WorkspaceNotFound";
 import { useWorkspace } from "../workspace/model";
 import { Panel } from "./ui";
 
@@ -52,6 +52,6 @@ export function BoundOrder({ children }: { children: ReactNode }) {
     params.caseId === "sample-001" ? (
     children
   ) : (
-    <NotFound />
+    <WorkspaceNotFound />
   );
 }

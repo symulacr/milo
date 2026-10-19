@@ -63,12 +63,15 @@ describe("route heading accessibility", () => {
   }
 });
 
-describe("shared NotFound CTA (A3-01)", () => {
-  for (const publicSurface of [false, true]) {
-    test(`${publicSurface ? "public" : "workspace"} bundle 404 CTA is a cross-entry anchor to the landing`, () => {
-      const markup = renderRoute("/unknown", publicSurface);
-      const cta = markup.match(/<a [^>]*>Back to the Milo overview/);
-      expect(cta?.[0]).toContain('href="/"');
-    });
-  }
+describe("NotFound CTA (A3-01)", () => {
+  test("public bundle 404 CTA is a cross-entry anchor to the landing", () => {
+    const markup = renderRoute("/unknown", true);
+    const cta = markup.match(/<a [^>]*>Back to the Milo overview/);
+    expect(cta?.[0]).toContain('href="/"');
+  });
+  test("workspace bundle 404 CTA returns to the orders list", () => {
+    const markup = renderRoute("/unknown", false);
+    const cta = markup.match(/<a [^>]*>Back to your orders/);
+    expect(cta?.[0]).toContain('href="/orders"');
+  });
 });

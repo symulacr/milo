@@ -19,7 +19,14 @@ export function Orders({ merchant = false }: { merchant?: boolean }) {
           </Link>
         )}
       </div>
-      <Link to="/orders/sample-001" className="order-list-card">
+      <Link
+        to={
+          merchant && state.phase === "DRAFT"
+            ? "/quotes/sample-001"
+            : "/orders/sample-001"
+        }
+        className="order-list-card"
+      >
         <img
           src={sampleFiles[0].src}
           alt="Sample Still Studio photography"

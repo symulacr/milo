@@ -3,12 +3,12 @@ import { Connections } from "./Connections";
 import { BoundOrder, RoleRequired } from "./components/gates";
 import { Account } from "./routes/Account";
 import { NewQuote } from "./routes/NewQuote";
-import { NotFound } from "./routes/NotFound";
 import { OperatorCases } from "./routes/OperatorCases";
 import { Orders } from "./routes/Orders";
 import { OrderView } from "./routes/OrderView";
 import { QuoteView } from "./routes/QuoteView";
 import { Receipt } from "./routes/Receipt";
+import { WorkspaceNotFound } from "./routes/WorkspaceNotFound";
 import { WorkspaceShell } from "./shells/WorkspaceShell";
 import { useModel, WorkspaceContext } from "./workspace/model";
 
@@ -68,7 +68,7 @@ export function App() {
             path="/connections"
             element={<Connections headingRef={model.mainHeading} />}
           />
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<WorkspaceNotFound />} />
         </Route>
       </Routes>
     </WorkspaceContext.Provider>
