@@ -1,16 +1,17 @@
+@import url("./tokens.css");
 @import url("./workspace.css");
 
 :root {
-  --paper: #f6f3ee;
-  --panel: #fffefb;
-  --ink: #20201f;
-  --muted: #5c5a57;
-  --violet: #5434d7;
-  --violet-soft: #eee8ff;
-  --line: #ddd8d0;
-  --success: #216647;
-  --warning: #79510a;
-  --danger: #a72b32;
+  --paper: var(--c-bg);
+  --panel: var(--c-surface);
+  --ink: var(--c-ink);
+  --muted: var(--c-muted);
+  --violet: var(--c-accent);
+  --violet-soft: var(--c-accent-soft);
+  --line: var(--c-line);
+  --success: var(--c-success);
+  --warning: var(--c-warning);
+  --danger: var(--c-danger);
   /* Design tokens (04-ui-design §2.1) */
   --space-1: 4px;
   --space-2: 8px;
@@ -22,10 +23,11 @@
   --space-8: 64px;
   --space-9: 96px;
   --radius-control: 8px;
-  --radius-panel: 16px;
+  --radius-panel: var(--r-lg);
   --radius-frame: 24px;
-  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: Georgia, "Times New Roman", serif;
+  --font-ui: var(--f-ui);
+  --font-display: var(--f-display);
+  --font-mono: var(--f-mono);
   --text-micro: 12px;
   --text-label: 14px;
   --text-body: 16px;
@@ -33,25 +35,25 @@
   --text-hero: clamp(40px, 4.1vw, 64px);
   --measure: 68ch;
   /* Extended semantic tokens (drift audit E-9; 04 §2.1 named-variable mechanism) */
-  --quiet: #f0ede7;
-  --quiet-hover: #e6e1d8;
-  --quiet-line: #e5dfd5;
-  --quiet-line-strong: #bbb4a8;
+  --quiet: var(--c-surface-sunken);
+  --quiet-hover: #e4dfd4;
+  --quiet-line: var(--c-line);
+  --quiet-line-strong: var(--c-line-strong);
   --quiet-text: #56504a;
-  --badge-bg: #efebe4;
+  --badge-bg: var(--c-surface-sunken);
   --field-line: #cfc6ba;
   --art-bg: #e8e2d8;
   --art-line: #ded7cc;
   --art-deep: #ddd5c7;
-  --violet-hover: #4223b8;
+  --violet-hover: var(--c-accent-hover);
   --violet-ink: #463474;
-  --violet-line: #dcd2ff;
+  --violet-line: var(--c-accent-line);
   --violet-accent: #8a74d5;
-  --success-bg: #eaf2ec;
+  --success-bg: var(--c-success-bg);
   --success-line: #c9ddcf;
-  --warning-bg: #fcf1db;
+  --warning-bg: var(--c-warning-bg);
   --warning-line: #e9d8b3;
-  --danger-bg: #f9ecec;
+  --danger-bg: var(--c-danger-bg);
   --danger-line: #e3c2c4;
   --on-dark: #d4cfc7;
   --on-dark-accent: #c9bafa;
@@ -124,10 +126,10 @@ h3 {
   line-height: 1.15;
 }
 h1 {
-  letter-spacing: -0.045em;
+  letter-spacing: var(--tracking-display);
 }
 h2 {
-  letter-spacing: -0.035em;
+  letter-spacing: var(--tracking-display);
 }
 :focus-visible {
   outline: 3px solid var(--violet);

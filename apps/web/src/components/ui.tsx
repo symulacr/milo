@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import { AlertIcon, CheckIcon, ShieldIcon, XIcon } from "./icons";
 
 export function Icon({ children }: { children: ReactNode }) {
   return (
@@ -9,11 +10,11 @@ export function Icon({ children }: { children: ReactNode }) {
 }
 
 /* Status is always icon + text, never color alone (04-ui-design §2.1). */
-const toneGlyphs: Record<string, string> = {
-  success: "✓",
-  warning: "!",
-  danger: "×",
-  violet: "◆",
+const toneGlyphs: Record<string, ReactNode> = {
+  success: <CheckIcon />,
+  warning: <AlertIcon />,
+  danger: <XIcon />,
+  violet: <ShieldIcon />,
 };
 
 export function Badge({
@@ -40,27 +41,4 @@ export function Panel({
   className?: string;
 }) {
   return <section className={`panel ${className}`}>{children}</section>;
-}
-
-/**
- * The single page heading for both entries: one programmatically focusable h1
- * per main region (a11y) plus the document title, with no dependency on a
- * workspace model, simulator or provider. The public bundle reaches it too, so
- * it must never import a workspace module (01 §7.4).
- */
-export function PageTitle({ title }: { title: string }) {
-  const ref = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    document.title = `Milo — ${title}`;
-    ref.current?.focus();
-  }, [title]);
-  return (
-    <div className="page-heading">
-      <div>
-        <h1 tabIndex={-1} ref={ref}>
-          {title}
-        </h1>
-      </div>
-    </div>
-  );
 }

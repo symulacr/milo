@@ -1,6 +1,14 @@
 import { type CSSProperties, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import type { Role, Scenario } from "../../../../packages/domain/src/prototype";
+import {
+  ArrowUpRightIcon,
+  FileIcon,
+  FlagIcon,
+  InboxIcon,
+  PlugIcon,
+  ShieldIcon,
+} from "../components/icons";
 import { OrderDialog } from "../components/OrderDialog";
 import { Badge, Icon } from "../components/ui";
 import { WordmarkStar } from "../components/Wordmark";
@@ -49,27 +57,39 @@ export function WorkspaceShell() {
         </div>
         <nav aria-label="Workspace">
           <NavLink to="/orders/sample-001" aria-label="Sample workspace">
-            <Icon>◈</Icon>
+            <Icon>
+              <ShieldIcon />
+            </Icon>
             <span className="nav-text">Sample workspace</span>
           </NavLink>
-          <NavLink to="/orders" aria-label="Your orders">
-            <Icon>▤</Icon>
+          <NavLink to="/orders" end aria-label="Your orders">
+            <Icon>
+              <InboxIcon />
+            </Icon>
             <span className="nav-text">Your orders</span>
           </NavLink>
           <NavLink to="/quotes/sample-001" aria-label="The agreement">
-            <Icon>◇</Icon>
+            <Icon>
+              <FileIcon />
+            </Icon>
             <span className="nav-text">The agreement</span>
           </NavLink>
           <NavLink to="/merchant/orders" aria-label="Studio queue">
-            <Icon>▧</Icon>
+            <Icon>
+              <InboxIcon />
+            </Icon>
             <span className="nav-text">Studio queue</span>
           </NavLink>
           <NavLink to="/operator/cases" aria-label="Resolution desk">
-            <Icon>⚑</Icon>
+            <Icon>
+              <FlagIcon />
+            </Icon>
             <span className="nav-text">Resolution desk</span>
           </NavLink>
           <NavLink to="/connections" aria-label="Connections">
-            <Icon>⬡</Icon>
+            <Icon>
+              <PlugIcon />
+            </Icon>
             <span className="nav-text">Connections</span>
           </NavLink>
           {/* The horizontal mobile nav keeps account/recovery reachable
@@ -84,7 +104,7 @@ export function WorkspaceShell() {
         </nav>
         <div className="sidebar-bottom">
           <a className="text-link" href="/how-it-works">
-            How Milo works ↗
+            How Milo works <ArrowUpRightIcon />
           </a>
           <NavLink to="/account" className="account-link">
             <span className="avatar" />
@@ -93,7 +113,7 @@ export function WorkspaceShell() {
               <small>Sample {state.role}</small>
             </span>
             <span className="nav-text" aria-hidden="true">
-              ↗
+              <ArrowUpRightIcon />
             </span>
           </NavLink>
         </div>
@@ -107,7 +127,9 @@ export function WorkspaceShell() {
                 ? "Connection diagnostics"
                 : "Synthetic sample · no wallet, payment or transaction"}
             </Badge>
-            <a href="/">Back to Milo ↗</a>
+            <a href="/">
+              Back to Milo <ArrowUpRightIcon />
+            </a>
           </div>
         </header>
         {!isConnections && (

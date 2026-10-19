@@ -25,7 +25,7 @@
   padding: 12px 13px;
   border-radius: var(--radius-control);
   text-decoration: none;
-  font-size: 12px;
+  font-size: 13px;
   min-height: 44px;
 }
 .sidebar :where(nav > a.active) {
@@ -152,7 +152,7 @@
 }
 .account-link > span:last-child {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 13px;
 }
 .app-body {
   min-width: 0;
@@ -223,7 +223,7 @@
   border-radius: var(--radius-control);
   color: var(--ink);
   background: var(--panel);
-  font-size: 12px;
+  font-size: 13px;
   padding: 8px 24px 8px 8px;
   min-height: 36px;
   max-width: 220px;
@@ -258,7 +258,7 @@
 }
 .page-heading p {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .order-status {
@@ -422,7 +422,7 @@
 }
 .image-description :where(strong) {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .image-description > :where(span) {
@@ -473,7 +473,7 @@
   margin-top: 22px;
 }
 .evidence-panel :where(p) {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.8;
   margin: 14px 0;
@@ -542,13 +542,13 @@
   margin: 23px 0;
 }
 .check-list > :where(span) {
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   gap: 7px;
 }
 .check-list .icon {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--violet);
 }
 .action-panel :where(.button) {
@@ -580,7 +580,7 @@
   margin-top: 16px;
   border-top: 1px solid var(--violet-line);
   padding-top: 15px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -588,13 +588,13 @@
   gap: 4px 7px;
 }
 .action-footnote .icon {
-  font-size: 12px;
+  font-size: 13px;
 }
 .payment-panel {
   padding: 20px 23px;
 }
 .payment-panel h3 {
-  font-size: 12px;
+  font-size: 13px;
 }
 .payment-total {
   font-size: 27px;
@@ -653,7 +653,7 @@ dt {
   color: var(--muted);
 }
 dd {
-  font-size: 12px;
+  font-size: 13px;
   margin: 5px 0 0;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -693,7 +693,7 @@ dd {
   flex-shrink: 0;
 }
 .timeline-item :where(strong) {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .timeline-item p {
@@ -770,7 +770,7 @@ dd {
   margin: 10px 0;
 }
 .order-list-card p {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .order-list-card .tag {
@@ -818,13 +818,13 @@ dd {
   color: var(--ink);
 }
 .setup-list .icon {
-  font-size: 12px;
+  font-size: 13px;
 }
 .field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   margin: 20px 0;
 }
@@ -852,7 +852,7 @@ dd {
   padding: 12px;
   min-height: 46px;
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
 }
 /* Scoped to the panel that owns it (same convention as .reading-panel
@@ -860,7 +860,7 @@ dd {
    which the previous .form-error.form-error doubling achieved. */
 .reading-panel .form-error {
   color: var(--danger);
-  font-size: 12px;
+  font-size: 13px;
 }
 .boundary-cards {
   display: grid;
@@ -873,7 +873,7 @@ dd {
   padding-top: 20px;
 }
 .boundary-cards p {
-  font-size: 12px;
+  font-size: 13px;
 }
 .notice {
   border: 1px solid var(--violet-line);
@@ -956,11 +956,11 @@ dd {
   align-items: baseline;
 }
 .confirmation-summary dd {
-  font-size: 12px;
+  font-size: 13px;
   text-align: right;
 }
 .check-field {
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -1046,7 +1046,7 @@ dd {
 }
 @media (width <= 950px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .sidebar {
     height: auto;
@@ -1154,7 +1154,7 @@ dd {
     gap: 0;
   }
   .sidebar :where(nav > a) {
-    font-size: 12px;
+    font-size: 13px;
     padding-inline: 8px;
   }
   .app-topbar,
@@ -1171,7 +1171,7 @@ dd {
     width: 97px;
   }
   .prototype-selects :where(select) {
-    font-size: 12px;
+    font-size: 13px;
     padding-right: 13px;
   }
   .reset-button {
@@ -1227,10 +1227,10 @@ dd {
     font-size: 29px;
   }
   .quiet-button {
-    font-size: 12px;
+    font-size: 13px;
   }
   .privacy-inline {
-    font-size: 12px;
+    font-size: 13px;
   }
   .tabs {
     padding-inline: 18px;
@@ -1306,4 +1306,213 @@ dd {
   flex-wrap: wrap;
   gap: 12px;
   margin-block: 20px;
+}
+
+/* Sealed Ledger x Studio layer */
+.app-shell {
+  --text-micro: 13px;
+}
+.sidebar {
+  background: var(--c-surface-sunken);
+}
+.sidebar :where(nav > a) {
+  position: relative;
+  font-size: 14px;
+  color: var(--c-ink-2);
+}
+.sidebar :where(nav > a.active) {
+  color: var(--c-ink);
+  background: var(--c-surface);
+  box-shadow: var(--s1);
+}
+.sidebar nav > a.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: var(--r-pill);
+  background: var(--c-accent);
+}
+.svg-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.icon .svg-icon {
+  width: 1em;
+  height: 1em;
+}
+.tag .icon {
+  font-size: 14px;
+}
+.app-topbar .tag.violet {
+  background: var(--c-privacy);
+  color: #f4f1ea;
+  border-color: var(--c-privacy);
+}
+.notice {
+  background: var(--c-surface);
+  border-color: var(--c-line);
+  color: var(--c-ink-2);
+  box-shadow: var(--s1);
+}
+.panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--s1);
+}
+.action-panel {
+  background: var(--c-surface);
+  border-color: var(--c-line);
+  border-top: 3px solid var(--c-accent);
+  box-shadow: var(--s2);
+}
+@media (width > 950px) {
+  .primary-action {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    z-index: 1;
+  }
+}
+.image-wrap {
+  border-radius: var(--r-md);
+  background: var(--c-surface-sunken);
+  padding: 6px;
+}
+.image-wrap img {
+  border-radius: calc(var(--r-md) - 4px);
+}
+.page-heading h1,
+.panel h2,
+.dialog-content h2 {
+  font-family: var(--f-display);
+  letter-spacing: var(--tracking-display);
+}
+
+/* Circular-node stepper */
+.progress-track {
+  align-items: flex-start;
+  color: var(--c-muted);
+}
+.progress-track li {
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 0;
+  min-height: 44px;
+}
+.progress-track li::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--c-line-strong);
+  background: var(--c-surface);
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+.progress-track li:not(:last-child)::after {
+  position: absolute;
+  top: 7px;
+  left: 20px;
+  right: 4px;
+  height: 2px;
+  margin: 0;
+  background: var(--c-line);
+  border-radius: var(--r-pill);
+}
+.progress-track li.reached {
+  color: var(--c-ink-2);
+}
+.progress-track li.reached::before {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.progress-track li.reached::after {
+  background: var(--c-accent);
+}
+.progress-track li > .icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+  color: #fff;
+  z-index: 2;
+}
+.progress-track li[aria-current="step"] {
+  color: var(--c-ink);
+}
+.progress-track li[aria-current="step"]::before {
+  border-color: var(--c-accent);
+  box-shadow: var(--ring);
+}
+.progress-track li.halted {
+  color: var(--c-warning);
+}
+.progress-track li.halted::before {
+  background: var(--c-warning-bg);
+  border-color: var(--c-warning);
+}
+.progress-track li.halted > .icon {
+  color: var(--c-warning);
+}
+
+/* Dialog */
+.dialog-overlay {
+  background: var(--c-overlay);
+  backdrop-filter: blur(8px);
+}
+.dialog-content {
+  border-radius: var(--r-lg);
+  box-shadow: var(--s3);
+}
+
+@media (width <= 950px) {
+  .app-shell,
+  .sidebar,
+  .workspace-main,
+  .app-shell > * {
+    min-width: 0;
+  }
+  .sidebar nav {
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sidebar nav > a {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+  .sidebar nav > a.active::before {
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    height: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .dialog-overlay,
+  .dialog-content {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
 }

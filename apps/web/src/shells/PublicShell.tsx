@@ -1,4 +1,5 @@
 import { Outlet } from "react-router";
+import { ArrowUpRightIcon } from "../components/icons";
 import { WordmarkStar } from "../components/Wordmark";
 
 /**
@@ -31,7 +32,7 @@ export function PublicShell() {
             href="/demo"
             data-testid="public-header-demo-cta"
           >
-            Explore a sample order <span aria-hidden="true">↗</span>
+            Explore a sample order <ArrowUpRightIcon />
           </a>
         </nav>
       </header>

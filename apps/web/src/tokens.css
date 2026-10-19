@@ -1,0 +1,42 @@
+/* Sealed Ledger x Studio design tokens. Imported first; legacy names in
+   styles.css :root alias these values. */
+:root {
+  --c-bg: #f4f1ea;
+  --c-surface: #fffdf8;
+  --c-surface-sunken: #ece8df;
+  --c-ink: #16161a;
+  --c-ink-2: #3a3833;
+  --c-muted: #5e5a53;
+  --c-line: #e2dcd1;
+  --c-line-strong: #c9c1b3;
+  --c-accent: #4a2fd0;
+  --c-accent-hover: #3b22ae;
+  --c-accent-soft: #f0ecff;
+  --c-accent-line: #d9d0ff;
+  --c-success: #1d6a4b;
+  --c-success-bg: #e8f1eb;
+  --c-warning: #7a4f06;
+  --c-warning-bg: #fbf0d9;
+  --c-danger: #a3262e;
+  --c-danger-bg: #f8eaea;
+  --c-privacy: #2c3a4f;
+  --c-overlay: #16161a66;
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 20px;
+  --r-pill: 999px;
+  --s1: 0 1px 0 #16161a0a, 0 1px 2px #16161a0f;
+  --s2: 0 1px 0 #16161a0a, 0 8px 24px -8px #2a1f1426;
+  --s3: 0 24px 64px -16px #1d163a40;
+  --ring: 0 0 0 3px #4a2fd040;
+  --f-display:
+    "Newsreader", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    serif;
+  --f-ui:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --f-mono:
+    ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --tracking-display: -0.02em;
+}
