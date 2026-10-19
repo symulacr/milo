@@ -25,13 +25,13 @@ import {
 } from "../../../packages/midnight-client/src";
 
 /** Resonance of midnight-client's honesty flag. */
-export const RESERVE_SUBMIT_PATH: "UNKNOWN" = WALLET_SIGNED_RESERVE_RUNTIME;
+const RESERVE_SUBMIT_PATH: "UNKNOWN" = WALLET_SIGNED_RESERVE_RUNTIME;
 
 // ---------------------------------------------------------------------------
 // Checkpoint (bind an observed canonical address onto a verified kit)
 // ---------------------------------------------------------------------------
 
-export type CheckpointBlockedReason =
+type CheckpointBlockedReason =
   | "kit-missing"
   | "kit-not-verified"
   | "kit-already-checkpointed"
@@ -40,7 +40,7 @@ export type CheckpointBlockedReason =
   | "address-missing"
   | "address-is-order-nonce";
 
-export type CheckpointAssessment =
+type CheckpointAssessment =
   | { readonly ready: true; readonly address: string }
   | {
       readonly ready: false;
@@ -128,7 +128,7 @@ export function assessCheckpoint(
   return { ready: true, address };
 }
 
-export type CheckpointResult =
+type CheckpointResult =
   | { readonly ok: true; readonly kit: RecoveryKit; readonly message: string }
   | {
       readonly ok: false;
@@ -176,7 +176,7 @@ export function applyCheckpoint(
 // Prepare reserve (midnight-client descriptor; no signature, no submission)
 // ---------------------------------------------------------------------------
 
-export type PrepareReserveBlockedReason =
+type PrepareReserveBlockedReason =
   | "kit-missing"
   | "kit-not-checkpointed"
   | "kit-lost"
@@ -188,7 +188,7 @@ export type PrepareReserveBlockedReason =
   | "providers-incomplete"
   | "submit-path-unavailable";
 
-export type PrepareReserveAssessment =
+type PrepareReserveAssessment =
   | { readonly ready: true }
   | {
       readonly ready: false;
@@ -327,7 +327,7 @@ export function assessPrepareReserve(
   return { ready: true };
 }
 
-export type PrepareReserveResult =
+type PrepareReserveResult =
   | {
       readonly ok: true;
       readonly prepared: PreparedReserveCall;
@@ -390,7 +390,7 @@ export function prepareBuyerReserve(
 // In-flight operation tracking (begin / confirm) — real transitions only
 // ---------------------------------------------------------------------------
 
-export type BeginReserveResult =
+type BeginReserveResult =
   | { readonly ok: true; readonly kit: RecoveryKit; readonly message: string }
   | {
       readonly ok: false;
@@ -427,7 +427,7 @@ export function beginReserveOperation(
   }
 }
 
-export type ConfirmReserveResult =
+type ConfirmReserveResult =
   | { readonly ok: true; readonly kit: RecoveryKit; readonly message: string }
   | {
       readonly ok: false;

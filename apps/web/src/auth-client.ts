@@ -19,7 +19,7 @@ import { createAuthClient } from "better-auth/react";
  * endpoint types from a server instance as a single-repo setup would. The surface is the
  * plugin set plus Better Auth's built-in API.
  */
-export function createMiloAuthClient(baseURL: string) {
+function createMiloAuthClient(baseURL: string) {
   return createAuthClient({
     baseURL,
     plugins: [convexClient(), crossDomainClient()],

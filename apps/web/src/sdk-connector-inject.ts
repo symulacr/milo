@@ -16,7 +16,7 @@ import {
   walletSdkInitialApi,
 } from "../../../packages/midnight-client/src/wallet-sdk-connector";
 
-export const SDK_CONNECTOR_RDNS = "network.midnight.wallet-sdk";
+const SDK_CONNECTOR_RDNS = "network.midnight.wallet-sdk";
 
 type SdkConnectorHandle = {
   inject: (
@@ -49,7 +49,7 @@ export function injectSdkConnector(
   window.midnight[api.rdns] = api;
 }
 
-export function clearSdkConnector(rdns: string = SDK_CONNECTOR_RDNS): void {
+function clearSdkConnector(rdns: string = SDK_CONNECTOR_RDNS): void {
   if (typeof window === "undefined") return;
   delete window.midnight?.[rdns];
 }

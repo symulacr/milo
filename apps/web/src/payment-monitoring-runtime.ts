@@ -27,7 +27,7 @@ export function monitoringControls(
 }
 
 // A synchronous lease also fences promises after the form is replaced.
-export class MonitoringRequestGuard {
+class MonitoringRequestGuard {
   private busy = false;
   private revision = 0;
   acquire(): number | null {

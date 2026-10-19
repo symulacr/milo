@@ -41,7 +41,7 @@ export function PaymentMonitoring() {
   return <PaymentMonitoringControls transport={transport} />;
 }
 
-export function PaymentMonitoringControls({
+function PaymentMonitoringControls({
   transport,
 }: {
   transport: MonitoringTransport;

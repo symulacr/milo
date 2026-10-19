@@ -33,7 +33,7 @@ export type ChainOrderRecord = {
   fileCount: number;
 };
 
-export type OrderRecordAbsentReason =
+type OrderRecordAbsentReason =
   | "no-quote"
   | "unloaded"
   | "loading"

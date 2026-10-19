@@ -41,7 +41,7 @@ class IdentityBoundary extends Component<
 }
 
 /** Real Midnight wallet connector status (Lace API v4). Reused by the order console. */
-export function LaceStatus() {
+function LaceStatus() {
   const [consent, setConsent] = useState(false);
   const [state, setState] = useState<LaceState>({
     status: "disconnected",
@@ -245,7 +245,7 @@ export function connectionErrorMessage(cause: unknown): string {
  * timeout and the retry copy live in a single place. There is no transport
  * wrapper here - loadPublicConfig calls fetch directly.
  */
-export function PublicConfigGate({
+function PublicConfigGate({
   children,
   onRetry,
 }: {

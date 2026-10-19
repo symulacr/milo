@@ -45,8 +45,8 @@ const NETWORK = "preprod";
  * Each row is either UI-wired on this panel or carries a written justification
  * for staying out of the browser surface — nothing is silently dead or faked.
  */
-export type RecoveryKitOpDisposition = "ui-wired" | "justified";
-export type RecoveryKitOpRow = {
+type RecoveryKitOpDisposition = "ui-wired" | "justified";
+type RecoveryKitOpRow = {
   op: string;
   disposition: RecoveryKitOpDisposition;
   detail: string;
