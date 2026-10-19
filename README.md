@@ -33,7 +33,7 @@ endpoints were decommissioned on 2026-10-09, so the proof evidence comes from lo
 `packages/contract/src/order.compact` declares 25 circuits: 16 exported, of which 14 carry proofs
 and 2 are pure hash helpers.
 
-```
+```text
 DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
                  ↘ CANCELLED      ↘ DISPUTED → resolve → APPROVED | CANCELLED
 ```
@@ -52,8 +52,8 @@ DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
 - **Staged deploy:** a single-transaction deploy of all 14 verifier keys exceeds the per-transaction
   execution budget, so 7 keys deploy with the contract and 7 install through a maintenance update.
 
-Details: [contract README](packages/contract/README.md) · [contract spec](packages/contract/SPEC.md) ·
-[Midnight integration](docs/MIDNIGHT-INTEGRATION.md).
+Details: [contract README](packages/contract/README.md) ·
+[contract spec](packages/contract/SPEC.md) · [Midnight integration](docs/MIDNIGHT-INTEGRATION.md).
 
 ## Backend guarantees
 
@@ -168,7 +168,7 @@ sequenceDiagram
     end
 
     rect rgba(29, 106, 75, 0.07)
-        Note over S,CX: Accept and deliver: delivery integrity implemented; circuits proven in the local lane
+        Note over S,CX: Accept and deliver: delivery integrity implemented, circuits proven in the local lane
         S->>C: accept(merchantSecret) · RESERVED → ACCEPTED
         S->>CX: files:requestUpload → attachUpload (grant TTL, storageId bound)
         CX->>CX: files:inspectGrant: magic bytes PNG/JPEG/WebP · ≤ 5 MiB · SHA-256
@@ -178,7 +178,7 @@ sequenceDiagram
     end
 
     rect rgba(176, 138, 78, 0.10)
-        Note over B,C: Review: workspace flow simulated; file reads and approve circuit real
+        Note over B,C: Review: workspace flow simulated, file reads and approve circuit real
         B->>CX: files:serveFile (re-authorized on every read)
         CX-->>W: bytes
         W->>W: verify SHA-256 against the frozen manifest
@@ -195,7 +195,7 @@ sequenceDiagram
     end
 
     rect rgba(163, 38, 46, 0.06)
-        Note over CX,ST: Settlement: implemented and tested; waits on observed phase
+        Note over CX,ST: Settlement: implemented and tested, waits on observed phase
         alt phase APPROVED
             CX->>ST: settlement:request(capture) → stripeSettlement:run
         else phase CANCELLED
@@ -222,7 +222,7 @@ sequenceDiagram
 | `scripts` | Setup, dev server, build, contract compile and test runners |
 | `e2e` | End-to-end harness and route smoke flows |
 
-The `01`–`08` documents at the root are the design corpus; `npm run check:plan` reads them.
+The design corpus (`01`–`08`) lives in [`docs/plan/`](docs/plan/); `npm run check:plan` reads it.
 
 ## Run it
 
@@ -245,7 +245,8 @@ read-only panels on `/connections`. The workspace runs without them.
 ## Testing
 
 - `npm run test:unit`: 575 tests across 50 files (contract, domain, backend, web, scripts).
-- `npm run test:integration`: provisions the pinned Node runtime and runs `packages/integration` tests.
+- `npm run test:integration`: provisions the pinned Node runtime and runs the
+  `packages/integration` tests.
 - `npm run test:native-network`: local Midnight node lane (see the
   [integration README](packages/integration/README.md)).
 - Accessibility: axe reports 0 serious issues on all 16 routes at desktop and mobile widths.
@@ -278,3 +279,7 @@ receipts in the workspace are not proofs.
 
 Apache License 2.0, see [LICENSE](LICENSE). Third-party material keeps its own license, see
 [third-party notices](THIRD_PARTY_NOTICES.md).
+
+<!-- markdownlint-configure-file {
+  "MD013": { "line_length": 100, "tables": false, "code_blocks": false }
+} -->
