@@ -86,8 +86,8 @@ Preprod 0xb95c…e74586 still ContractUpdate tx 5ce74cb9… block 2639638. Chain
 
 ## Spend ledger cross-ref (D2b)
 
-Full spend table (hash | purpose | fee | block | chain height) lives in [`SPEND-LEDGER.md`](./SPEND-LEDGER.md).
-Fee estimates were taken **before** submission. Seed material is never printed; balances via `scripts/spend-balance.mjs`.
+The spend tables below list hash, purpose, fee, block and chain height.
+Fee estimates were taken **before** submission. Seed material is never printed.
 
 ### Local staged-deploy (from `/tmp/d2a-local4.out`)
 
@@ -122,5 +122,3 @@ Fee estimates were taken **before** submission. Seed material is never printed; 
 | Ingest (chain) | `orders:recordObservation` missing on Convex | VERDICT: blocked |
 | Label | SDK-connector / harness | — |
 | Seed | `.env.preprod` only — never printed | — |
-
-Full narrative + NOT DONE: [`audit/discovery/IMPLEMENTATION-D2c-preprod.md`](./audit/discovery/IMPLEMENTATION-D2c-preprod.md).

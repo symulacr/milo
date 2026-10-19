@@ -7,7 +7,7 @@ order rules. stripe handles payment off chain.
 
 ## Demo
 
-![milo walkthrough](demo.gif)
+![milo walkthrough](docs/media/demo.gif)
 
 [walkthrough](https://youtu.be/bF968ODpTos) · [live workspace](https://milo-xkq.vercel.app)
 

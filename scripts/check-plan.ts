@@ -3,14 +3,14 @@ import { access } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 const documents = [
-  "01-blueprint.md",
-  "02-roadmap.md",
-  "03-building-guide.md",
-  "04-ui-design.md",
-  "05-ux-design.md",
-  "06-backend-design.md",
-  "07-video-design.md",
-  "08-midnight-core-audit.md",
+  "docs/plan/01-blueprint.md",
+  "docs/plan/02-roadmap.md",
+  "docs/plan/03-building-guide.md",
+  "docs/plan/04-ui-design.md",
+  "docs/plan/05-ux-design.md",
+  "docs/plan/06-backend-design.md",
+  "docs/plan/07-video-design.md",
+  "docs/plan/08-midnight-core-audit.md",
 ];
 
 const gateIds = [
