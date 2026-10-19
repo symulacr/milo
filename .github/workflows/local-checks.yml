@@ -1,0 +1,68 @@
+name: Pinned local checks (not a protocol gate)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-checks:
+    name: Compiler, local tests and build (Node 26.11.1 / Bun 1.4.2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up exact integration Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '26.11.1'
+
+      - name: Install pinned Bun, root dependencies and Compact toolchain
+        run: |
+          test "$(node --version)" = 'v26.11.1'
+          sh scripts/setup.sh
+          test "$(.tools/bun/node_modules/.bin/bun --version)" = '1.4.2'
+
+      - name: Install isolated integration SDK cohort from lockfile
+        run: npm ci --prefix packages/integration --ignore-scripts --no-audit --no-fund
+
+      - name: Verify compiler and runtime cohort
+        run: npm run contract:cohort
+
+      # Generated modules and verifier keys are ignored by Git and needed by tests.
+      - name: Compile full contract and verify all circuit artifacts
+        timeout-minutes: 60
+        run: npm run contract:compile
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Check canonical plan references
+        run: npm run check:plan
+
+      - name: Unit tests (web, domain, contract, backend and scripts)
+        run: npm run test:unit
+
+      # Synthetic/local SDK tests only: no native services or transaction commands.
+      - name: Offline integration tests on exact Node runtime
+        run: |
+          test "$(node --version)" = 'v26.11.1'
+          npm run test:integration
+
+      - name: Build web app
+        run: npm run build
