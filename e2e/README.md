@@ -34,9 +34,6 @@ remain Privy-only (`api.privy.io`).
 # Boundary + issuer unit tests
 bun test e2e/
 
-# CLICK-MAP route drift check (coordinator hot file — read-only)
-bun clickmap-harness/verify-routes.ts /home/eya/milo/milo-main/CLICK-MAP.md
-
 # E2E-01 harness (option C). Exit 2 = blocked (auth not ready), 1 = <3 passes
 MILO_TEST_ISSUER=local-only CONVEX_URL=http://127.0.0.1:3210 \
   bun e2e/e2e-01/run.ts --auth C --runs 3

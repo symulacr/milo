@@ -1,263 +1,106 @@
-# ---------------------------------------------------------------------------
-# Allowlist ("deny-by-default") ignore file.
-#
-# Everything is ignored first, then the buildable / runnable surface is
-# re-included explicitly via `!` rules. If a file you expect is missing from
-# `git status`, add it to the keep set below instead of deleting the leading
-# `*` rule.
-#
-# Two gotchas this file already handles for you:
-#   * `*` does NOT match dotfiles, so dotfiles are named explicitly.
-#   * A directory must be re-included before its contents can be
-#     (`!/dir/` before `!/dir/**`).
-# ---------------------------------------------------------------------------
-
-# 1. Ignore everything (tracked files already known to git are unaffected).
+# Allowlist ignore file: ignore everything, then re-include what ships.
+# `*` does not match dotfiles, so those are named explicitly, and a directory
+# must be re-included before its contents (`!/dir/` then `!/dir/**`).
 *
 
-# 2. Never publish internal corpora, local tooling, generated output or junk.
-hardening/
-docs/
-.github/
-.scratch/
-__pycache__/
-node_modules/
-dist/
-.tools/
-.convex/
-.hoplite/
-packages/contract/generated/
-*.log
-*.diff
-*.pem
-.env
-.env.*
-*:Zone.Identifier
-*.Zone.Identifier
-.DS_Store
-
-# Root planning corpus. TRACKED since 7d2c6bf (the commit that added all eight
-# documents): npm run check:plan reads these eight
-# documents and asserts their gate IDs, fences and links, so a fresh clone must have them.
-# The per-phase evidence files below stay local.
-#01-blueprint.md
-#02-roadmap.md
-#03-building-guide.md
-#04-ui-design.md
-#05-ux-design.md
-#06-backend-design.md
-#07-video-design.md
-#08-midnight-core-audit.md
-EXECUTION_MANIFEST.md
-PROGRESS_MANIFEST.md
-PROTOCOL_VERIFICATION.md
-TASKS.md
-VERIFICATION.md
-
-# 3. Re-include the root files that ship with the repository.
+# Root files
 !/.gitignore
+!/.env.example
 !/LICENSE
 !/README.md
-!/CHANGELOG.md
-!/ARCHITECTURE_AUDIT.md
 !/THIRD_PARTY_NOTICES.md
-# The planning corpus: npm run check:plan reads these eight documents and asserts their
-# gate IDs, fences and links, so a fresh clone must have them.
-!/01-blueprint.md
-!/02-roadmap.md
-!/03-building-guide.md
-!/04-ui-design.md
-!/05-ux-design.md
-!/06-backend-design.md
-!/07-video-design.md
-!/08-midnight-core-audit.md
 !/package.json
 !/tsconfig.json
 !/biome.json
 !/bun.lock
-!/.env.example
-!/demo.gif
 
-# 4. Re-include the source trees needed to build and run (parents first).
+# Source, docs and CI
+!/.github/
+!/.github/**
 !/apps/
 !/apps/**
-!/packages/
-!/packages/**
 !/convex/
 !/convex/**
-!/scripts/
-!/scripts/**
-!/infra/
-!/infra/**
-
-# 5. Re-include the sample images the landing and demo render.
-!apps/web/public/images/
-!apps/web/public/images/*.png
-# Two sample avatars. The rule below is inert for them today: they are already tracked
-# (git ls-files lists both), and gitignore does not affect tracked files. The asserting
-# test apps/web/src/assets.test.ts DOES exist and is tracked; it covers the three
-# hero/detail/collection images, not these avatars.
-apps/web/public/images/avatar-merchant.png
-apps/web/public/images/avatar-operator.png
-
-# 6. Local-only workflow tooling. Kept on disk for development, never published.
-#    Untracked in 098573a. Not needed to build or run the app.
-#    NOT listed here on purpose, because a documented command or a test needs them:
-#      scripts/check-plan.ts         tracked; the two .github workflows call
-#                                    `npm run check:plan`, but package.json has no
-#                                    such script and the script itself fails with
-#                                    `Missing canonical ID: MID-P2` (the corpus has
-#                                    MID-P1 and MID-P6 but no MID-P2..P5). No CI
-#                                    exists in a clone anyway: .github/ is ignored
-#                                    (line 21).
-#      scripts/native-processes.ts   imported by setup-native-node.ts and
-#                                    setup-integration-runtime.ts, and by a test
-#      scripts/convex-local-lifecycle-check.py   a documented command in
-#                                    packages/backend/ADMISSION.md
-apps/web/artwork/
-# re-ignored here because `!/packages/**` above overrides the section-2 rule
-packages/contract/generated/
-packages/integration/node_modules/
-packages/midnight-client/node_modules/
-packages/midnight-client/scripts/
-packages/integration/.hoplite/
-scripts/convex-local-*
-!scripts/convex-local-lifecycle-check.py
-# re-included 2026-09-20: the documented test:native-node / test:native-network
-# commands were missing from package.json, and these two files are their
-# implementations (native-services-health is imported by native-node-smoke).
-scripts/preprod-observe.mjs
-
-# 7. Local-lane and leftover files, untracked after an import-graph and
-#    string-reference sweep. Some are referenced by other untracked local-lane
-#    tooling (noted inline); none is needed to build or run the shipped app.
-#    The working copies stay on disk, so local builds and the current deploy are
-#    unaffected. A fresh clone simply will not carry them.
-apps/web/public/_redirects
-apps/web/public/watch.html
-# referenced by scripts/convex-local-verify.mjs:614 (local lane); kept untracked
-packages/integration/src/verify-persisted-constructor.mjs
-
-packages/midnight-client/node_modules/
-
-# generated QA bundle (the generating script scripts/qa-build-reserve-ui.ts is not in the
-# tree; the bundle is consumed by apps/web/public/qa-reserve-ui.html)
-apps/web/public/qa-build/
-
-# never track these
-apps/web/public/qa-build/
-packages/midnight-client/node_modules
-
-!/RECEIPTS.md
-!/SUBMISSION-UPDATE.md
-!/CLAIMS-CHECK-SUBMISSION.md
-!/STAGE-MAP.md
-!/DRIFT-CHECK.md
-!/scripts/gates/
-gates/*.json
-!/TODO.md
-!/WORKLOG.md
-!/BLOCKERS.md
-!/OWNER-QUEUE.md
-!/HANDOFF.md
-!/JUDGE-STEPS.md
-!/DESIGN-PARTNER-GUIDE.md
-!/COVERAGE.md
-!/PAYMENTS-LIVE-GATE.md
-!/RUNBOOKS.md
-!/SECURITY-INVENTORY.md
-!/PR7-UX.md
-
-# Evidence scripts are tracked (R3)
-!evidence/
-!evidence/**
-
-# Campaign harness dirs (R7C)
+!/docs/
+!/docs/MIDNIGHT-INTEGRATION.md
+!/docs/RECEIPTS.md
+!/docs/media/
+!/docs/media/**
+!/docs/plan/
+!/docs/plan/**
 !/e2e/
 !/e2e/**
-!/clickmap-harness/
-!/clickmap-harness/**
-# Audit discovery tables are tracked (R9/M2)
-!/audit/
-!/audit/**
+!/evidence/
+!/evidence/**
+!/infra/
+!/infra/**
+!/legal/
+!/legal/**
+!/packages/
+!/packages/**
+!/scripts/
+!/scripts/**
 
-# release hygiene (generic build artifacts)
-node_modules/
+# Dependencies, build output, generated code, local state and secrets
+node_modules
 dist/
 build/
 coverage/
 test-results/
 playwright-report/
+__pycache__/
 .convex/
-*.tgz
+.hoplite/
+.tools/
+.vercel/
+.scratch/
+hardening/
+midnight-level-db/
+convex/_generated/
+packages/contract/generated/
+apps/web/public/qa-build/
+apps/web/artwork/
+e2e/**/out/
 *.log
+*.diff
+*.pem
+*.tgz
 *.webm
+*Zone.Identifier
 .DS_Store
 .env
 .env.*
-!.env.example
-.tools/
-midnight-level-db/
-hardening/
-.hoplite/
+!/.env.example
 
-# junk / generated
-convex/_generated/
-e2e/**/out/
-packages/integration/src/p0-*.mjs
-release-manifest.json
-
-# ---------------------------------------------------------------------------
-# 7. Local-only junk kept on disk, never published (wave-6 cleanup, 2026-10-15).
-#    These were tracked but are scratch: throwaway debug probes, run result
-#    dumps, internal campaign bookkeeping, the audit corpus, and one-off
-#    workflow scripts. Removed from the index with `git rm --cached`; they stay
-#    on disk for local use. Tag `w6-pre-ignore-cleanup` restores the old state.
-#    NOTE: this is a deny-by-default allowlist, so these rules sit AFTER the
-#    `!` re-includes in section 4/5 and re-ignore what those re-included.
-
-# 7a. Throwaway debug probes (hardcoded /usr/bin/google-chrome, 0 referrers).
+# Local-only tooling, scratch and campaign notes. They stay on disk for local
+# work; none is needed to build, test or run the shipped app.
+# check.yml repeats local-checks.yml and adds test:native-network, which needs
+# local Midnight services.
+/.github/workflows/check.yml
+/apps/web/public/_redirects
+/apps/web/public/watch.html
+/apps/web/public/qa-*
+/apps/web/src/qa-reserve-ui.tsx
 /e2e/flows/debug-*.mjs
-
-# 7b. Generated run-result dumps (regenerable evidence, not source).
 /e2e/flows/*-result.json
-
-# 7c. Internal campaign bookkeeping. The eight 0X-*.md planning docs DO ship
-#     (scripts/check-plan.ts reads them) and are re-included in section 3.
-/ARCHITECTURE_AUDIT.md
-/BLOCKERS.md
-/CLAIMS-CHECK-SUBMISSION.md
-/COHORT-UPGRADE.md
-/CONVERGENCE-MAP.md
-/COVERAGE.md
-/DEAD-CODE-REPORT.md
-/DRIFT-CHECK.md
-/FLOW-READINESS.md
-/HANDOFF.md
-/JUDGE-STEPS.md
-/LIVE-READINESS-MATRIX.md
-/ROADMAP-LIVE.md
-/RUBRIC-MAP.md
-/SECURITY-INVENTORY.md
-/STAGE-MAP.md
-/WALLET-MATRIX.md
-/WAVE-DELTA.md
-/WORKLOG.md
-
-# 7d. The audit corpus: internal investigation notes and raw evidence.
-/audit/
-
-# 7e. One-off audit/workflow scripts, not part of build, test or run.
+/packages/integration/src/p0-*.mjs
+/packages/integration/src/d2c-split.mjs
+/packages/integration/src/verify-persisted-constructor.mjs
+/packages/midnight-client/scripts/
+/scripts/convex-local-*
+!/scripts/convex-local-lifecycle-check.py
+/scripts/gates/
 /scripts/g4-negative-controls.sh
 /scripts/judging-minimum.sh
-/scripts/m11-verify-all.mjs
-/scripts/m11-verify.mjs
+/scripts/m11-verify*.mjs
 /scripts/master-ledger-rebuild.sh
 /scripts/net-health.sh
 /scripts/next-task.sh
 /scripts/ownership-check.sh
 /scripts/post-push-verify.sh
-/scripts/pr7-axe-all.mjs
-/scripts/pr7-axe.mjs
+/scripts/pr7-axe*.mjs
+/scripts/preprod-observe.mjs
+/scripts/privy-test-login*.ts
+/scripts/spend-balance.mjs
 /scripts/todo-check.sh
 /scripts/todo_lib.py
