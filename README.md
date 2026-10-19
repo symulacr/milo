@@ -1,204 +1,254 @@
 # Milo
 
-private agreements. clear approvals.
+**Private agreements. Clear approvals.**
 
-a privacy-first commissioning workspace for one fixed-price three-image deal. midnight enforces the
-order rules. stripe handles payment off chain.
+Milo is a privacy-first commissioning workspace for one bounded deal: a buyer and a studio agree a
+fixed price for a pack of three images. A Midnight Compact contract enforces the order rules. Stripe
+handles payment off chain. The brief, the price, the participants' secrets and the delivered files
+stay private; only the phase, the revision and commitments are public.
 
-## Demo
+[Demo video](https://youtu.be/nyB9qJ1OL-4) · [Live workspace](https://milo-xkq.vercel.app) ·
+[Slide deck](https://milo-xkq.vercel.app/milo-wave2-deck.pdf)
 
 ![milo walkthrough](docs/media/demo.gif)
 
-[walkthrough](https://youtu.be/bF968ODpTos) · [live workspace](https://milo-xkq.vercel.app)
+## What is real and what is simulated
 
-## Status
-
-R0. the sources are present and tracked in this tree: `convex/` (31 tracked files), `packages/`
-(133) and `packages/midnight-client/src/` (8) all exist, and `audit/discovery/BASELINE-P3.md` has
-never existed in any ref. The Preprod deploy is not proven by any retained receipt: the only
-retained Preprod deploy receipts under `.hoplite/artifacts/preprod/` (2026-09-30) record
-`"status":"failed"` with `Wallet.InsufficientFunds: could not balance dust` and
-`finalCircuitCount: 0`. The browser workspace is still the in-memory simulator
-(`apps/web/src/workspace/model.tsx` imports `packages/domain/src/prototype.ts`;
-`apps/web/src/components/order.tsx:134` renders “In-memory simulator”), so no order is connected
-end to end: there is no browser circuit-call path and the wallet, backend and chain lanes never
-meet. A hosted Convex deployment and a Privy app id do exist: `dist/api/public-config` reads
-`{"privyAppId":"cmtvmx5ny02jg0blcvamxm1sd","convexUrl":"https://tremendous-rooster-473.convex.cloud","midnightNetwork":"preprod"}`.
-
-| layer | where | status |
+| Layer | State | Where |
 | --- | --- | --- |
-| browser workspace | browser, in-memory simulator | renders wallet status and Convex payment observation; no circuit call |
-| contract | preprod | deployment claimed 2026-09-20 (14/14 execution, 0/14 acceptance); not proven by any retained receipt |
-| observer ingest | local Convex | `convex/observationIngest.ts` present and tracked; historical A1 RUNTIME receipt only |
-| midnight client / wallet | SDK | **TESTED SDK only** (historical) — Lace connector + prepare gates; `WALLET_SIGNED_RESERVE_RUNTIME` unknown |
-| native and backend | local node, prover, backend | staged deploy, test doubles; F-21 settlement fix TESTED |
-| stripe | — | **no keys** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` missing); F-30 files **partial** |
-| providers | preprod | exercised by the run, acceptance rows partial |
+| Compact contract | Compiles (compactc 0.31.1); proof and semantic-guard tests pass; local 14-circuit sweep | `packages/contract/` |
+| Midnight client | Provider factory, typed errors, Preprod network guard, Lace dapp-connector v4; reserve and accept preparation fails closed and stops before signing | `packages/midnight-client/` |
+| Convex backend | Canonical admission, chain-observation ingest, order projection, Stripe settlement inbox | `convex/` |
+| Identity | Better Auth session verified by Convex (`customJwt`, RS256); legacy `did:privy` subjects still accepted | `apps/web/src/auth-client.ts`, `convex/auth.config.ts` |
+| Payments | Stripe test mode only; capture on `APPROVED`, void on `CANCELLED`; signed webhooks | `convex/http.ts`, `convex/settlement.ts` |
+| Browser workspace | Full order lifecycle runs in an **in-memory simulator**; Lace, Convex session, order record and payment monitor are real but read-only | `apps/web/` |
 
-acceptance dual-state (see IMPLEMENTATION-DECISIONS D2): execution is claimed 14/14 on
-preprod (2026-09-20) while acceptance stays 0/6 provider · 0/14 operation until
-the canonical criteria are met. **R1 is not complete** (`r1Complete` stays false).
-the 14/14 execution claim is historical and unverified: it is dated 2026-09-20 and its
-per-circuit hashes are not in the tree, while the only retained Preprod deploy receipts
-(`.hoplite/artifacts/preprod/staged-deploy-happy-path.json` and
-`staged-deploy-negatives.json`, 2026-09-30) record `"status":"failed"` on
-`Wallet.InsufficientFunds: could not balance dust` with `finalCircuitCount: 0`.
-new modules since the reconciliation pass, none
-of which close an acceptance row.
+Not done yet: a wallet-signed reserve from the browser, chain data driving the workspace, and a
+Preprod transaction. Acceptance is published as **0/6 provider** and **0/14 operation** until those
+land. Retained Preprod deploy attempts failed on DUST balancing, and the Midnight-hosted Preprod
+endpoints were decommissioned on 2026-10-09, so the proof evidence comes from local runs.
 
-the modules named in the next paragraph are present and tracked in this tree:
-`packages/midnight-client` (browser Lace
-transport + reserve/accept prepare gates; wallet-signed reserve still unknown),
-`convex/observationIngest.ts` (durable deployment-observation writer — **local
-Convex RUNTIME (A1)**; not a hosted-provider row),
-`packages/backend/src/release-flags.mjs` (evidence-gated R1 flag single source of
-truth), and `packages/backend/src/delivery-commitment.mjs` (digest-bound
-delivery commitment). All four are tracked; the earlier “GONE from this tree
-(BASELINE-P3)” claim was false and `audit/discovery/BASELINE-P3.md` has never existed.
+## The contract
 
-the on-chain claims in this section are historical (dated 2026-09-20) and are not
-verifiable now: the only retained Preprod deploy receipts record failures on DUST, and the
-Midnight-hosted Preprod endpoints (`indexer.preprod.midnight.network`,
-`rpc.preprod.midnight.network`) were decommissioned from 22:00 UTC on 2026-10-09
-(docs.midnight.network/guides/networks-and-environments), so a live read returns
-`ENDPOINT_DECOMMISSIONED`. the explorer links below are retained as the recorded identity.
+`packages/contract/src/order.compact` declares 25 circuits: 16 exported, of which 14 carry proofs
+and 2 are pure hash helpers.
 
-the contract address is
-[`0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586)
-on midnight explorer, and the same contract on
-[subscan](https://midnight-preprod.subscan.io/contract/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586),
-which indexes accounts and canonicalises it to the bech32 contract
-`mn_addr_preprod1h9wgysljd8yet3m9wuqx7gem0smlx5cx0hu8x7umzafhww08gkrqy5rlx4`. deploy is staged
-because a single-transaction 14-key deploy exceeds the per-extrinsic execution budget: seven verifier
-keys in one transaction and the remaining seven installed by maintenance update, read back from the
-operation set as 14 of 14. both transactions are on chain and linkable: the deploy is
-[`0xd10923d2...ab472`](https://preprod.midnightexplorer.com/transactions/0xd10923d24e70eb9c2e928f4cd18fd689822c85568d59b7ad3aa3af86222ab472)
-in block **2636672**, which is where this contract's `ContractDeploy` sits, and the second seven keys
-arrived in
-[`0x8a6aed77...a8939`](https://preprod.midnightexplorer.com/transactions/0x8a6aed776b9ef01bc141da7414f008d56b64de47289e4bfce5bab7b2d52a8939)
-in block **2636676**, the only `ContractUpdate` on this contract before the maintenance drills. the
-run's own receipt recorded the ids `0x63f45a99...` and `0x06a85a07...` with no block heights; a direct
-indexer query for both returns an empty result, so they are not on chain in any form, and the block is
-the identity to cite rather than a second identifier. one earlier claim is corrected here: blocks
-2636398 and 2636469 belong to the superseded contract `0x731948c6...`, which the resume-path defect
-produced, not to this one. the run claimed all 14 order
-circuits finalized, each with a txId and a block height between 2638272 and 2639589, and the
-must-reject suite was rejected at the contract layer with the expected asserts. this claim is
-historical (2026-09-20) and unverified: its per-circuit hashes are not in the tree, and the only
-retained Preprod deploy receipts record failures. maintenance drills
-removed and restored a verifier key and then froze authority to an empty committee, leaving
-`committee [], threshold 1, counter 4` and permanently non-upgradable authority; the three
-maintenance calls resolve on chain as
-[removeVerifierKey](https://preprod.midnightexplorer.com/transactions/0x3373b100e7f4fe70e4fbc49bdebbf8e8409c99cf968b0cb664c2c386eff269d9),
-[insertVerifierKey](https://preprod.midnightexplorer.com/transactions/0xc36eaabfbb6e30549cca24175ea47169ad7c72f13b39f5286d26a34cde11bca4)
-and
-[replaceAuthority](https://preprod.midnightexplorer.com/transactions/0x5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58),
-each showing this contract in its contract-action row. funding is on chain too: the DUST registration
-transaction
-[`0xebb3dd39...ba4fd`](https://preprod.midnightexplorer.com/transactions/0xebb3dd39cb87d1ed9bf5deda71650a6a344cf1738523d5606a8c03cc914ba4fd)
-in block [2634013](https://preprod.midnightexplorer.com/blocks/2634013) spent the generating NIGHT
-UTXO, and the wallet's spendable balance was measured at `60349100000000000` specks after the
-operator funded five more UTXOs. provider acceptance is partial; no connected-provider order is
-claimed.
+```
+DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
+                 ↘ CANCELLED      ↘ DISPUTED → resolve → APPROVED | CANCELLED
+```
 
-what this does not prove: the off-chain half is prototyped, not deployed end to end. a hosted
-Convex deployment and a Privy app id do exist (`dist/api/public-config`), but the browser has no
-circuit-call path, so the wallet, backend and chain lanes never meet and no order is verifiable end
-to end.
+- **Proof-bearing transitions:** `reserve`, `accept`, `decline`, `submitDelivery`, `approve`,
+  `disputeBuyer`, `disputeMerchant`, `resolve`, `cancelReserved`, `escalateUnreviewed`,
+  `expireBootstrap`, `expireReserved`, `expireUndelivered`, `expireDispute`.
+- **Private witnesses:** buyer, merchant and operator secrets, the agreed terms and the buyer's
+  approval limit.
+- **Public ledger:** `phase`, `revision`, `deliveryCommitment`, `evidenceCommitment`, plus a sealed
+  `configuration` that holds the terms commitment and the role commitments.
+- **Roles by capability:** `hashCapability` (`persistentHash("milo:capability:v1", secret)`) binds a
+  secret to a role, so a participant proves authority without revealing identity.
+- **Guards:** every exported transition checks the sealed configuration, the phase and the expected
+  revision, so out-of-order and stale transitions are rejected.
+- **Staged deploy:** a single-transaction deploy of all 14 verifier keys exceeds the per-transaction
+  execution budget, so 7 keys deploy with the contract and 7 install through a maintenance update.
 
-### Contracts and wallets, by address
+Details: [contract README](packages/contract/README.md) · [contract spec](packages/contract/SPEC.md) ·
+[Midnight integration](docs/MIDNIGHT-INTEGRATION.md).
 
-| name | address | purpose | state |
-| --- | --- | --- | --- |
-| Milo commission contract (`order.compact`) | [`0xb95c8243...e74586`](https://preprod.midnightexplorer.com/contracts/0xb95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586) | the deployed contract this repo is about: it holds an order's phase, its hashed commitments and its terms, and decides who may move it. the brief, the files and the price stay off chain | **claimed live 2026-09-20** - 14 of 14 circuits driven per the historical record, maintenance authority frozen to an empty committee; unverified against retained receipts |
-| superseded first deploy | `0x731948c6...ce9aa` | the first attempt, produced by a resume-path defect. its failed deploy attempt is the only transaction in block 2636398 and its update the only one in 2636469 | abandoned, no order ran on it |
-| stray redeploy | `0x554f9ff0b0...3f75a` | a second contract deployed from this source in the same block as the live one | abandoned |
-| stray redeploy | `0x394bc7f2...f1ed1` | an earlier redeploy of the same source, the case the resume guard now prevents | abandoned |
+## Backend guarantees
 
-### Funding a Preprod operator
-
-the Midnight-hosted Preprod endpoints (`indexer.preprod.midnight.network`,
-`rpc.preprod.midnight.network`) were decommissioned from 22:00 UTC on 2026-10-09
-(docs.midnight.network/guides/networks-and-environments); a live read returns
-`ENDPOINT_DECOMMISSIONED`. the faucet and the procedure below are retained as the historical record.
-
-| what | value |
-| --- | --- |
-| tNIGHT faucet | <https://midnight-tmnight-preprod.nethermind.dev/> - 1000 tNIGHT per request, captcha gated, and it refuses shielded and DUST addresses, so hand it the unshielded address below |
-| wallet to fund (unshielded) | `mn_addr_preprod1y7kqu30rc3dq647v37r77eew7efml5pzvcgpntp28rv85fzzz7usc2n4h7` |
-| DUST | accrues over time from the registered NIGHT and pays for every transaction. registration spends the generating UTXO, so generation stops until fresh funds are registered; a new UTXO then accrues retroactively |
-| where the seed lives | `.env.preprod`, ignored by git and mode 0600. never commit it, never echo it |
+- **Stripe webhooks** (`convex/http.ts`): HMAC signature check, 5-minute replay window, 256 KiB body
+  cap, `livemode` events refused, idempotent inbox, settlement fenced on begin, reconcile and sweep.
+- **Delivery integrity** (`packages/backend/src/delivery-policy.ts`): uploads are checked by magic
+  bytes (PNG, JPEG, WebP) and a 5 MiB limit, then frozen; the delivery commitment is the hash of the
+  ordered file digests; every read is re-authorized and upload grants expire.
+- **Chain observation** (`convex/observationIngest.ts`): durable ingest with `bind`, `replay`,
+  `stale`, `contradictory` and `address-claimed` verdicts; the order record comes from observations,
+  not fixtures.
+- **Release gates** (`packages/backend/src/release-flags.ts`): `immutableOrderAdmission` and
+  `r1Complete` stay false until stored receipts exist.
 
 ## Architecture
 
-solid edges are implemented locally, dashed edges are the target flow.
+One order, end to end. Every arrow names the real module or Convex function. Each colored band is
+one stage of the order. A note in each band says whether the stage is **implemented**, **local
+lane** (proven with the Node runner in `packages/integration`, not yet from the browser) or
+**prepared** (code exists and fails closed, but is not yet connected).
 
 ```mermaid
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "fontFamily": "Inter, ui-sans-serif, system-ui, sans-serif",
+    "fontSize": "14px",
+    "primaryColor": "#FFFDF8",
+    "primaryBorderColor": "#4A2FD0",
+    "primaryTextColor": "#16161A",
+    "lineColor": "#3A3833",
+    "actorBkg": "#FFFDF8",
+    "actorBorder": "#4A2FD0",
+    "actorTextColor": "#16161A",
+    "actorLineColor": "#C9C1B3",
+    "signalColor": "#3A3833",
+    "signalTextColor": "#16161A",
+    "labelBoxBkgColor": "#F0ECFF",
+    "labelBoxBorderColor": "#4A2FD0",
+    "labelTextColor": "#16161A",
+    "loopTextColor": "#16161A",
+    "noteBkgColor": "#FBF0D9",
+    "noteBorderColor": "#B08A4E",
+    "noteTextColor": "#3A3833",
+    "activationBkgColor": "#F0ECFF",
+    "activationBorderColor": "#4A2FD0",
+    "sequenceNumberColor": "#FFFFFF"
+  },
+  "sequence": { "mirrorActors": false, "showSequenceNumbers": true, "boxMargin": 12, "noteMargin": 12, "messageMargin": 40 }
+}}%%
 sequenceDiagram
-    accTitle: Milo local and target paths
-    accDescr: Solid arrows are implemented locally. Dashed arrows are the target flow.
+    autonumber
 
-    actor User
-    box rgba(84, 52, 215, 0.12) implemented locally
-        participant UI as React UI
-        participant Console as In-memory simulator
+    box rgb(240, 236, 255) People
+        actor B as Buyer
+        actor S as Studio
+        actor O as Operator
     end
-    box rgba(92, 90, 87, 0.14) target only
-        participant Wallet as Lace wallet
-        participant Chain as Midnight node
-        participant API as Convex backend
+    box rgb(255, 253, 248) Browser · apps/web
+        participant W as Workspace<br/>(React 19)
+        participant MC as midnight-client<br/>(provider factory)
+        participant L as Lace wallet<br/>(dapp-connector v4)
+    end
+    box rgb(232, 241, 235) Midnight
+        participant C as order.compact<br/>(14 proof circuits)
+        participant IX as Indexer
+    end
+    box rgb(236, 232, 223) Convex · off chain
+        participant CX as Convex<br/>(schema + functions)
+        participant ST as Stripe<br/>(test mode)
     end
 
-    rect rgba(84, 52, 215, 0.10)
-        Note over User,Console: <b>implemented local paths</b>
-        User->>UI: open the workspace
-        UI->>Console: render order and wallet status
-        Console->>UI: simulated view, no circuit call
+    rect rgba(74, 47, 208, 0.06)
+        Note over B,CX: Identity: implemented
+        B->>W: sign in (Better Auth client)
+        W->>CX: query auth/session:current
+        CX-->>W: subject verified (customJwt, RS256 via JWKS)
+        W->>L: connect("preprod"), read status only
+        L-->>W: connected · networkId = preprod
     end
-    rect rgba(92, 90, 87, 0.14)
-        Note over User,API: <b>target connected flow</b> <i>not evidence</i>
-        User-->>UI: sign in and consent
-        UI-->>Wallet: connect preprod wallet
-        UI-->>API: quote request with token
-        Wallet-->>Chain: <b>submit</b> via provider route
-        Chain-->>API: observed contract state
-        activate API
-        API-->>API: <b>validate and bind</b>
-        deactivate API
-        API-->>UI: observed order and receipt
+
+    rect rgba(176, 138, 78, 0.10)
+        Note over B,ST: Quote and payment authorization: implemented
+        B->>CX: provisioning:freeze (approved quote → frozen quote)
+        B->>CX: provisioning:requestPayment (consent)
+        CX->>ST: stripeProvisioning:run → create PaymentIntent (manual capture)
+        ST-->>CX: POST /webhooks/stripe (HMAC, 5 min window, 256 KiB cap, livemode refused)
+        CX->>CX: settlement:recordEvent → idempotent paymentInbox
+        B->>CX: admission:bind (frozen quote + payment authorization)
+        CX-->>B: one canonical binding (OCC-safe, active buyer membership)
+    end
+
+    rect rgba(29, 106, 75, 0.07)
+        Note over C,IX: Deploy: local lane, staged bootstrap
+        CX->>C: constructor seals configuration (terms + role commitments)
+        Note right of C: 7 verifier keys at deploy<br/>+ 7 by maintenance update
+        C-->>IX: ContractDeploy · phase DEPLOYED · revision 0
+        IX-->>CX: observationIngest:recordDeployment (recorded / replay)
+    end
+
+    rect rgba(74, 47, 208, 0.06)
+        Note over B,C: Reserve: prepared in the browser, proven in the local lane
+        B->>W: Reserve the terms
+        W->>MC: prepareBuyerReserve(kit, wallet, providers)
+        MC-->>W: blocked until all 6 providers, private state and submit path exist
+        Note over W,L: wallet-signed submit not wired yet (RESERVE_SUBMIT_PATH = UNKNOWN)
+        MC-)C: reserve(buyerSecret, terms, approvalLimit) as witnesses
+        C->>C: checkPublicConfiguration · phase DEPLOYED · checkRevision
+        C-->>IX: phase RESERVED · revision + 1
+        IX-->>CX: orders:recordObservation → bind / stale / contradictory / address-claimed
+        CX-->>W: orders:read projection (no phase label without a record)
+    end
+
+    rect rgba(29, 106, 75, 0.07)
+        Note over S,CX: Accept and deliver: delivery integrity implemented; circuits proven in the local lane
+        S->>C: accept(merchantSecret) · RESERVED → ACCEPTED
+        S->>CX: files:requestUpload → attachUpload (grant TTL, storageId bound)
+        CX->>CX: files:inspectGrant: magic bytes PNG/JPEG/WebP · ≤ 5 MiB · SHA-256
+        S->>CX: files:freeze → delivery manifest
+        CX-->>S: deliveryCommitment = hash(ordered file digests)
+        S->>C: submitDelivery(deliveryCommitment) · ACCEPTED → SUBMITTED
+    end
+
+    rect rgba(176, 138, 78, 0.10)
+        Note over B,C: Review: workspace flow simulated; file reads and approve circuit real
+        B->>CX: files:serveFile (re-authorized on every read)
+        CX-->>W: bytes
+        W->>W: verify SHA-256 against the frozen manifest
+        alt files match and buyer approves
+            B->>C: approve(buyerSecret) · SUBMITTED → APPROVED
+        else buyer or studio disputes
+            B->>C: disputeBuyer / disputeMerchant · → DISPUTED
+            O->>C: resolve(operatorSecret) · → APPROVED or CANCELLED
+        else deadline passes
+            C->>C: expireReserved / expireUndelivered / escalateUnreviewed / expireDispute
+        end
+        C-->>IX: final phase + revision
+        IX-->>CX: orders:recordObservation
+    end
+
+    rect rgba(163, 38, 46, 0.06)
+        Note over CX,ST: Settlement: implemented and tested; waits on observed phase
+        alt phase APPROVED
+            CX->>ST: settlement:request(capture) → stripeSettlement:run
+        else phase CANCELLED
+            CX->>ST: settlement:request(void) → stripeSettlement:run
+        end
+        Note right of ST: idempotency key<br/>milo-{action}:{orderId}:{revision}
+        ST-->>CX: webhook → settlement:reconcile
+        CX->>CX: settlement:begin / finish fences · settlement:sweep resumes stuck ops
+        CX-->>W: paymentMonitoring:status (read-only)
     end
 ```
 
-the lanes never meet, so no complete order is verifiable end to end.
-[contract readme](packages/contract/README.md) covers each circuit.
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `apps/web` | React 19 workspace and public site (React Router 8, Radix UI, plain CSS) |
+| `packages/contract` | Compact contract, spec and contract tests |
+| `packages/domain` | Pure order simulator and recovery-kit state machine used by the workspace |
+| `packages/midnight-client` | Browser Midnight client: providers, wallet, fail-closed circuit preparation |
+| `packages/backend` | Server-side policy and Stripe adapters used by Convex |
+| `packages/integration` | Node runner for the local native network and Preprod lanes |
+| `convex` | Convex schema, mutations, HTTP routes and settlement |
+| `scripts` | Setup, dev server, build, contract compile and test runners |
+| `e2e` | End-to-end harness and route smoke flows |
+
+The `01`–`08` documents at the root are the design corpus; `npm run check:plan` reads them.
 
 ## Run it
 
-needs linux x86_64, node, npm, python 3, curl, tar/xz, sha-256.
+Needs Linux x86_64, Node 26.11.1, npm, Python 3, curl, tar/xz and sha256sum. `scripts/setup.sh`
+installs the pinned Bun (1.4.2) and the Compact toolchain into `.tools/`.
 
 ```sh
 sh scripts/setup.sh
-npm run dev        # localhost:3000, /demo, /orders
-npm run contract:compile
+npm run contract:compile   # compile before typecheck or tests
+npm run dev                # http://localhost:3000 (try /demo and /orders/sample-001)
 npm run typecheck
 npm run lint
 npm run test:unit
-npm run build
+npm run build              # static output in dist/, public settings in dist/api/public-config
 ```
 
-compile before typecheck or tests. generated keys stay in ignored
-`packages/contract/generated/`. the build writes static output and three public settings to
-`dist/api/public-config`. the [integration readme](packages/integration/README.md) covers the native lane. `bun run
-test:integration` provisions the pinned node and reinstalls the integration dependency
-set on every run. it admits no order.
+Copy `.env.example` to `.env.local` and set `CONVEX_URL` and `BETTER_AUTH_URL` to enable the live
+read-only panels on `/connections`. The workspace runs without them.
 
-## Safety
+## Testing
 
-keep `PRIVY_APP_SECRET` and `STRIPE_SECRET_KEY` server side. rotate any secret shared in chat, and replace
-any wallet whose seed was disclosed. sample receipts are not proofs.
-
-
-## Quick start (verified)
+- `npm run test:unit`: 575 tests across 50 files (contract, domain, backend, web, scripts).
+- `npm run test:integration`: provisions the pinned Node runtime and runs `packages/integration` tests.
+- `npm run test:native-network`: local Midnight node lane (see the
+  [integration README](packages/integration/README.md)).
+- Accessibility: axe reports 0 serious issues on all 16 routes at desktop and mobile widths.
 
 ```bash verify
 test -f package.json
@@ -206,15 +256,25 @@ test -f packages/contract/src/order.compact
 test -f .env.example
 ```
 
-## How to test
-
 ```bash verify
 bun install --frozen-lockfile
 bun run typecheck
 ```
 
+## Safety
+
+Keep `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and the Better Auth secret in the server or Convex
+environment, never in browser code. Use test-mode keys only; live-mode webhooks are refused. Sample
+receipts in the workspace are not proofs.
+
+## Roadmap
+
+1. Sign and submit `reserve` and `accept` from the browser through the provider factory and Lace.
+2. Replace the simulator with Convex chain observations so the workspace shows the real order.
+3. Pass end to end with Better Auth test accounts and capture a Stripe test-mode payment.
+4. Run a local-node or Preprod pass that reports every acceptance row with a reproducible command.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE). third-party material keeps its own license, see
-[third-party notices](THIRD_PARTY_NOTICES.md). the spec corpus is unpublished.
+Apache License 2.0, see [LICENSE](LICENSE). Third-party material keeps its own license, see
+[third-party notices](THIRD_PARTY_NOTICES.md).
