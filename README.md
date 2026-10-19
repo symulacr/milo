@@ -10,7 +10,7 @@ stay private; only the phase, the revision and commitments are public.
 [Demo video](https://youtu.be/nyB9qJ1OL-4) · [Live workspace](https://milo-xkq.vercel.app) ·
 [Slide deck](https://milo-xkq.vercel.app/milo-wave2-deck.pdf)
 
-![milo walkthrough](docs/media/demo.gif)
+![Milo showreel](docs/media/showreel.gif)
 
 ## What is real and what is simulated
 
