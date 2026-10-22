@@ -297,6 +297,30 @@ rm .hoplite/artifacts/preprod/sync-inflight.json    # only after confirming that
 
 ### Verifying success
 
+**Measured end to end on 2026-10-22 with a fresh seed, so this is the cheap path, not a
+replay.** A newly generated wallet, faucet-funded and registered:
+
+| Step | Result |
+|---|---|
+| Faucet | 5,000 tNIGHT per request; the wallet received 25,000 then 30,000 across requests |
+| Dust seed (fast path) | `dust-seeded` in **7,294 ms**, `tailEventsApplied: 0`, cutoff 1711225 |
+| `--register-dust` | `dust-registration-estimate` fee **1 speck**; the lane recorded `txId 00f7b0fc…` |
+| On-chain confirmation | `unshieldedTransactions` shows the new NIGHT UTXOs with `registeredForDustGeneration: true` at heights 3095117 and 3095156 |
+| `--check` after registration | `night: 30000000000`, `dust: 91019669999999999` (**91.02 DUST**) |
+| Decoded dust snapshot | `appliedIndex: 1711410`, **`utxos.length: 2`**, `walletBalance: 94987829999999999` |
+
+The `utxos.length: 2` is the load-bearing number. It is the same field that reads `0` on a
+wallet seeded past its own history, and the reason the refusal is scoped rather than
+blanket: a fresh wallet reaches a non-empty set through the ordinary tail replay.
+
+The on-chain confirmation is the `registeredForDustGeneration: true` flag on the newly
+created NIGHT UTXOs, read back from the indexer. The lane's `txId` field is not a queryable
+indexer transaction hash (passing it to `transactions(offset: {hash: …})` returns
+`invalid transaction hash`), so do not cite it as on-chain proof.
+
+Note the registration fee was **1 speck**, not the 0.3 DUST `additionalFeeOverhead` figure:
+the overhead is a fee *margin* the wallet adds, not the fee itself.
+
 1. The run exits cleanly and `sync-inflight.json` is gone.
 2. `--check` reports a non-zero dust balance:
 
