@@ -60,6 +60,77 @@ DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
 - **Staged deploy:** a single-transaction deploy of all 14 verifier keys exceeds the per-transaction
   execution budget, so 7 keys deploy with the contract and 7 install through a maintenance update.
 
+### Deployed on Preprod
+
+Two contracts are live on Midnight Preprod, each carrying all 14 proof circuits. Every hash
+below was read back from the Blockfrost indexer, so each one is queryable — none is copied
+from a local log.
+
+**Deployment is not one transaction per circuit.** The staged 7+7 deploy installs verifier
+*keys*: one transaction deploys seven, a second maintenance transaction installs the remaining
+seven. Fourteen circuits therefore arrive in two transactions per contract. A circuit *call* is
+a separate transaction and does get its own hash, listed separately below.
+
+| Contract | Address | Deploy tx hash (7 keys) | Insert tx hash (7 keys) |
+|---|---|---|---|
+| Main | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` | `1c094210cb96316ad28887f9b8f45dfbcec3bb2648973bd717beb708e3de5ca9` |
+| Stress instance 0 | `6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee` | `e12bf102ed4874e241f4fde8d1d90f3de964f7c57283869335603f33c3572a56` | `6ad37524c6d57b43d645679210ddf85d4f173b1f2effcb64361248a85454b40e` |
+
+Both read back as 14 operations with maintenance counter 1, which is the on-chain evidence that
+exactly one insert ran per contract.
+
+Circuit calls executed on Preprod, each its own transaction:
+
+| Circuit | Contract | Tx hash | Block |
+|---|---|---|---|
+| `reserve` | stress instance 0 | `274434a3198edff00f874586c4b06d6234cd9ae1db6707d892e173a876bc8406` | 3095493 |
+| `accept` | stress instance 0 | `d27943872ad6e73ef84831afab4d97473e1b332c373bffd4c17378e34f12b27f` | 3095499 |
+
+Read any of them yourself:
+
+```sh
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"query":"{ block(offset:{height:3095499}) { transactions { hash contractActions { __typename } } } }"}' \
+  "https://midnight-preprod.blockfrost.io/api/v0?project_id=$MILO_PREPROD_BLOCKFROST_PROJECT_ID"
+```
+
+**What the lane's `txId` field is not.** `submitTxAsync` returns a ledger transaction
+identifier, and that value is **not** a queryable indexer transaction hash: passing it to
+`transactions(offset: {hash: …})` returns `invalid transaction hash`. Do not cite a `txId` as
+on-chain proof. Confirmation comes from observed ledger state — the `ContractUpdate` hash above,
+or the `registeredForDustGeneration` flag on a NIGHT UTXO — never from the submit receipt.
+
+### Stress testing at volume
+
+`--stress` drives many complete lifecycles, each on a fresh staged deploy, bounded on
+operations, wall clock and DUST:
+
+```sh
+MILO_STRESS_OPERATIONS=200 MILO_STRESS_INSTANCES=50 MILO_STRESS_DEADLINE_MS=5400000 \
+  node --env-file=.env.preprod packages/integration/src/preprod-lane.mjs --stress
+```
+
+Three protocol constraints decide the shape, and none are workarounds:
+
+1. **One contract is one order.** `configuration` is a sealed ledger field, so a deployed
+   contract has one fixed set of parties and deadlines, and every terminal phase is final.
+   Volume means many instances, not many lifecycles on one instance.
+2. **Calls are strictly sequential.** A built transaction locks the DUST UTXOs that pay its fee
+   until the wallet applies the confirmation, so a batch that ignores this fails to balance.
+3. **No cross-contract calls on Preprod.** Those need ledger version 9; Preprod runs ledger 8.
+   "Cross-circuit" here means different circuits of the same contract in one flow.
+
+Preprod's own ceilings bound any run: `block_usage` 200,000 bytes and `bytes_written` 50,000
+bytes per 6-second block, and a per-account throttle of 10 MB per rolling day. At one
+transaction per block, 200 operations is a 20-minute floor before proving time.
+
+Measured on this machine: a stress run reached `reserve` (block 3095493) and `accept` (block
+3095499) with real proofs before the process was killed by the host running out of memory
+(9 GB total, 9 GB used, two editor processes holding 52%). That is an environment ceiling, not
+a harness defect — the same two calls succeed on the main deployment. Run a full 200-operation
+sweep only on a host with headroom, and expect each staged deploy plus its proofs to be the
+memory high-water mark.
+
 Details: [contract README](packages/contract/README.md) ·
 [contract spec](packages/contract/SPEC.md) · [Midnight integration](docs/MIDNIGHT-INTEGRATION.md).
 

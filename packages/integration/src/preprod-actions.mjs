@@ -29,6 +29,14 @@ import {
 } from "./await-watchdog.mjs";
 import { publicReceipt } from "./config.mjs";
 import { witnesses } from "./order.mjs";
+import {
+  driveInstance,
+  planStressRun,
+  STRESS_DEFAULTS,
+  stressReceiptPath,
+  stressStopReason,
+  summariseStressRun,
+} from "./stress-run.mjs";
 import { intentExpiry, maintenanceTx } from "./tx.mjs";
 
 const GENERATED = resolve("packages/contract/generated");
@@ -212,17 +220,12 @@ async function deployOrder({
     // with 1000 Normal Closure, so the transaction lands while the promise never resolves.
     // Confirmation comes from the observed ledger state, not from the submit receipt.
     //
-    // The Preprod lane's submitter returns a 0x-prefixed extrinsic hash; the local drill's
-    // wallet facade returns the ledger transaction id as bare hex (TransactionId = string,
-    // no 0x). publicReceipt recognises only the 0x form, so normalise the bare form to it.
-    // This is never a finality claim: publicReceipt's string branch records status
-    // "Submitted", and runStagedDeploy confirms by observing the ledger state.
-    submit: async (unprovenTx) => {
-      const txId = await submitTxAsync(providers, { unprovenTx });
-      return typeof txId === "string" && !txId.startsWith("0x")
-        ? `0x${txId}`
-        : txId;
-    },
+    // `submitTxAsync` returns the ledger transaction id as bare hex (TransactionId is a
+    // string with no 0x). Do NOT prefix it: that value is a real identifier, and adding a
+    // prefix invents a hash that does not exist on chain. This used to normalise it to 0x
+    // because `publicReceipt` required that prefix; it no longer does, so the identifier is
+    // recorded exactly as the SDK returned it.
+    submit: async (unprovenTx) => submitTxAsync(providers, { unprovenTx }),
     observe: (address, blockHash) =>
       blockHash
         ? providers.publicDataProvider.queryContractState(address, {
@@ -542,6 +545,208 @@ async function sweep({
     });
   }
   return summary;
+}
+
+/**
+ * Volume run: drive many complete lifecycles, each on its own staged deployment.
+ *
+ * This is the stress counterpart to `sweep`. The sweep proves every circuit once
+ * per scenario; this proves the contract holds up when the same four-circuit
+ * lifecycle runs many times, which is where sustained proving cost, fee accrual
+ * and revision discipline actually show. It is bounded on operations, wall clock
+ * and DUST so a run cannot drain the wallet or outlive its budget.
+ *
+ * Each instance is a fresh deploy because `configuration` is sealed: one contract
+ * is one order with fixed parties and deadlines, and every terminal phase is
+ * final. There is no way to reuse an instance for a second lifecycle.
+ */
+async function stress({
+  Contract,
+  providers,
+  config,
+  zkConfigProvider,
+  signingKey,
+  emit,
+  watchdog,
+}) {
+  const order = miloOrder(Contract);
+  const maxOperations = Number(
+    process.env.MILO_STRESS_OPERATIONS ?? STRESS_DEFAULTS.maxOperations,
+  );
+  const maxInstances = Number(
+    process.env.MILO_STRESS_INSTANCES ?? STRESS_DEFAULTS.maxInstances,
+  );
+  const deadlineMs = Number(
+    process.env.MILO_STRESS_DEADLINE_MS ?? STRESS_DEFAULTS.deadlineMs,
+  );
+  const plan = planStressRun({ maxOperations, maxInstances });
+  await emit({
+    event: "stress-planned",
+    ...plan,
+    deadlineMs,
+    dustFloorSpecks: String(STRESS_DEFAULTS.dustFloorSpecks),
+    note: "each instance is a fresh staged deploy because configuration is sealed",
+  });
+
+  const startedAt = Date.now();
+  const records = [];
+  let failures = 0;
+  let stopReason = null;
+
+  for (let instance = 0; instance < plan.instances; instance += 1) {
+    const label = `stress-${instance}`;
+    watchdog.setContext({
+      scenario: label,
+      circuit: "deploy",
+      actor: null,
+      phase: "deploy",
+    });
+
+    // Read the wallet's DUST before each deploy: the floor is what actually stops
+    // a run that is spending faster than the budget assumed.
+    let dustSpecks = STRESS_DEFAULTS.dustFloorSpecks;
+    try {
+      const state = await providers.walletProvider.state?.();
+      if (state?.dust) dustSpecks = BigInt(state.dust.balance(new Date()));
+    } catch {
+      // A wallet that cannot report a balance must not silently disable the
+      // floor; leave it at the floor value so the next check stops the run.
+    }
+    const reason = stressStopReason({
+      operationsDone: records.length,
+      maxOperations: plan.operations,
+      elapsedMs: Date.now() - startedAt,
+      deadlineMs,
+      dustSpecks,
+      dustFloorSpecks: STRESS_DEFAULTS.dustFloorSpecks,
+      failures,
+    });
+    if (reason) {
+      stopReason = reason;
+      await emit({
+        event: "stress-stopped",
+        reason,
+        operations: records.length,
+      });
+      break;
+    }
+
+    const deployment = await attempt(
+      emit,
+      { scenario: label, circuit: "deploy", actor: null, negative: false },
+      () =>
+        watchdog.step(`deploy:${label}`, () =>
+          deployOrder({
+            providers,
+            config,
+            zkConfigProvider,
+            configuration: order.configurationFor({}),
+            privateStateFor: order.privateState,
+            label,
+            signingKey,
+            emit,
+          }),
+        ),
+    );
+    if (!deployment.ok) {
+      failures += 1;
+      records.push({
+        instance,
+        circuit: "deploy",
+        revision: -1,
+        ok: false,
+        message: deployment.message,
+      });
+      continue;
+    }
+
+    const deployed = deployment.value;
+    watchdog.setContext({ phase: "handles" });
+    // handlesFor runs findDeployedContract, which verifies contract state and reads
+    // the private-state store. It sits outside attempt(), so a throw here used to
+    // end the run with no event at all: the process exited after a successful
+    // deploy and left no record of why no operation ran. Wrap it so the failure is
+    // named against the instance that hit it.
+    let actors;
+    try {
+      actors = await handlesFor({
+        deployed,
+        Contract,
+        providers,
+        privateStateFor: order.privateState,
+        label,
+        watchdog,
+      });
+    } catch (error) {
+      failures += 1;
+      const message = String(error?.message ?? error).slice(0, 400);
+      records.push({
+        instance,
+        circuit: "handles",
+        revision: -1,
+        ok: false,
+        message,
+      });
+      await emit({
+        event: "stress-handles-failed",
+        instance,
+        label,
+        message,
+        name: error?.constructor?.name ?? "Error",
+      });
+      continue;
+    }
+
+    const driven = await driveInstance({
+      index: instance,
+      emit: (event, fields) => emit({ event, ...fields }),
+      call: async ({ circuit, actor, revision, args }) => {
+        watchdog.setContext({ circuit, actor, phase: "call" });
+        const result = await attempt(
+          emit,
+          { scenario: label, circuit, actor, negative: false },
+          () =>
+            watchdog.step(`call:${label}:${circuit}:${actor}`, () =>
+              actors[actor].callTx[circuit](revision, ...args),
+            ),
+        );
+        if (!result.ok) throw new Error(result.message ?? "call failed");
+        return { txId: result.value?.public?.txId ?? null };
+      },
+    });
+
+    records.push(...driven.records);
+    failures += driven.records.filter((record) => !record.ok).length;
+  }
+
+  const summary = summariseStressRun(records);
+  const receipt = {
+    ...summary,
+    plan,
+    stopReason: stopReason ?? "plan-complete",
+    elapsedMs: Date.now() - startedAt,
+    records,
+  };
+  await writeStressReceipt(config.runDir, receipt);
+  return receipt;
+}
+
+/** Persist the run so a partial or failed stress still leaves its evidence. */
+async function writeStressReceipt(runDir, receipt) {
+  try {
+    await writeFile(
+      stressReceiptPath(runDir),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+      "utf8",
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "stress-receipt-write-failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }
 
 function scenarioSteps(label) {
@@ -1140,6 +1345,44 @@ async function runMode({
       summary,
       negatives: negativeResults,
     });
+    return summary;
+  }
+  if (mode === "--stress") {
+    // Volume run: many complete lifecycles, real proofs, bounded on operations,
+    // wall clock and DUST. Each instance is a fresh staged deploy because
+    // `configuration` is sealed, so one contract is one order with one fixed set
+    // of parties and deadlines.
+    const signingKey = await sweepSigningKey(config, emit);
+    // Any throw past this point must leave a receipt: a stress run that dies
+    // silently reports an operation count it never reached.
+    let summary;
+    try {
+      summary = await stress({
+        Contract,
+        providers,
+        config,
+        zkConfigProvider,
+        signingKey,
+        emit,
+        watchdog,
+      });
+    } catch (error) {
+      const message = String(error?.message ?? error).slice(0, 600);
+      await emit({
+        event: "stress-aborted",
+        name: error?.constructor?.name ?? "Error",
+        message,
+      });
+      await writeStressReceipt(config.runDir, {
+        aborted: true,
+        name: error?.constructor?.name ?? "Error",
+        message,
+        operations: 0,
+        complete: false,
+      });
+      throw error;
+    }
+    await emit({ event: "stress-complete", ...summary });
     return summary;
   }
   // Maintenance modes operate on an existing deployment recorded in the run dir.

@@ -18,6 +18,8 @@
 //   --register-dust           register NIGHT UTXOs for DUST generation
 //   --deploy                  deploy the compiled contract and record the receipt
 //   --sweep                   drive every proof circuit (positive and negative cases)
+//   --stress                  drive many complete lifecycles at volume, bounded on
+//                             operations, wall clock and DUST (MILO_STRESS_* env)
 //   --breaker <circuit>       removeVerifierKey (disable a circuit on-chain)
 //   --restore <circuit>       insertVerifierKey (restore a circuit)
 //   --freeze <key|empty>      replaceAuthority (hand over or relinquish control)
