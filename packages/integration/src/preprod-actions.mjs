@@ -30,7 +30,9 @@ import {
 import { publicReceipt } from "./config.mjs";
 import { witnesses } from "./order.mjs";
 import {
+  concurrentCeiling,
   driveInstance,
+  planBatches,
   planStressRun,
   STRESS_DEFAULTS,
   stressReceiptPath,
@@ -580,12 +582,32 @@ async function stress({
     process.env.MILO_STRESS_DEADLINE_MS ?? STRESS_DEFAULTS.deadlineMs,
   );
   const plan = planStressRun({ maxOperations, maxInstances });
+  // Concurrency is capped by unlocked DUST UTXOs, not by the balance: a built
+  // transaction locks the UTXOs that pay its fee until the wallet applies the
+  // confirmation. Read the real count rather than assuming one per transaction.
+  let dustUtxos = 0;
+  try {
+    const state = await providers.walletProvider.state?.();
+    dustUtxos = state?.dust?.availableCoins?.length ?? 0;
+  } catch {
+    // Unknown UTXO count means no concurrency: one at a time always works.
+  }
+  const requestedConcurrency = Number(process.env.MILO_STRESS_CONCURRENCY ?? 1);
+  const concurrency = concurrentCeiling({
+    dustUtxos,
+    maxConcurrency: requestedConcurrency,
+  });
+  const batches = planBatches({ instances: plan.instances, concurrency });
   await emit({
     event: "stress-planned",
     ...plan,
     deadlineMs,
     dustFloorSpecks: String(STRESS_DEFAULTS.dustFloorSpecks),
-    note: "each instance is a fresh staged deploy because configuration is sealed",
+    dustUtxos,
+    requestedConcurrency,
+    concurrency,
+    batches: batches.length,
+    note: "each instance is a fresh staged deploy because configuration is sealed; concurrency is capped by unlocked DUST UTXOs, and batching changes wall clock only, not fees",
   });
 
   const startedAt = Date.now();

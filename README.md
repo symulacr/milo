@@ -115,10 +115,45 @@ Three protocol constraints decide the shape, and none are workarounds:
 1. **One contract is one order.** `configuration` is a sealed ledger field, so a deployed
    contract has one fixed set of parties and deadlines, and every terminal phase is final.
    Volume means many instances, not many lifecycles on one instance.
-2. **Calls are strictly sequential.** A built transaction locks the DUST UTXOs that pay its fee
-   until the wallet applies the confirmation, so a batch that ignores this fails to balance.
+2. **Calls are sequential per instance, but instances can overlap.** A built transaction locks
+   the DUST UTXOs that pay its fee until the wallet applies the confirmation, so in-flight
+   transactions are capped by **unlocked DUST UTXOs, not by balance**. `MILO_STRESS_CONCURRENCY`
+   sets the target and the harness clamps it to the real UTXO count.
 3. **No cross-contract calls on Preprod.** Those need ledger version 9; Preprod runs ledger 8.
    "Cross-circuit" here means different circuits of the same contract in one flow.
+
+### Batching saves wall clock, not DUST
+
+Every circuit call is its own transaction and pays its own fee, so a batch of N costs exactly
+what N sequential calls cost. `additionalFeeOverhead` is charged **per fee-paying transaction**
+and is not refunded, so it scales with the transaction count — batching cannot reduce it.
+
+The only real DUST saving is setting `additionalFeeOverhead` to `0n`, which this lane already
+does. That is why fee estimates read `1` speck instead of 0.3 DUST. `dustCostModel` in
+`stress-run.mjs` computes the arithmetic so the claim stays checkable.
+
+What concurrency does buy is overlap: N proofs run at once and N transactions can land in the
+same or adjacent blocks instead of one per block. The ceiling is the DUST UTXO count — 5 on the
+funded wallet — so the best case is roughly 5× wall-clock, never 5× cheaper.
+
+### Running a stress test without running out of memory
+
+The first real run was killed by the OOM killer after two operations. Three fixes, in order of
+effect:
+
+1. **Size the proof server to the RAM you have.** Each proving worker holds proving keys in
+   memory. The published sizing is 2 workers = 4 GB, 4 workers = 8 GB, 8 workers = 16 GB. The
+   repo's own `scripts/native-services-health.ts` already passes `--num-workers 1`; starting the
+   server without that flag defaults to a much larger pool and is what exhausted this host.
+2. **Cap Node's heap** so a runaway run fails with a clear `OutOfMemory` instead of being killed
+   silently: `NODE_OPTIONS=--max-old-space-size=2048`.
+3. **Let the harness refuse rather than die.** `stressStopReason` returns
+   `memory-floor-reached` below 1.5 GB free, read from `/proc/meminfo`, so the run stops itself
+   and records why instead of vanishing with no receipt.
+
+The proof server binary in this repo is a Nix-built ELF whose interpreter path
+(`/nix/store/.../ld-linux-x86-64.so.2`) does not exist here, so it needs the system loader:
+`/lib64/ld-linux-x86-64.so.2 .tools/native-midnight/prover/midnight-proof-server --num-workers 1`.
 
 Preprod's own ceilings bound any run: `block_usage` 200,000 bytes and `bytes_written` 50,000
 bytes per 6-second block, and a per-account throttle of 10 MB per rolling day. At one

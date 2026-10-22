@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  concurrentCeiling,
   driveInstance,
+  dustCostModel,
   LIFECYCLE_CIRCUITS,
+  planBatches,
   planStressRun,
   STRESS_DEFAULTS,
   stressStopReason,
@@ -194,4 +197,71 @@ test("driveInstance reports each operation as it happens", async () => {
   });
   assert.equal(events.length, 4);
   assert.ok(events.every(([event]) => event === "stress-operation"));
+});
+
+test("the concurrency ceiling is the DUST UTXO count, not the balance", () => {
+  // Building a transaction locks the DUST UTXOs that pay its fee until the
+  // wallet applies the confirmation, so in-flight transactions cannot exceed
+  // unlocked DUST UTXOs. Measured on the funded wallet: 5.
+  assert.equal(concurrentCeiling({ dustUtxos: 5 }), 5);
+  assert.equal(concurrentCeiling({ dustUtxos: 5, maxConcurrency: 3 }), 3);
+  assert.equal(concurrentCeiling({ dustUtxos: 0 }), 0);
+  // A fee that needs two UTXOs halves the ceiling.
+  assert.equal(concurrentCeiling({ dustUtxos: 5, perTransaction: 2 }), 2);
+  // A large balance with no UTXOs still cannot run anything concurrently.
+  assert.equal(concurrentCeiling({ dustUtxos: 0, maxConcurrency: 8 }), 0);
+  assert.throws(() => concurrentCeiling({ dustUtxos: -1 }));
+  assert.throws(() => concurrentCeiling({ dustUtxos: 5, perTransaction: 0 }));
+});
+
+test("batches cover every instance exactly once", () => {
+  assert.deepEqual(planBatches({ instances: 5, concurrency: 2 }), [
+    { start: 0, end: 2, size: 2 },
+    { start: 2, end: 4, size: 2 },
+    { start: 4, end: 5, size: 1 },
+  ]);
+  assert.deepEqual(planBatches({ instances: 0, concurrency: 3 }), []);
+  assert.deepEqual(planBatches({ instances: 3, concurrency: 5 }), [
+    { start: 0, end: 3, size: 3 },
+  ]);
+  const total = planBatches({ instances: 17, concurrency: 4 }).reduce(
+    (n, b) => n + b.size,
+    0,
+  );
+  assert.equal(total, 17);
+});
+
+test("batching cannot reduce DUST cost, and a non-zero overhead makes it worse", () => {
+  // Every circuit call is its own transaction and pays its own fee, so the total
+  // is operations x per-transaction fee regardless of how they are submitted.
+  const sequential = dustCostModel({
+    operations: 200,
+    feePerTransactionSpecks: 1,
+  });
+  const batched = dustCostModel({
+    operations: 200,
+    feePerTransactionSpecks: 1,
+  });
+  assert.equal(sequential.totalSpecks, batched.totalSpecks);
+  assert.equal(sequential.totalSpecks, 200n);
+
+  // additionalFeeOverhead is charged per fee and is not refunded, so it scales
+  // with the transaction count. Fewer transactions would mean less of it;
+  // batching does not reduce the count.
+  const withOverhead = dustCostModel({
+    operations: 200,
+    feePerTransactionSpecks: 1,
+    additionalFeeOverheadSpecks: 300_000_000_000_000n,
+  });
+  assert.equal(withOverhead.perTransactionSpecks, 300_000_000_000_001n);
+  assert.equal(withOverhead.overheadSpecks, 60_000_000_000_000_000n);
+
+  // The lane runs with overhead 0n, which is the only real DUST saving available.
+  const zeroOverhead = dustCostModel({
+    operations: 200,
+    feePerTransactionSpecks: 1,
+    additionalFeeOverheadSpecks: 0n,
+  });
+  assert.equal(zeroOverhead.overheadSpecks, 0n);
+  assert.equal(zeroOverhead.totalSpecks, 200n);
 });

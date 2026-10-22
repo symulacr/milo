@@ -175,6 +175,65 @@ export function summariseStressRun(records) {
 }
 
 /**
+ * How many instances can be driven concurrently, given the wallet's DUST UTXOs.
+ *
+ * This is the hard ceiling and it is not a tuning knob. Building a transaction
+ * locks the DUST UTXOs that pay its fee until the wallet applies that
+ * transaction's confirmation, so a wallet with N unlocked DUST UTXOs can have at
+ * most N transactions in flight. Concurrency above that does not fail politely:
+ * the extra builds reject with `Insufficient Funds: could not balance dust`.
+ *
+ * `perTransaction` exists because one fee can lock more than one DUST UTXO when a
+ * single UTXO cannot cover it. Assuming one UTXO per transaction would overstate
+ * the ceiling and produce a batch that rejects partway through.
+ */
+export function concurrentCeiling({
+  dustUtxos,
+  perTransaction = 1,
+  maxConcurrency = 8,
+}) {
+  if (!Number.isInteger(dustUtxos) || dustUtxos < 0)
+    throw new Error(
+      `dustUtxos must be a non-negative integer; got ${dustUtxos}`,
+    );
+  if (!Number.isInteger(perTransaction) || perTransaction < 1)
+    throw new Error(
+      `perTransaction must be a positive integer; got ${perTransaction}`,
+    );
+  if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1)
+    throw new Error(
+      `maxConcurrency must be a positive integer; got ${maxConcurrency}`,
+    );
+  const byUtxos = Math.floor(dustUtxos / perTransaction);
+  return Math.max(0, Math.min(byUtxos, maxConcurrency));
+}
+
+/**
+ * Split a planned instance count into batches of at most `concurrency`.
+ *
+ * Batching changes wall clock, not cost: every circuit call is its own
+ * transaction with its own fee, so a batch of N costs the same DUST as N
+ * sequential calls. What it buys is overlap — N proofs run at once and N
+ * transactions can land in the same or adjacent blocks instead of one per block.
+ */
+export function planBatches({ instances, concurrency }) {
+  if (!Number.isInteger(instances) || instances < 0)
+    throw new Error(
+      `instances must be a non-negative integer; got ${instances}`,
+    );
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new Error(
+      `concurrency must be a positive integer; got ${concurrency}`,
+    );
+  const batches = [];
+  for (let start = 0; start < instances; start += concurrency) {
+    const end = Math.min(start + concurrency, instances);
+    batches.push({ start, end, size: end - start });
+  }
+  return batches;
+}
+
+/**
  * Drive one instance through the full lifecycle.
  *
  * `call` is injected so the sequencing is testable without a chain: it receives
@@ -248,4 +307,39 @@ export async function driveInstance({
 /** Where a run writes its evidence, so a partial run still leaves a record. */
 export function stressReceiptPath(runDir) {
   return resolve(runDir, "stress-run.json");
+}
+
+/**
+ * What a run costs in DUST, and what batching does to that cost.
+ *
+ * The answer is nothing. Every circuit call is its own transaction and pays its
+ * own fee; the ledger charges per transaction, and `additionalFeeOverhead` is
+ * added to *each* fee and is not refunded. Batching therefore cannot reduce the
+ * total, and with a non-zero overhead it increases it, because more fee-paying
+ * transactions means more overhead charged.
+ *
+ * This is computed rather than asserted so the claim in the docs stays tied to
+ * arithmetic a reader can check.
+ */
+export function dustCostModel({
+  operations,
+  feePerTransactionSpecks,
+  additionalFeeOverheadSpecks = 0n,
+}) {
+  if (!Number.isInteger(operations) || operations < 0)
+    throw new Error(
+      `operations must be a non-negative integer; got ${operations}`,
+    );
+  const fee = BigInt(feePerTransactionSpecks);
+  const overhead = BigInt(additionalFeeOverheadSpecks);
+  const perTransaction = fee + overhead;
+  return {
+    perTransactionSpecks: perTransaction,
+    totalSpecks: perTransaction * BigInt(operations),
+    // The overhead is the only part batching could ever influence, and it moves
+    // the wrong way: it is charged per transaction, so fewer transactions would
+    // mean less of it. Batching does not reduce the transaction count.
+    overheadSpecks: overhead * BigInt(operations),
+    note: "batching changes wall clock only; every call is its own transaction and pays its own fee",
+  };
 }
