@@ -103,7 +103,7 @@ export function publicReceipt(data) {
       blockHeight: null,
       status: "Submitted",
     };
-  if (!data || data.status !== "SucceedEntirely")
+  if (data?.status !== "SucceedEntirely")
     // Carry the status and the identifiers into the message. Throwing a bare "did not
     // succeed entirely" discards the only fields that say WHICH transaction the node
     // refused, which turns every rejection into an unexplained failure that has to be

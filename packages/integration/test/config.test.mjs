@@ -68,7 +68,8 @@ test("a bare transaction id from submitTxAsync is a submission, not a failure", 
   // check, read `undefined`, and reported a submitted transaction as a failure. That is what
   // made `--deploy` fail on Preprod with "Transaction did not succeed entirely" while the
   // transaction was in fact submitted.
-  const txId = "00f7b0fc10059bc52d4fd5db53b9fb80f0c5f77388f48cf9e65190b7ff04123e99";
+  const txId =
+    "00f7b0fc10059bc52d4fd5db53b9fb80f0c5f77388f48cf9e65190b7ff04123e99";
   const receipt = publicReceipt(txId);
   assert.equal(receipt.status, "Submitted");
   assert.equal(receipt.txId, txId);
