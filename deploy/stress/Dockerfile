@@ -63,8 +63,10 @@ RUN set -eu; \
 ENV MIDNIGHT_PP=/app/tools/params
 ENV MIDNIGHT_PROOF_SERVER_NUM_WORKERS=1
 # Cap V8's heap so a runaway run fails with a clear OutOfMemory instead of being
-# killed by the platform with no log line.
-ENV NODE_OPTIONS=--max-old-space-size=2048
+# killed by the platform with no log line. `--expose-gc` makes `global.gc` real:
+# without it the harness's collect call is a silent no-op, and the per-instance
+# handle release only drops references. Both together are what keep RSS flat.
+ENV NODE_OPTIONS="--max-old-space-size=2048 --expose-gc"
 
 COPY deploy/stress/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

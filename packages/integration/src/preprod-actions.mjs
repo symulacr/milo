@@ -745,10 +745,13 @@ async function stress({
     // Release this instance before the next one starts. Each `findDeployedContract`
     // handle holds compiled-contract and WASM state, and the loop used to keep all
     // three alive for the whole run: at 50 instances that is 150 live handles, which
-    // is what pushed the host into the OOM killer. Dropping the reference is not
-    // enough on its own, so the loop also yields and, when the runtime exposes it,
-    // collects. Both are best-effort: a runtime without `global.gc` simply skips it.
-    // `records` above already copied the per-operation results, so nothing is lost.
+    // is what pushed the host into the OOM killer. `records` above already copied the
+    // per-operation results, so dropping the handles loses no evidence.
+    //
+    // Dropping the reference lets the handles be collected; it does not force it, and
+    // `global.gc` is undefined unless the process runs with `--expose-gc`. The stress
+    // image sets that flag, so the collect is real there. Locally, without the flag,
+    // this is only a reference drop plus a yield, which is still correct but weaker.
     actors = undefined;
     await new Promise((done) => setImmediate(done));
     if (typeof globalThis.gc === "function") globalThis.gc();
