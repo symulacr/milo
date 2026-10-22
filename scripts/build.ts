@@ -23,7 +23,10 @@ const prepareHtmlEntrypoint = async (name: "index" | "app" | "public-app") => {
       .replaceAll('href="./src/', 'href="../../apps/web/src/')
       .replaceAll('src="./src/', 'src="../../apps/web/src/')
       .replaceAll('href="./public/', 'href="../../apps/web/public/')
-      .replaceAll('src="./public/', 'src="../../apps/web/public/'),
+      .replaceAll('src="./public/', 'src="../../apps/web/public/')
+      // Social-card and icon URLs live in `content=`, which the href/src
+      // rewrites never touched, so they shipped as `./public/...` and 404'd.
+      .replaceAll('content="./public/', 'content="../../apps/web/public/'),
   );
 };
 
@@ -63,6 +66,25 @@ if (!result.success) {
   process.exit(1);
 }
 
+/**
+ * The staging rewrite points asset references at `../../apps/web/public/...`
+ * so the bundler can resolve them. Those paths must not survive into `dist`:
+ * they escape the deploy root, so every social card and icon 404s. Rewrite the
+ * emitted HTML back to root-relative URLs.
+ */
+const rewriteEmittedHtml = async (path: string) => {
+  const html = await Bun.file(path).text();
+  await Bun.write(
+    path,
+    html
+      .replaceAll("../../apps/web/public/", "/")
+      .replaceAll("../../apps/web/src/", "/"),
+  );
+};
+for (const name of ["index", "app", "public-app"]) {
+  await rewriteEmittedHtml(`${outdir}/${name}.html`);
+}
+
 for (const route of publicAppRoutes) {
   await Bun.$`mkdir -p ${outdir}${route}`;
   await Bun.write(
@@ -85,7 +107,14 @@ await Bun.write(
 );
 
 const publicDirectory = "apps/web/public";
+/**
+ * The QA harness is development tooling, not product. It used to ship because
+ * this copied every file under `public/`, and `qa-build/qa-reserve-ui.js`
+ * alone was a third of the bundle.
+ */
+const QA_ONLY = [/^qa-/, /^samples\/qa-/, /^qa-build\//];
 for (const path of new Bun.Glob("**/*").scanSync(publicDirectory)) {
+  if (QA_ONLY.some((pattern) => pattern.test(path))) continue;
   await Bun.write(`${outdir}/${path}`, Bun.file(`${publicDirectory}/${path}`));
 }
 // Static-host route file is generated so a fresh clone cannot drift from the table.

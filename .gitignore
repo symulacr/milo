@@ -8,6 +8,7 @@
 !/.env.example
 !/LICENSE
 !/README.md
+!/SUBMISSION-UPDATE.md
 !/THIRD_PARTY_NOTICES.md
 !/package.json
 !/tsconfig.json
@@ -104,3 +105,27 @@ e2e/**/out/
 /scripts/spend-balance.mjs
 /scripts/todo-check.sh
 /scripts/todo_lib.py
+
+# Verification gates and their evidence are tracked, so a fresh clone can
+# re-run every "done" claim instead of taking it on trust. The exclusions
+# above predate the gate suite; these re-includes supersede them.
+!/scripts/gates/
+!/scripts/gates/**
+!/scripts/g4-negative-controls.sh
+!/scripts/judging-minimum.sh
+!/scripts/m11-verify.mjs
+!/scripts/m11-verify-all.mjs
+!/scripts/post-push-verify.sh
+!/scripts/pr7-axe.mjs
+!/scripts/pr7-axe-all.mjs
+
+# Durable audit evidence: the markdown reports and gate-result JSON that the
+# gates read by path. Run logs, screenshots and test output stay local.
+!/audit/
+!/audit/discovery/
+!/audit/discovery/*.md
+!/audit/discovery/*.json
+/audit/discovery/_g4_logs/
+/audit/discovery/*.png
+/audit/discovery/*.log
+/audit/discovery/*.out

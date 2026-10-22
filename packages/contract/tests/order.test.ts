@@ -569,9 +569,12 @@ describe("generated-runtime only: M-02/M-03; MID rows remain network-unverified"
       expect(() =>
         h.call("resolve", "operator", 350, [4n, approve, bytes(0)]),
       ).toThrow("empty resolution evidence");
-      h.call("resolve", "operator", 350, [4n, approve, bytes(12)]);
+      expect(() =>
+        h.call("resolve", "operator", 350, [4n, approve, bytes(12)]),
+      ).toThrow("resolution evidence mismatch");
+      h.call("resolve", "operator", 350, [4n, approve, evidence]);
       expect(h.public.phase).toBe(approve ? Phase.APPROVED : Phase.CANCELLED);
-      expect(h.public.evidenceCommitment).toEqual(bytes(12));
+      expect(h.public.evidenceCommitment).toEqual(evidence);
     }
   });
 
@@ -777,5 +780,44 @@ describe("generated-runtime only: M-02/M-03; MID rows remain network-unverified"
         else expect(run).toThrow("deadline reached");
       }
     }
+  });
+
+  test("disputeMerchant is bounded by the delivery deadline", () => {
+    const h = at(Phase.ACCEPTED);
+    expect(() =>
+      h.call("disputeMerchant", "merchant", 200, [2n, evidence]),
+    ).toThrow("merchant dispute deadline reached");
+    expect(h.public.phase).toBe(Phase.ACCEPTED);
+    h.call("disputeMerchant", "merchant", 199, [2n, evidence]);
+    expect(h.public.phase).toBe(Phase.DISPUTED);
+  });
+
+  test("disputeBuyer is bounded by the deadline of the phase it leaves", () => {
+    const fromAccepted = at(Phase.ACCEPTED);
+    expect(() =>
+      fromAccepted.call("disputeBuyer", "buyer", 200, [2n, evidence]),
+    ).toThrow("buyer dispute deadline reached");
+    fromAccepted.call("disputeBuyer", "buyer", 199, [2n, evidence]);
+    expect(fromAccepted.public.phase).toBe(Phase.DISPUTED);
+
+    const fromSubmitted = at(Phase.SUBMITTED);
+    expect(() =>
+      fromSubmitted.call("disputeBuyer", "buyer", 300, [3n, evidence]),
+    ).toThrow("buyer dispute deadline reached");
+    fromSubmitted.call("disputeBuyer", "buyer", 299, [3n, evidence]);
+    expect(fromSubmitted.public.phase).toBe(Phase.DISPUTED);
+  });
+
+  test("resolve cannot rewrite the dispute evidence commitment", () => {
+    const h = at(Phase.DISPUTED);
+    const disputed = h.public.evidenceCommitment;
+    expect(disputed).toEqual(evidence);
+    expect(() =>
+      h.call("resolve", "operator", 350, [4n, false, bytes(9)]),
+    ).toThrow("resolution evidence mismatch");
+    expect(h.public.evidenceCommitment).toEqual(disputed);
+    h.call("resolve", "operator", 350, [4n, false, evidence]);
+    expect(h.public.evidenceCommitment).toEqual(disputed);
+    expect(h.public.phase).toBe(Phase.CANCELLED);
   });
 });

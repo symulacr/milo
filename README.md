@@ -226,8 +226,10 @@ The design corpus (`01`–`08`) lives in [`docs/plan/`](docs/plan/); `npm run ch
 
 ## Run it
 
-Needs Linux x86_64, Node 26.11.1, npm, Python 3, curl, tar/xz and sha256sum. `scripts/setup.sh`
-installs the pinned Bun (1.4.2) and the Compact toolchain into `.tools/`.
+Needs Linux x86_64, Node 24.x, npm, Python 3, curl, tar/xz and sha256sum. `scripts/setup.sh`
+installs the pinned Bun (1.4.2) and the Compact toolchain into `.tools/`. The integration lane
+provisions its own pinned Node 26.11.1 runtime under `.tools/node-runtime/`; the app itself runs on
+Bun and does not use it.
 
 ```sh
 sh scripts/setup.sh
@@ -244,12 +246,14 @@ read-only panels on `/connections`. The workspace runs without them.
 
 ## Testing
 
-- `npm run test:unit`: 575 tests across 50 files (contract, domain, backend, web, scripts).
+- `npm run test:unit`: 696 tests across 63 files (contract, domain, backend, web, midnight-client,
+  convex, e2e, scripts).
 - `npm run test:integration`: provisions the pinned Node runtime and runs the
   `packages/integration` tests.
 - `npm run test:native-network`: local Midnight node lane (see the
   [integration README](packages/integration/README.md)).
-- Accessibility: axe reports 0 serious issues on all 16 routes at desktop and mobile widths.
+- Accessibility: axe reports 0 serious or critical issues on every public and workspace route at
+  desktop and mobile widths (34 page/viewport combinations, served over HTTP).
 
 ```bash verify
 test -f package.json

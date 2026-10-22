@@ -1251,6 +1251,26 @@ export async function seedDustState(options = {}) {
       "emitted snapshot restored a different generation root",
     );
   }
+  // A collapsed update carries the tree roots, not the wallet's own leaves. The dust
+  // wallet derives its balance and its spendable set from `state.utxos`, which only
+  // `replayEventsWithChanges` populates, so a snapshot seeded purely from collapsed
+  // updates restores with an empty UTXO set. Whether that is a defect depends on the
+  // wallet: a fresh wallet that has never registered NIGHT owns no DUST UTXOs yet, and
+  // an empty set is the correct, expected state. A wallet that HAS registered NIGHT
+  // already owns DUST UTXOs on chain, created before the seed cutoff, and the dust sync
+  // resumes from `appliedIndex - 1`, past every event that would create them, so it can
+  // never recover them. Only that second case is unrecoverable, and only that case is
+  // refused. `expectsDustUtxos` is the caller's assertion that this wallet already owns
+  // DUST on chain; the seeder cannot infer it, because it never reads NIGHT state.
+  if (
+    typeof config.secretKey !== "undefined" &&
+    config.expectsDustUtxos === true &&
+    restored.state.utxos.length === 0
+  ) {
+    throw new DustSeedError(
+      "emitted snapshot holds no dust UTXOs for a wallet that has already registered NIGHT: a collapsed update carries the tree roots but not the wallet's own leaves, so the restored wallet would report zero balance and could never spend (its sync resumes past the events that create them)",
+    );
+  }
 
   const elapsedMs = clock() - startedAt;
   const receipt = {

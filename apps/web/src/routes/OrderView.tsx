@@ -108,18 +108,10 @@ export function OrderView() {
                       className="image-card"
                       key={file.id}
                       onClick={() => setModal({ kind: "image", index: i })}
-                      aria-label={`Inspect ${file.title}`}
                     >
                       <div className="image-wrap">
-                        <img
-                          src={file.src}
-                          alt={`Sample product photography — ${file.title.toLowerCase()}`}
-                          width="600"
-                          height="720"
-                        />
-                        <span className="image-expand" aria-hidden="true">
-                          ↗
-                        </span>
+                        <img src={file.src} alt="" width="600" height="720" />
+                        <span className="image-expand" aria-hidden="true" />
                       </div>
                       <div className="image-description">
                         <strong>{file.title}</strong>

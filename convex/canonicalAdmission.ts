@@ -11,6 +11,7 @@ import { requireSessionSubject } from "../packages/backend/src/session-identity"
 import type { AdmissionContext } from "./admissionContext";
 import { admissionArgs } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";
+import { createOrder } from "./orderProjection";
 import { monitorReceiptUsable } from "./paymentMonitor";
 import { assertProvisioningActive } from "./trustedProvisioning";
 
@@ -33,6 +34,15 @@ export async function admitCanonical(
   const membership = await requireMembership(ctx, quote.scopeId);
   if (!isQuoteBuyer(membership, quote.buyerAccountId))
     throw new Error("Authenticated quote buyer required");
+  const merchant = await ctx.db
+    .query("memberships")
+    .withIndex("by_scope_role", (q) =>
+      q.eq("scopeId", quote.scopeId).eq("role", "merchant"),
+    )
+    .unique();
+  if (merchant?.status !== "active")
+    throw new Error("Active merchant membership required");
+  const merchantAccountId = merchant.accountId;
   const reject = (reason: string): AdmissionDecision => ({
     kind: "rejected",
     reason,
@@ -154,8 +164,21 @@ export async function admitCanonical(
       address: input.address,
     },
   );
-  // Do not return a success before the database write has completed.
-  if (pending) await ctx.db.insert("canonicalBindings", pending);
+  // Do not return a success before the database write has completed. The
+  // binding, the chain projection and the delivery projection commit together:
+  // a bound quote without an order would strand every downstream read.
+  if (pending) {
+    await ctx.db.insert("canonicalBindings", pending);
+    await createOrder(ctx, {
+      quoteId: quote.id,
+      scopeId: quote.scopeId,
+      buyerId: quote.buyerAccountId,
+      merchantId: merchantAccountId,
+      address: pending.address,
+      nonce: pending.nonce,
+      artifactFingerprint: quote.artifactFingerprint,
+    });
+  }
   return decision;
 }
 

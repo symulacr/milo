@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getFunctionName } from "convex/server";
 import type { AdmissionContext } from "./admissionContext";
 import {
   attachUpload,
@@ -69,8 +70,8 @@ function databaseDouble(options?: {
       getMetadata: async (id: string) => storageBlobs.get(id) ?? null,
     },
     scheduler: {
-      runAfter: async (_delay: number, name: string) => {
-        scheduled.push(String(name));
+      runAfter: async (_delay: number, ref: unknown) => {
+        scheduled.push(getFunctionName(ref as never));
       },
     },
     db: {
@@ -166,7 +167,7 @@ describe("RECONSTRUCTED attachUpload grant bind", () => {
       uploadTicket: "ut_grant-1_test",
     });
     expect(f.grant.storageId).toBe("blob-1");
-    expect(f.scheduled).toContain("files:inspect");
+    expect(f.scheduled).toContain("files:inspectGrantAction");
   });
 
   test("refuses missing grant, unauthenticated, non-merchant, wrong owner, revoked membership", async () => {

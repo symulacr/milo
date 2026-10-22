@@ -396,6 +396,108 @@ test("seeder emits a verified snapshot from injected indexer responses", async (
   assert.equal(BigInt(restored.progress.appliedIndex), 77n);
 });
 
+test("a collapsed-update-only seed is refused for a wallet that already registered NIGHT", async () => {
+  // The regression this guards: a snapshot seeded from collapsed updates alone
+  // verifies against the chain roots but restores with zero dust UTXOs, because
+  // a collapsed update carries the tree roots and not the wallet's own leaves.
+  // The dust wallet reads its balance and its spendable set from `state.utxos`,
+  // which only event replay populates, and its sync resumes from
+  // `appliedIndex - 1`, past every event that would create those leaves. For a
+  // wallet whose NIGHT is already registered, those leaves exist on chain and
+  // the snapshot can never recover them, so the seeder must refuse to emit it
+  // rather than hand back a wallet that cannot spend.
+  const secretKey = ledger.sampleDustSecretKey();
+  const indexer = fakeIndexer();
+  await assert.rejects(
+    () =>
+      seedDustState(
+        fastStabilise({
+          request: indexer.request,
+          secretKey,
+          expectsDustUtxos: true,
+          networkId: "preprod",
+          tailMs: 0,
+        }),
+      ),
+    (error) => {
+      assert.ok(error instanceof DustSeedError);
+      assert.match(error.message, /holds no dust UTXOs/);
+      return true;
+    },
+  );
+});
+
+test("a fresh wallet with no registered NIGHT still gets the fast path", async () => {
+  // The counter-case, and the reason the guard is scoped rather than blanket. A
+  // wallet that has never registered NIGHT owns no DUST UTXOs on chain, so an
+  // empty `utxos` set is the correct state, not a defect. Refusing here would
+  // make every new wallet replay the full dust history from genesis, which is
+  // the ~125-minute cost the fast path exists to avoid.
+  const secretKey = ledger.sampleDustSecretKey();
+  const indexer = fakeIndexer();
+  const { snapshot, receipt } = await seedDustState(
+    fastStabilise({
+      request: indexer.request,
+      secretKey,
+      expectsDustUtxos: false,
+      networkId: "preprod",
+      tailMs: 0,
+    }),
+  );
+  assert.equal(typeof receipt.lastAppliedEventId, "number");
+  const restored = await decodeDustSnapshot(snapshot);
+  assert.equal(restored.state.utxos.length, 0);
+  assert.equal(restored.publicKey.publicKey, secretKey.publicKey);
+});
+
+test("the zero-UTXO refusal is a DustSeedError so the lane falls back instead of crashing", async () => {
+  // The lane's seedFailureReason() maps DustSeedError to "seed-refused" and then
+  // starts the wallet from an empty dust state for the ordinary full sync. If this
+  // refusal were a plain Error it would be classified "seed-error" instead, and the
+  // distinction between "the fast path declined, replay from genesis" and "the
+  // seeder broke" would be lost from the durable run trail. Pin the type.
+  const secretKey = ledger.sampleDustSecretKey();
+  const indexer = fakeIndexer();
+  const error = await seedDustState(
+    fastStabilise({
+      request: indexer.request,
+      secretKey,
+      expectsDustUtxos: true,
+      networkId: "preprod",
+      tailMs: 0,
+    }),
+  ).then(
+    () => null,
+    (caught) => caught,
+  );
+  assert.ok(error, "the seeder must refuse rather than emit");
+  assert.ok(
+    error instanceof DustSeedError,
+    `expected DustSeedError, got ${error?.name}: ${error?.message}`,
+  );
+  assert.notEqual(error.name, "DustSeedTimeoutError");
+  assert.equal(error.name, "DustSeedError");
+});
+
+test("a snapshot with no secret key still emits, and documents why it cannot spend", async () => {
+  // The guard is scoped to the case it can reason about: with no secret key the
+  // seeder never replays the tail, so it cannot claim the snapshot is spendable
+  // and must not pretend otherwise. It still emits, and says so in the receipt.
+  const secretKey = ledger.sampleDustSecretKey();
+  const indexer = fakeIndexer();
+  const { snapshot, receipt } = await seedDustState(
+    fastStabilise({
+      request: indexer.request,
+      publicKey: secretKey.publicKey,
+      networkId: "preprod",
+      tailMs: 0,
+    }),
+  );
+  assert.equal(receipt.tailSkippedReason, "no-secret-key-supplied");
+  const restored = await decodeDustSnapshot(snapshot);
+  assert.equal(restored.state.utxos.length, 0);
+});
+
 test("seeder accepts a published root that lags within the widened window", async () => {
   const secretKey = ledger.sampleDustSecretKey();
   // The live published commitment field is one leaf behind the endpoint; the

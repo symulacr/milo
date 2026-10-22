@@ -302,7 +302,11 @@ export async function stripeWebhookHandler(
     const result = (await runMutation(recordEvent, args)) as { isNew: boolean };
     isNew = result.isNew;
     if (isNew)
-      await runMutation(reconcile, { eventId: envelope.id, accountId });
+      await runMutation(reconcile, {
+        provider: "stripe",
+        eventId: envelope.id,
+        accountId,
+      });
   } else {
     // Convex httpAction path: schedule through the action's ctx at runtime.
     // The durable record happens inside settlement:recordEvent.
@@ -313,7 +317,11 @@ export async function stripeWebhookHandler(
     ).__miloSchedule;
     if (action) {
       await action(recordEvent, args);
-      await action(reconcile, { eventId: envelope.id, accountId });
+      await action(reconcile, {
+        provider: "stripe",
+        eventId: envelope.id,
+        accountId,
+      });
     }
   }
   return new Response(JSON.stringify({ received: true, isNew }), {

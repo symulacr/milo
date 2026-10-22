@@ -1,0 +1,247 @@
+{
+  "evidenceId": "obs_pr7_axe_all_routes_2",
+  "at": "2026-10-22T17:32:10.121Z",
+  "origin": "http://127.0.0.1:40185",
+  "routes": 34,
+  "seriousTotal": 0,
+  "results": [
+    {
+      "route": "/demo",
+      "status": 200,
+      "heading": "Explore a sample order",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/sign-in",
+      "status": 200,
+      "heading": "Sign in",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/how-it-works",
+      "status": 200,
+      "heading": "How it works",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/privacy",
+      "status": 200,
+      "heading": "Privacy",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/terms",
+      "status": 200,
+      "heading": "Terms",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/pilot",
+      "status": 200,
+      "heading": "Pilot status",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders",
+      "status": 200,
+      "heading": "Your orders",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/orders",
+      "status": 200,
+      "heading": "This is the merchant view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/quotes/new",
+      "status": 200,
+      "heading": "This is the merchant view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator/cases",
+      "status": 200,
+      "heading": "This is the operator view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/account",
+      "status": 200,
+      "heading": "Account",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/connections",
+      "status": 200,
+      "heading": "Connection diagnostics",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders/sample-001",
+      "status": 200,
+      "heading": "Delivery ready for review",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders/sample-001/receipt",
+      "status": 200,
+      "heading": "Sample receipt",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/quotes/sample-001",
+      "status": 200,
+      "heading": "Review the agreement",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator/cases/sample-001",
+      "status": 200,
+      "heading": "This is the operator view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/m/north-studio",
+      "status": 200,
+      "heading": "North Studio",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/demo@375",
+      "status": 200,
+      "heading": "Explore a sample order",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/sign-in@375",
+      "status": 200,
+      "heading": "Sign in",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/how-it-works@375",
+      "status": 200,
+      "heading": "How it works",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/privacy@375",
+      "status": 200,
+      "heading": "Privacy",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/terms@375",
+      "status": 200,
+      "heading": "Terms",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/pilot@375",
+      "status": 200,
+      "heading": "Pilot status",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders@375",
+      "status": 200,
+      "heading": "Your orders",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/orders@375",
+      "status": 200,
+      "heading": "This is the merchant view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/merchant/quotes/new@375",
+      "status": 200,
+      "heading": "This is the merchant view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator/cases@375",
+      "status": 200,
+      "heading": "This is the operator view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/account@375",
+      "status": 200,
+      "heading": "Account",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/connections@375",
+      "status": 200,
+      "heading": "Connection diagnostics",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders/sample-001@375",
+      "status": 200,
+      "heading": "Delivery ready for review",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/orders/sample-001/receipt@375",
+      "status": 200,
+      "heading": "Sample receipt",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/quotes/sample-001@375",
+      "status": 200,
+      "heading": "Review the agreement",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/operator/cases/sample-001@375",
+      "status": 200,
+      "heading": "This is the operator view.",
+      "serious": [],
+      "other": []
+    },
+    {
+      "route": "/m/north-studio@375",
+      "status": 200,
+      "heading": "North Studio",
+      "serious": [],
+      "other": []
+    }
+  ]
+}

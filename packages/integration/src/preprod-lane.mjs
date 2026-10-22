@@ -510,6 +510,28 @@ function makeSeedSink(config) {
   return sink;
 }
 
+/** Whether this wallet already owns DUST on chain, inferred from the unshielded snapshot it
+ * restores from. A coin marked `registeredForDustGeneration` means a registration landed, so
+ * a DUST UTXO exists for it at or before that coin's creation time. The dust seeder cannot
+ * work this out itself: it never reads NIGHT state, so it cannot tell a fresh wallet (whose
+ * empty dust UTXO set is correct) from one that has registered NIGHT (whose empty set means
+ * the seed skipped its own history). Absent or unreadable state is treated as "not
+ * registered", which keeps the fast path available for a genuinely fresh wallet. */
+async function walletHasRegisteredNight(config) {
+  try {
+    const raw = await readFile(
+      resolve(walletStateDir(config.runDir), WALLET_STATE_FILES.unshielded),
+      "utf8",
+    );
+    const coins = JSON.parse(raw)?.state?.availableUtxos ?? [];
+    return coins.some(
+      (coin) => coin?.meta?.registeredForDustGeneration === true,
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Seed dust, verify the emitted snapshot, and write it to <runDir>/wallet-state/dust.json.
  * Returns { ok: true, snapshot, receipt } on success and
  * { ok: false, reason, name, message, error } on any failure, having emitted
@@ -527,6 +549,7 @@ async function seedDustForRun(config, keys) {
       networkId: config.networkId,
       indexerHttp: config.indexer,
       indexerWs: config.indexerWS,
+      expectsDustUtxos: await walletHasRegisteredNight(config),
       emit: sink,
     });
     await sink.flush();
@@ -782,7 +805,12 @@ async function buildSession(config, options = {}) {
       ...base,
       txHistoryStorage: new NoOpTransactionHistoryStorage(),
       costParameters: {
-        additionalFeeOverhead: 300_000_000_000_000n,
+        // The official Midnight testkit sets this to 0n. A non-zero overhead is added to
+        // every fee the wallet books, including a first DUST registration's own fee, and a
+        // registration pays that fee out of the DUST its NIGHT has generated so far. With
+        // 0.3 DUST of overhead the registration asks for more than the chain has accrued
+        // and is rejected with `BalanceCheckOverspend` (1010 / Custom error 138).
+        additionalFeeOverhead: 0n,
         feeBlocksMargin: 5,
       },
     },
@@ -855,7 +883,13 @@ async function buildProviders(config, session) {
         },
         { ttl },
       );
-      return session.wallet.finalizeRecipe(recipe);
+      // An unbound recipe is not a transaction: it must be signed before it can
+      // be finalized. Every other driver signs here (local.mjs:247); skipping
+      // this step yields a recipe that never becomes submittable.
+      const signed = await session.wallet.signRecipe(recipe, (payload) =>
+        session.unshieldedKeystore.signData(payload),
+      );
+      return session.wallet.finalizeRecipe(signed);
     },
     // Fee estimates first (SPEND-LEDGER.md): estimate → record → submit.
     // Mirrors local.mjs bootstrap-wallet-fee-estimate: calculateTransactionFee on the
@@ -1060,21 +1094,24 @@ async function registerDust(config, session) {
   // UTXOs so they re-create as generating under the registration table
   // (Midnight DUST architecture: respend restarts generation).
   const dustNow = state.dust.balance(new Date());
-  const forceAll = dustNow === 0n && state.unshielded.availableCoins.length > 0;
-  const toRegister = forceAll ? state.unshielded.availableCoins : unregistered;
+  // Register only NIGHT that is not registered yet.
+  //
+  // An earlier "force respend" path re-registered every coin whenever DUST read zero,
+  // on the theory that respending restarts generation. That is a different operation:
+  // a registration of already-registered NIGHT cannot pay its own fee from retroactive
+  // generation, so it needs a DUST spend, and a wallet with zero DUST cannot make one.
+  // The node rejects it with `BalanceCheckOverspend` (1010 / Custom error 138), which is
+  // exactly what that path produced. DUST appearing after a successful registration is
+  // a matter of time, not of respending.
+  const toRegister = unregistered;
   if (toRegister.length === 0) {
     await emit(config.runDir, {
       event: "dust-already-registered",
       address: session.address,
+      coins: state.unshielded.availableCoins.length,
+      dustBalance: dustNow.toString(),
     });
     return;
-  }
-  if (forceAll) {
-    await emit(config.runDir, {
-      event: "dust-force-respend",
-      address: session.address,
-      coins: toRegister.length,
-    });
   }
   const unregistered2 = toRegister;
   const { DustAddress, MidnightBech32m } = session.addressFormat;
@@ -1088,26 +1125,45 @@ async function registerDust(config, session) {
     DustAddress,
     config.networkId,
   );
-  // A registration is rejected with BalanceCheckOverspend when its own fee exceeds the
-  // dust the registration generates, which is the whole budget on a wallet with no dust
-  // yet. 4.2.0 estimates and throws before submission rather than letting the chain
-  // reject, so wait for the projection to cover the estimate first.
+  // A first registration of unregistered NIGHT needs no DUST balance and no proof: it
+  // carries a signature and no DUST spend, and pays its own fee from the DUST those UTXOs
+  // have generated since their creation. The documented quick-start registers directly.
+  //
+  // `waitForGeneratedDust` is not a substitute for that: it reads the wallet's local
+  // projection (`coin.dust.generatedNow` at the latest indexed block timestamp), which lags
+  // the chain after a restore and can sit below the fee even when the chain has long since
+  // accrued it. Waiting on it first therefore blocks a registration the chain would accept.
+  // Try the registration, and only fall back to the documented wait when the wallet itself
+  // reports the fee is not yet covered (4.2.0 rejects with `InsufficientDustForFee`).
   const estimate = await session.wallet.estimateRegistration(unregistered2);
   await emit(config.runDir, {
     event: "dust-registration-estimate",
     address: session.address,
     fee: estimate.fee.toString(),
   });
-  if (estimate.fee > 0n)
+  const registerRecipe = () =>
+    session.wallet.registerNightUtxosForDustGeneration(
+      unregistered2,
+      session.unshieldedKeystore.getPublicKey(),
+      (payload) => session.unshieldedKeystore.signData(payload),
+      dustReceiver,
+    );
+  let recipe;
+  try {
+    recipe = await registerRecipe();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/generated dust|InsufficientDustForFee/i.test(message)) throw error;
+    await emit(config.runDir, {
+      event: "dust-registration-deferred",
+      address: session.address,
+      reason: message.slice(0, 200),
+    });
     await session.wallet.waitForGeneratedDust(unregistered2, estimate.fee, {
       timeoutMs: 900_000,
     });
-  const recipe = await session.wallet.registerNightUtxosForDustGeneration(
-    unregistered2,
-    session.unshieldedKeystore.getPublicKey(),
-    (payload) => session.unshieldedKeystore.signData(payload),
-    dustReceiver,
-  );
+    recipe = await registerRecipe();
+  }
   const finalized = await session.wallet.finalizeRecipe(recipe);
   const txId = await session.submitter.submit(finalized);
   await emit(config.runDir, {

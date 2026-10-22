@@ -14,6 +14,7 @@ import {
   type DataModelFromSchemaDefinition,
   type GenericQueryCtx,
   internalMutationGeneric,
+  makeFunctionReference,
   queryGeneric,
 } from "convex/server";
 import { v } from "convex/values";
@@ -29,7 +30,12 @@ import {
   type ChainObservationResult,
   type ChainOrderRow,
 } from "./observationIngest";
+import { projectDeliveryPhase } from "./orderProjection";
 import type schema from "./schema";
+
+const openSettlementRef = makeFunctionReference<"mutation">(
+  "settlement:openFromObservation",
+);
 
 type OrderReadContext = GenericQueryCtx<
   DataModelFromSchemaDefinition<typeof schema>
@@ -176,6 +182,16 @@ export const recordObservation = internalMutationGeneric({
       },
       Date.now(),
     );
+    // Keep the delivery projection aligned with the chain on a real bind. The
+    // chain row stays the authority; `files.*` reads the projection.
+    if (result.kind === "bind") {
+      await projectDeliveryPhase(ctx, args.orderId, args.phase, args.revision);
+      // A terminal phase is the only thing that may open a capture or a void.
+      if (args.phase === "APPROVED" || args.phase === "CANCELLED")
+        await ctx.scheduler.runAfter(0, openSettlementRef, {
+          orderId: args.orderId,
+        });
+    }
     return result as ChainObservationResult;
   },
 });

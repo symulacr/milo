@@ -176,6 +176,13 @@ export circuit disputeBuyer(expectedRevision: Uint<64>, evidence: Bytes<32>): []
   checkRevision(expectedRevision);
   assert(phase == Phase.ACCEPTED || phase == Phase.SUBMITTED, "buyer dispute phase");
   buyer();
+  // A buyer dispute is bounded by the deadline of the phase it leaves, so an
+  // abandoned order falls through to the permissionless timeout circuits
+  // instead of staying disputable forever.
+  assert(
+    (phase == Phase.ACCEPTED && kernel.blockTimeLessThan(configuration.deliveryDeadline)) ||
+    (phase == Phase.SUBMITTED && kernel.blockTimeLessThan(configuration.reviewDeadline)),
+    "buyer dispute deadline reached");
   recordDispute(evidence);
 }
 
@@ -183,6 +190,10 @@ export circuit disputeMerchant(expectedRevision: Uint<64>, evidence: Bytes<32>):
   checkRevision(expectedRevision);
   assert(phase == Phase.ACCEPTED, "merchant dispute phase");
   merchant();
+  // Same bound as the buyer's ACCEPTED-phase dispute: the delivery deadline. Past
+  // it the order is no longer disputable by either party and falls through to
+  // expireUndelivered, which uses the identical predicate.
+  assert(kernel.blockTimeLessThan(configuration.deliveryDeadline), "merchant dispute deadline reached");
   recordDispute(evidence);
 }
 
@@ -202,7 +213,9 @@ export circuit resolve(expectedRevision: Uint<64>, approveOrder: Boolean, eviden
   assert(!approval || deliveryCommitment != default<Bytes<32>>, "approval requires submitted delivery");
   const e = disclose(evidence);
   assert(e != default<Bytes<32>>, "empty resolution evidence");
-  evidenceCommitment = e;
+  // Resolution must present the disputed evidence and never replaces it: the
+  // dispute digest is the operator's provenance and stays immutable.
+  assert(e == evidenceCommitment, "resolution evidence mismatch");
   move(approval ? Phase.APPROVED : Phase.CANCELLED);
 }
 

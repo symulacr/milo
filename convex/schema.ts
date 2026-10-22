@@ -15,6 +15,7 @@ export default defineSchema({
       v.literal("membership"),
       v.literal("quote"),
       v.literal("customer"),
+      v.literal("timing"),
     ),
     key: v.string(),
     version: v.number(),
@@ -23,6 +24,7 @@ export default defineSchema({
       v.id("memberships"),
       v.id("approvedQuotes"),
       v.id("stripeCustomers"),
+      v.id("admissionTimingPolicies"),
     ),
     status: v.union(v.literal("active"), v.literal("revoked")),
   }).index("by_kind_key", ["kind", "key"]),
@@ -123,10 +125,14 @@ export default defineSchema({
     terminal: v.boolean(),
     merchantActive: v.boolean(),
     observedAt: v.optional(v.number()),
+    lastStateHex: v.optional(v.string()),
+    blockHeight: v.optional(v.number()),
+    blockHash: v.optional(v.string()),
   })
     .index("by_order", ["orderId"])
     .index("by_address", ["address"])
-    .index("by_quote", ["quoteId"]),
+    .index("by_quote", ["quoteId"])
+    .index("by_terminal", ["terminal"]),
   // Durable chain-observation log behind orders:recordObservation.
   chainObservations: defineTable({
     orderId: v.string(),
@@ -145,7 +151,9 @@ export default defineSchema({
       v.literal("operator"),
     ),
     status: v.union(v.literal("active"), v.literal("revoked")),
-  }).index("by_subject_scope", ["privySubject", "scopeId"]),
+  })
+    .index("by_subject_scope", ["privySubject", "scopeId"])
+    .index("by_scope_role", ["scopeId", "role"]),
   orders: defineTable({
     id: v.string(),
     buyerId: v.string(),
@@ -210,7 +218,8 @@ export default defineSchema({
     network: v.literal("preprod"),
   })
     .index("by_quote", ["quoteId"])
-    .index("by_provider_intent", ["stripePaymentIntentId"]),
+    .index("by_provider_intent", ["stripePaymentIntentId"])
+    .index("by_buyer", ["buyerAccountId"]),
   // Durable webhook receipt. Business uniqueness is (provider, accountId, eventId).
   paymentInbox: defineTable({
     provider: v.literal("stripe"),
@@ -223,7 +232,8 @@ export default defineSchema({
     processedAt: v.optional(v.number()),
   })
     .index("by_provider_event", ["provider", "accountId", "eventId"])
-    .index("by_account", ["accountId"]),
+    .index("by_account", ["accountId"])
+    .index("by_intent", ["paymentIntentRef"]),
   // Settlement outbox. One identity per (orderId, action, contractRevision).
   // by_intent is a bound-scan index (.take(64)); never .unique() — F-21.
   settlementOps: defineTable({

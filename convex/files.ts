@@ -1,6 +1,8 @@
 import {
+  actionGeneric,
   internalActionGeneric,
   internalMutationGeneric,
+  makeFunctionReference,
   mutationGeneric,
 } from "convex/server";
 import { v } from "convex/values";
@@ -20,6 +22,36 @@ import type { AdmissionContext } from "./admissionContext";
 import { requireMembership } from "./auth/identity";
 
 export { GRANT_GRACE_MS, GRANT_TTL_MS };
+
+/**
+ * Typed references to the sibling functions this module schedules or calls.
+ * A bare string is not a registered function reference: it resolves to nothing
+ * at runtime, so the scheduled work silently never runs. These names must stay
+ * in step with the exports below.
+ */
+const inspectGrantRef = makeFunctionReference<"action">(
+  "files:inspectGrantAction",
+);
+const markInspectedRef = makeFunctionReference<"mutation">(
+  "files:markInspectedMutation",
+);
+const bindUploadRef = makeFunctionReference<"mutation">(
+  "files:bindUploadMutation",
+);
+const resolveReadRef = makeFunctionReference<"mutation">(
+  "files:resolveReadMutation",
+);
+
+/** Action contexts have no `db`; they reach storage and delegate writes here. */
+type ActionContext = {
+  storage: {
+    store: (bytes: Uint8Array) => Promise<string>;
+    get: (
+      id: string,
+    ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  };
+  runMutation: (ref: unknown, args: unknown) => Promise<unknown>;
+};
 
 type FileGrantRow = {
   _id: string;
@@ -186,14 +218,10 @@ export async function attachUpload(
       uploadTicket: undefined,
     } as never,
   );
-  await ctx.scheduler.runAfter(
-    0,
-    "files:inspect" as never,
-    {
-      grantId: String(grant._id),
-      storageId: input.storageId,
-    } as never,
-  );
+  await ctx.scheduler.runAfter(0, inspectGrantRef, {
+    grantId: String(grant._id),
+    storageId: input.storageId,
+  });
   return { grantId: String(grant._id), storageId: input.storageId };
 }
 
@@ -203,34 +231,44 @@ export async function attachUpload(
  * no client-supplied storageId, so upload-URL->storageId provenance is closed.
  */
 export async function storeAndAttachUpload(
-  ctx: AdmissionContext & {
-    storage: {
-      store: (bytes: Uint8Array) => Promise<string>;
-    };
-  },
+  ctx: ActionContext,
   input: { grantId: string; bytes: Uint8Array },
 ) {
-  const grant = await requireUploadGrant(ctx, input.grantId);
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0)
     throw new Error("upload bytes are required");
   // Produce the storage identity on the authorized path only.
   const storageId = await ctx.storage.store(input.bytes);
+  // The grant guard, the patch and the inspect schedule are one mutation: an
+  // action has no db handle, and a partial bind would strand the upload.
+  await ctx.runMutation(bindUploadRef, {
+    grantId: input.grantId,
+    storageId,
+  });
+  return { grantId: input.grantId, storageId };
+}
+
+/**
+ * Internal: bind an action-produced storageId to its grant and schedule the
+ * byte inspection. Runs as a mutation so the guard, the patch and the
+ * scheduling commit together.
+ */
+export async function bindUpload(
+  ctx: AdmissionContext,
+  input: { grantId: string; storageId: string },
+) {
+  const grant = await requireUploadGrant(ctx, input.grantId);
   await ctx.db.patch(
     grant._id as never,
     {
-      storageId,
+      storageId: input.storageId,
       uploadTicket: undefined,
     } as never,
   );
-  await ctx.scheduler.runAfter(
-    0,
-    "files:inspect" as never,
-    {
-      grantId: String(grant._id),
-      storageId,
-    } as never,
-  );
-  return { grantId: String(grant._id), storageId };
+  await ctx.scheduler.runAfter(0, inspectGrantRef, {
+    grantId: String(grant._id),
+    storageId: input.storageId,
+  });
+  return { grantId: String(grant._id), storageId: input.storageId };
 }
 
 /** Internal: stamp witnessed bytes onto an attached unconsumed grant. */
@@ -267,25 +305,15 @@ export async function markInspected(
 
 /** Internal action: witness stored bytes and stamp the grant. */
 export async function inspectGrant(
-  ctx: AdmissionContext & {
-    storage: {
-      get: (
-        id: string,
-      ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
-    };
-  },
+  ctx: ActionContext,
   input: { grantId: string; storageId: string },
 ) {
-  const grant = (await ctx.db.get(
-    input.grantId as never,
-  )) as FileGrantRow | null;
-  if (!grant || grant.storageId !== input.storageId)
-    throw new Error("upload grant is unavailable");
   const blob = await ctx.storage.get(input.storageId);
   if (!blob) throw new Error("storage object is required");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const inspected = inspectBytes(bytes);
-  await markInspected(ctx, {
+  // The grant guard and the stamp are a mutation; the action only witnesses bytes.
+  await ctx.runMutation(markInspectedRef, {
     grantId: input.grantId,
     inspected: { storageId: input.storageId, ...inspected },
   });
@@ -428,17 +456,29 @@ export async function freeze(
   return { deliveryId: String(deliveryId), manifest };
 }
 
-/** Internal: authorize a read and return a byte-transport descriptor (never a URL). */
+/**
+ * Internal: authorize a read and return a byte-transport descriptor (never a URL).
+ *
+ * The account is the authenticated membership's, and the chain confirmation is
+ * read from the order's own `chainOrders` row. Neither is a caller argument: a
+ * caller-supplied account could name any participant, and a caller-supplied
+ * confirmation flag would bypass the chain binding entirely.
+ */
 export async function resolveRead(
   ctx: AdmissionContext,
-  input: {
-    orderId: string;
-    fileIndex: number;
-    accountId: string;
-    confirmed: boolean;
-  },
+  input: { orderId: string; fileIndex: number },
 ) {
   const order = await loadOrder(ctx, input.orderId);
+  const membership = await requireMembership(ctx, order.scopeId);
+  const accountId = membership.accountId;
+  const chain = await ctx.db
+    .query("chainOrders")
+    .withIndex("by_order", (q) => q.eq("orderId", order.id))
+    .unique();
+  const confirmed =
+    chain?.deliveryManifest !== undefined &&
+    chain.deliveryManifest !== null &&
+    chain.deliveryManifest.length > 0;
   const existing = (await ctx.db
     .query("deliveries")
     .withIndex("by_order", (q) => q.eq("orderId", order.id))
@@ -458,7 +498,7 @@ export async function resolveRead(
     transact: (operation) =>
       operation({
         authenticatedAccount: () => ({
-          id: input.accountId,
+          id: accountId,
           enabled: true,
           invited: true,
         }),
@@ -487,7 +527,7 @@ export async function resolveRead(
                 files: existing.files,
               }
             : undefined,
-        confirmedDeliveryMatches: () => input.confirmed,
+        confirmedDeliveryMatches: () => confirmed,
         storageAttached: () => true,
         insertDeliveryAndConsumeGrants: () => {
           throw new Error("read path is immutable");
@@ -500,23 +540,35 @@ export async function resolveRead(
   });
 }
 
-/** Internal: re-auth + verifyRetrievedBytes before streaming. */
+/**
+ * Public: re-authorize the caller and stream one delivered file.
+ *
+ * Identity comes from the verified session, never from an argument: a caller
+ * that could name its own account could read any order's delivery. The
+ * mutation resolves the descriptor under that identity, and the action only
+ * transports the bytes it names.
+ */
 export async function serveFile(
-  ctx: AdmissionContext & {
-    storage: {
-      get: (
-        id: string,
-      ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  ctx: ActionContext & {
+    auth: {
+      getUserIdentity: () => Promise<{
+        subject?: string;
+        issuer?: string;
+      } | null>;
     };
   },
-  input: {
-    orderId: string;
-    fileIndex: number;
-    accountId: string;
-    confirmed: boolean;
-  },
+  input: { orderId: string; fileIndex: number },
 ) {
-  const descriptor = await resolveRead(ctx, input);
+  const descriptor = (await ctx.runMutation(resolveReadRef, {
+    orderId: input.orderId,
+    fileIndex: input.fileIndex,
+  })) as {
+    grantId: string;
+    storageId: string;
+    sha256: string;
+    contentType: "image/png" | "image/jpeg" | "image/webp";
+    byteLength: number;
+  };
   const blob = await ctx.storage.get(descriptor.storageId);
   if (!blob) throw new Error("delivery is unavailable");
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -616,8 +668,6 @@ export const resolveReadMutation = internalMutationGeneric({
   args: {
     orderId: v.string(),
     fileIndex: v.number(),
-    accountId: v.string(),
-    confirmed: v.boolean(),
   },
   returns: v.object({
     grantId: v.string(),
@@ -629,12 +679,16 @@ export const resolveReadMutation = internalMutationGeneric({
   handler: resolveRead as never,
 });
 
-export const serveFileAction = internalActionGeneric({
+export const bindUploadMutation = internalMutationGeneric({
+  args: { grantId: v.string(), storageId: v.string() },
+  returns: v.object({ grantId: v.string(), storageId: v.string() }),
+  handler: bindUpload as never,
+});
+
+export const serveFileAction = actionGeneric({
   args: {
     orderId: v.string(),
     fileIndex: v.number(),
-    accountId: v.string(),
-    confirmed: v.boolean(),
   },
   returns: v.bytes(),
   handler: serveFile as never,
@@ -652,8 +706,10 @@ export default {
   storeAndAttach: storeAndAttachUploadAction,
   freeze: freezeMutation,
   inspect: inspectGrantAction,
+  bindUpload: bindUploadMutation,
   grantForInspection: markInspectedMutation,
   markInspected: markInspectedMutation,
   resolveRead: resolveReadMutation,
+  serveFile: serveFileAction,
   sweepGrants: sweepGrantsMutation,
 };

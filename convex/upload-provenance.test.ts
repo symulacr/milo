@@ -1,13 +1,29 @@
 import { describe, expect, test } from "bun:test";
+import { getFunctionName } from "convex/server";
 import type { AdmissionContext } from "./admissionContext";
 import {
   attachUpload,
+  bindUpload,
   GRANT_TTL_MS,
+  markInspected,
   requestUpload,
+  resolveRead,
   storeAndAttachUpload,
 } from "./files";
 
 type Row = Record<string, unknown> & { _id: string };
+
+/** The mutation an action's function reference names, resolved by its registered name. */
+function mutationFor(name: string) {
+  const table: Record<string, unknown> = {
+    "files:bindUploadMutation": bindUpload,
+    "files:markInspectedMutation": markInspected,
+    "files:resolveReadMutation": resolveRead,
+  };
+  const handler = table[name];
+  if (!handler) throw new Error(`unregistered function reference: ${name}`);
+  return handler as (ctx: never, args: never) => Promise<unknown>;
+}
 
 function databaseDouble(options?: {
   identity?: { issuer: string; subject: string } | null;
@@ -52,8 +68,17 @@ function databaseDouble(options?: {
   const scheduled: Array<{ name: string; args: unknown }> = [];
   const ctx = {
     auth: { getUserIdentity: async () => identity },
+    runMutation: async (ref: unknown, args: unknown) => {
+      const handler = mutationFor(getFunctionName(ref as never));
+      return await handler(ctx as never, args as never);
+    },
     storage: {
       getMetadata: async (id: string) => storageBlobs.get(id) ?? null,
+      get: async (id: string) => {
+        const blob = storageBlobs.get(id);
+        if (!blob) return null;
+        return { arrayBuffer: async () => new Uint8Array(blob.size).buffer };
+      },
       generateUploadUrl: async () => {
         uploadSeq += 1;
         return `https://upload.example/${uploadSeq}`;
@@ -65,8 +90,8 @@ function databaseDouble(options?: {
       },
     },
     scheduler: {
-      runAfter: async (_delay: number, name: string, args: unknown) => {
-        scheduled.push({ name: String(name), args });
+      runAfter: async (_delay: number, ref: unknown, args: unknown) => {
+        scheduled.push({ name: getFunctionName(ref as never), args });
       },
     },
     db: {
@@ -136,7 +161,13 @@ function databaseDouble(options?: {
   };
   return {
     ctx: ctx as unknown as AdmissionContext & {
-      storage: { store: (bytes: Uint8Array) => Promise<string> };
+      storage: {
+        store: (bytes: Uint8Array) => Promise<string>;
+        get: (
+          id: string,
+        ) => Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+      };
+      runMutation: (ref: unknown, args: unknown) => Promise<unknown>;
     },
     tables,
     order,
@@ -222,7 +253,9 @@ describe("upload URL to storageId provenance is closed", () => {
       }),
     ).rejects.toThrow();
     expect(f.tables.fileGrants[0].storageId).toBe("blob-1");
-    expect(f.scheduled.map((s) => s.name)).toContain("files:inspect");
+    expect(f.scheduled.map((s) => s.name)).toContain(
+      "files:inspectGrantAction",
+    );
   });
 
   test("action-based storeAndAttachUpload produces and binds the storageId itself", async () => {
@@ -237,7 +270,9 @@ describe("upload URL to storageId provenance is closed", () => {
     expect(result.storageId).toMatch(/^blob-stored-/);
     expect(f.tables.fileGrants[0].storageId).toBe(result.storageId);
     expect(result.grantId).toBe(issued.grantId);
-    expect(f.scheduled.map((s) => s.name)).toContain("files:inspect");
+    expect(f.scheduled.map((s) => s.name)).toContain(
+      "files:inspectGrantAction",
+    );
     // The action path is one-shot too: the grant cannot accept another bind.
     await expect(
       attachUpload(f.ctx, {

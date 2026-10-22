@@ -582,7 +582,10 @@ function scenarioSteps(label) {
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "decline", actor: "merchant", revision: 1n, args: () => [] },
       ];
-    case "dispute-buyer":
+    case "dispute-buyer": {
+      // `resolve` must present the evidence the dispute recorded: the contract
+      // asserts the two are equal and never lets resolution rewrite the digest.
+      const evidence = bytes32();
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
@@ -590,16 +593,18 @@ function scenarioSteps(label) {
           circuit: "disputeBuyer",
           actor: "buyer",
           revision: 2n,
-          args: () => [bytes32()],
+          args: () => [evidence],
         },
         {
           circuit: "resolve",
           actor: "operator",
           revision: 3n,
-          args: () => [false, bytes32()],
+          args: () => [false, evidence],
         },
       ];
-    case "dispute-merchant":
+    }
+    case "dispute-merchant": {
+      const evidence = bytes32();
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
@@ -607,7 +612,7 @@ function scenarioSteps(label) {
           circuit: "disputeMerchant",
           actor: "merchant",
           revision: 2n,
-          args: () => [bytes32()],
+          args: () => [evidence],
         },
         {
           circuit: "resolve",
@@ -617,9 +622,10 @@ function scenarioSteps(label) {
           // have been submitted, and resolve(approveOrder=true) asserts a submitted delivery
           // ("approval requires submitted delivery") - which is exactly how this scenario
           // failed on Preprod. dispute-buyer, which may run while SUBMITTED, uses false too.
-          args: () => [false, bytes32()],
+          args: () => [false, evidence],
         },
       ];
+    }
     case "expire-bootstrap":
       return [
         {

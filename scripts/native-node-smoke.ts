@@ -19,6 +19,7 @@ assert(
       "--maintenance-audit",
       "--maintenance-controls",
       "--recovery-audit",
+      "--circuit-sweep",
     ].includes(option),
   ),
   "Unsupported native diagnostic option",
@@ -47,6 +48,15 @@ assert(
   !options.includes("--maintenance-audit") ||
     options.includes("--staged-bootstrap"),
   "--maintenance-audit requires --staged-bootstrap",
+);
+assert(
+  !options.includes("--circuit-sweep") ||
+    (options.includes("--transactions") &&
+      !options.includes("--staged-bootstrap") &&
+      !options.includes("--maintenance-audit") &&
+      !options.includes("--maintenance-controls") &&
+      !options.includes("--recovery-audit")),
+  "--circuit-sweep runs its own scenarios and needs only --transactions",
 );
 await import("./setup-native-node");
 
@@ -164,7 +174,12 @@ try {
               );
               const driver = ownNativeProcess(
                 Bun.spawn(
-                  [integrationNode, "packages/integration/src/local.mjs"],
+                  [
+                    integrationNode,
+                    options.includes("--circuit-sweep")
+                      ? "packages/integration/src/local-circuit-sweep.mjs"
+                      : "packages/integration/src/local.mjs",
+                  ],
                   {
                     env: {
                       PATH: process.env.PATH,
@@ -172,6 +187,16 @@ try {
                       MILO_LOCAL_ALLOW_TRANSACTIONS: "disposable-owned-local",
                       MILO_LOCAL_NETWORK_ID: "undeployed",
                       MILO_LOCAL_GENESIS_HASH: genesis,
+                      MILO_SWEEP_RUN_DIR: resolve(`${directory}/sweep`),
+                      MILO_SWEEP_TRAIL: resolve(
+                        `${directory}/sweep-trail.jsonl`,
+                      ),
+                      // The driver gets an explicit env allowlist, so a scenario filter
+                      // passed to this supervisor must be forwarded or it is silently
+                      // dropped and the full sweep runs instead.
+                      ...(process.env.MILO_SWEEP_ONLY
+                        ? { MILO_SWEEP_ONLY: process.env.MILO_SWEEP_ONLY }
+                        : {}),
                       MILO_LOCAL_RECOVERY_AUDIT: options.includes(
                         "--recovery-audit",
                       )
@@ -182,7 +207,12 @@ try {
                       MILO_LOCAL_INDEXER_HTTP: endpoints.MILO_INDEXER_HTTP_URL,
                       MILO_LOCAL_INDEXER_WS: endpoints.MILO_INDEXER_WS_URL,
                       MILO_LOCAL_PROOF_HTTP: endpoints.MILO_PROOF_URL,
-                      MILO_LOCAL_TIMEOUT_MS: "600000",
+                      // The sweep deploys a fresh 7+7 instance per scenario and
+                      // proves every circuit, so it needs the lane's maximum:
+                      // the config caps this value at 30 minutes.
+                      MILO_LOCAL_TIMEOUT_MS: options.includes("--circuit-sweep")
+                        ? "1800000"
+                        : "600000",
                       MILO_LOCAL_MAINTENANCE_AUDIT: options.includes(
                         "--maintenance-controls",
                       )

@@ -417,6 +417,18 @@
   text-align: center;
   font-size: var(--text-small);
 }
+/* Drawn, not typed: a glyph here would count as visible text and break the
+   card's accessible name. */
+.image-expand::before {
+  content: "";
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin: 8px auto 0;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
 .image-description {
   padding-top: 13px;
 }

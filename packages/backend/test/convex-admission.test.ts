@@ -75,10 +75,18 @@ function databaseDouble() {
     role: "buyer",
     status: "active",
   };
+  const merchantMembership = {
+    _id: "member-2",
+    privySubject: "did:privy:merchant",
+    accountId: "merchant-1",
+    scopeId: quote.scopeId,
+    role: "merchant",
+    status: "active",
+  };
   const tables: Record<string, Record<string, unknown>[]> = {
     trustedProvisioning: [],
     frozenQuotes: [quote],
-    memberships: [membership],
+    memberships: [membership, merchantMembership],
     stripeCustomers: [
       {
         _id: "customer-row",
@@ -97,6 +105,8 @@ function databaseDouble() {
       { network: "preprod", captureSafetyMarginMs: 1000 },
     ],
     canonicalBindings: [],
+    chainOrders: [],
+    orders: [],
   };
   const reads: string[] = [];
   let beforeInsert = async () => {};

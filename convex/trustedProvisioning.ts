@@ -6,6 +6,7 @@ import {
 } from "../packages/backend/src/provisioning-policy";
 import {
   canonicalPayload,
+  type Provenance,
   validateProvenance,
 } from "../packages/backend/src/trusted-provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
@@ -49,12 +50,20 @@ const payload = v.union(
       imagePackPolicy: v.object(imagePackPolicyFields),
     }),
   }),
+  v.object({
+    kind: v.literal("timing"),
+    value: v.object({
+      network: v.literal("preprod"),
+      captureSafetyMarginMs: v.number(),
+    }),
+  }),
 );
 type Input = Infer<typeof payload>;
 
 function bindingKey(input: Input) {
   if (input.kind === "membership")
     return JSON.stringify([input.value.privySubject, input.value.scopeId]);
+  if (input.kind === "timing") return input.value.network;
   return input.kind === "quote" ? input.value.id : input.value.buyerAccountId;
 }
 
@@ -80,19 +89,181 @@ export const provision = internalMutationGeneric({
       args.requestId,
       process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
     );
-    const input = args.payload;
-    const key = bindingKey(input);
-    const serialized = canonicalPayload(input);
-    const operation = canonicalPayload({
-      action: "provision",
-      payload: input,
-      provenance: args.provenance,
+    return provisionBinding(ctx, args);
+  },
+});
+
+async function provisionBinding(
+  ctx: AdmissionContext,
+  args: { requestId: string; provenance: Provenance; payload: Input },
+): Promise<GenericId<"trustedProvisioning">> {
+  const input = args.payload;
+  const key = bindingKey(input);
+  const serialized = canonicalPayload(input);
+  const operation = canonicalPayload({
+    action: "provision",
+    payload: input,
+    provenance: args.provenance,
+  });
+  const prior = await ctx.db
+    .query("trustedProvisioningAudit")
+    .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+    .unique();
+  if (prior) {
+    if (prior.operation !== operation)
+      throw new Error("Provisioning request conflict");
+    const binding = await ctx.db.get(prior.bindingId);
+    if (binding?.status !== "active")
+      throw new Error("Trusted provisioning revoked");
+    return prior.bindingId;
+  }
+  const existing = await ctx.db
+    .query("trustedProvisioning")
+    .withIndex("by_kind_key", (q) => q.eq("kind", input.kind).eq("key", key))
+    .unique();
+  // No adoption, replacement, or reactivation without a separately reviewed migration.
+  if (existing)
+    throw new Error(
+      existing.payload === serialized
+        ? "Binding already provisioned; reuse original request"
+        : "Immutable binding conflict",
+    );
+  if (
+    !Object.values(input.value).every(
+      (value) =>
+        typeof value !== "string" ||
+        (value.trim() === value && value.length > 0 && value.length <= 512),
+    )
+  )
+    throw new Error("Nonempty bounded binding identifiers required");
+  let targetId:
+    | GenericId<"memberships">
+    | GenericId<"approvedQuotes">
+    | GenericId<"stripeCustomers">
+    | GenericId<"admissionTimingPolicies">;
+  if (input.kind === "membership") {
+    if (
+      !/^(?:[A-Za-z0-9_-]{16,}|did:privy:[a-zA-Z0-9_-]+)$/.test(
+        input.value.privySubject,
+      )
+    )
+      throw new Error("Subject required");
+    const row = await ctx.db
+      .query("memberships")
+      .withIndex("by_subject_scope", (q) =>
+        q
+          .eq("privySubject", input.value.privySubject)
+          .eq("scopeId", input.value.scopeId),
+      )
+      .unique();
+    if (row)
+      throw new Error("Existing membership cannot be adopted or rebound");
+    targetId = await ctx.db.insert("memberships", {
+      ...input.value,
+      status: "active",
     });
+  } else if (input.kind === "customer") {
+    if (
+      !/^acct_[a-zA-Z0-9]+$/.test(input.value.stripeAccountId) ||
+      !/^cus_[a-zA-Z0-9]+$/.test(input.value.stripeCustomerId)
+    )
+      throw new Error("Stripe identifiers required");
+    const row = await ctx.db
+      .query("stripeCustomers")
+      .withIndex("by_buyer", (q) =>
+        q.eq("buyerAccountId", input.value.buyerAccountId),
+      )
+      .unique();
+    if (row) throw new Error("Existing customer cannot be adopted or rebound");
+    const other = await ctx.db
+      .query("stripeCustomers")
+      .withIndex("by_provider_customer", (q) =>
+        q
+          .eq("stripeAccountId", input.value.stripeAccountId)
+          .eq("stripeCustomerId", input.value.stripeCustomerId),
+      )
+      .unique();
+    if (other) throw new Error("Stripe customer already bound");
+    targetId = await ctx.db.insert("stripeCustomers", input.value);
+  } else if (input.kind === "timing") {
+    // The admission timing policy is server configuration, not user data: it
+    // is provisioned once through this audited path so `admission.bind` has a
+    // policy to read in a deployed environment.
+    if (
+      !Number.isSafeInteger(input.value.captureSafetyMarginMs) ||
+      input.value.captureSafetyMarginMs <= 0
+    )
+      throw new Error("Positive capture safety margin required");
+    const row = await ctx.db
+      .query("admissionTimingPolicies")
+      .withIndex("by_network", (q) => q.eq("network", input.value.network))
+      .unique();
+    if (row)
+      throw new Error("Existing timing policy cannot be adopted or rebound");
+    targetId = await ctx.db.insert("admissionTimingPolicies", input.value);
+  } else {
+    validateFreeze(input.value, input.value.expiresAt, Date.now());
+    validateImagePackPolicy(input.value, input.value.imagePackPolicy);
+    const row = await ctx.db
+      .query("approvedQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", input.value.id))
+      .unique();
+    const frozen = await ctx.db
+      .query("frozenQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", input.value.id))
+      .unique();
+    if (row || frozen)
+      throw new Error("Existing quote cannot be adopted or rebound");
+    targetId = await ctx.db.insert("approvedQuotes", input.value);
+  }
+  const bindingId = await ctx.db.insert("trustedProvisioning", {
+    kind: input.kind,
+    key,
+    version: input.kind === "quote" ? input.value.version : 1,
+    payload: serialized,
+    targetId,
+    status: "active",
+  });
+  await ctx.db.insert("trustedProvisioningAudit", {
+    requestId: args.requestId,
+    operation,
+    ...args.provenance,
+    recordedAt: Date.now(),
+    bindingId,
+  });
+  return bindingId;
+}
+
+/**
+ * Operator action, deliberately not scheduled: `admission.bind` rejects without a
+ * timing policy, so a deployed environment needs exactly one audited write here.
+ * Re-running returns the existing binding instead of rewriting the policy.
+ */
+export const ensurePreprodTimingPolicy = internalMutationGeneric({
+  args: { requestId: v.string(), provenance },
+  handler: async (ctx: AdmissionContext, args) => {
+    validateProvenance(
+      args.provenance,
+      args.requestId,
+      process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
+    );
+    const payload: Input = {
+      kind: "timing",
+      value: { network: "preprod", captureSafetyMarginMs: 1000 },
+    };
+    // The replay check runs before the "already provisioned" check so a retried
+    // request is a success, while a fresh request id against an existing policy
+    // stays the same explicit conflict every other kind raises.
     const prior = await ctx.db
       .query("trustedProvisioningAudit")
       .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
       .unique();
     if (prior) {
+      const operation = canonicalPayload({
+        action: "provision",
+        payload,
+        provenance: args.provenance,
+      });
       if (prior.operation !== operation)
         throw new Error("Provisioning request conflict");
       const binding = await ctx.db.get(prior.bindingId);
@@ -101,104 +272,27 @@ export const provision = internalMutationGeneric({
       return prior.bindingId;
     }
     const existing = await ctx.db
-      .query("trustedProvisioning")
-      .withIndex("by_kind_key", (q) => q.eq("kind", input.kind).eq("key", key))
+      .query("admissionTimingPolicies")
+      .withIndex("by_network", (q) => q.eq("network", "preprod"))
       .unique();
-    // No adoption, replacement, or reactivation without a separately reviewed migration.
-    if (existing)
-      throw new Error(
-        existing.payload === serialized
-          ? "Binding already provisioned; reuse original request"
-          : "Immutable binding conflict",
-      );
-    if (
-      !Object.values(input.value).every(
-        (value) =>
-          typeof value !== "string" ||
-          (value.trim() === value && value.length > 0 && value.length <= 512),
-      )
-    )
-      throw new Error("Nonempty bounded binding identifiers required");
-    let targetId:
-      | GenericId<"memberships">
-      | GenericId<"approvedQuotes">
-      | GenericId<"stripeCustomers">;
-    if (input.kind === "membership") {
-      if (
-        !/^(?:[A-Za-z0-9_-]{16,}|did:privy:[a-zA-Z0-9_-]+)$/.test(
-          input.value.privySubject,
-        )
-      )
-        throw new Error("Subject required");
-      const row = await ctx.db
-        .query("memberships")
-        .withIndex("by_subject_scope", (q) =>
-          q
-            .eq("privySubject", input.value.privySubject)
-            .eq("scopeId", input.value.scopeId),
+    if (existing) {
+      const binding = await ctx.db
+        .query("trustedProvisioning")
+        .withIndex("by_kind_key", (q) =>
+          q.eq("kind", "timing").eq("key", "preprod"),
         )
         .unique();
-      if (row)
-        throw new Error("Existing membership cannot be adopted or rebound");
-      targetId = await ctx.db.insert("memberships", {
-        ...input.value,
-        status: "active",
-      });
-    } else if (input.kind === "customer") {
-      if (
-        !/^acct_[a-zA-Z0-9]+$/.test(input.value.stripeAccountId) ||
-        !/^cus_[a-zA-Z0-9]+$/.test(input.value.stripeCustomerId)
-      )
-        throw new Error("Stripe identifiers required");
-      const row = await ctx.db
-        .query("stripeCustomers")
-        .withIndex("by_buyer", (q) =>
-          q.eq("buyerAccountId", input.value.buyerAccountId),
-        )
-        .unique();
-      if (row)
-        throw new Error("Existing customer cannot be adopted or rebound");
-      const other = await ctx.db
-        .query("stripeCustomers")
-        .withIndex("by_provider_customer", (q) =>
-          q
-            .eq("stripeAccountId", input.value.stripeAccountId)
-            .eq("stripeCustomerId", input.value.stripeCustomerId),
-        )
-        .unique();
-      if (other) throw new Error("Stripe customer already bound");
-      targetId = await ctx.db.insert("stripeCustomers", input.value);
-    } else {
-      validateFreeze(input.value, input.value.expiresAt, Date.now());
-      validateImagePackPolicy(input.value, input.value.imagePackPolicy);
-      const row = await ctx.db
-        .query("approvedQuotes")
-        .withIndex("by_quote", (q) => q.eq("id", input.value.id))
-        .unique();
-      const frozen = await ctx.db
-        .query("frozenQuotes")
-        .withIndex("by_quote", (q) => q.eq("id", input.value.id))
-        .unique();
-      if (row || frozen)
-        throw new Error("Existing quote cannot be adopted or rebound");
-      targetId = await ctx.db.insert("approvedQuotes", input.value);
+      // A row written outside this audited path is a conflict, not a success:
+      // the caller cannot tell a provisioned policy from a hand-inserted one.
+      if (binding?.status !== "active")
+        throw new Error("Existing timing policy is not provisioned");
+      return binding._id;
     }
-    const bindingId = await ctx.db.insert("trustedProvisioning", {
-      kind: input.kind,
-      key,
-      version: input.kind === "quote" ? input.value.version : 1,
-      payload: serialized,
-      targetId,
-      status: "active",
-    });
-    await ctx.db.insert("trustedProvisioningAudit", {
+    return provisionBinding(ctx, {
       requestId: args.requestId,
-      operation,
-      ...args.provenance,
-      recordedAt: Date.now(),
-      bindingId,
+      provenance: args.provenance,
+      payload,
     });
-    return bindingId;
   },
 });
 

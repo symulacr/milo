@@ -17,6 +17,8 @@ import { invalidatePaymentObservation } from "./paymentMonitor";
 export const MAX_SWEEP = 16;
 /** Lease for a running provider attempt before reclaim. */
 export const SETTLEMENT_LEASE_MS = 60_000;
+/** Base backoff for a transient provider failure; scaled by attempt. */
+export const RETRY_BACKOFF_MS = 30_000;
 
 const settleActionRef = makeFunctionReference<"action">("stripeSettlement:run");
 
@@ -219,7 +221,28 @@ export const request = internalMutationGeneric({
     }),
     v.object({ kind: v.literal("noop"), reason: v.string() }),
   ),
-  handler: async (ctx: AdmissionContext, args) => {
+  handler: async (ctx: AdmissionContext, args) => openSettlement(ctx, args),
+});
+
+/**
+ * The one body behind every settlement entry point. `request` keeps its
+ * explicit-argument surface; `openFromObservation` derives the same arguments
+ * from the chain row so no caller can choose the phase.
+ */
+async function openSettlement(
+  ctx: AdmissionContext,
+  args: {
+    orderId: string;
+    contractRevision: number;
+    phase: string;
+    paymentIntentId: GenericId<"paymentIntents">;
+    quoteId: string;
+    quoteVersion: number;
+    amountMinor: number;
+    currency: string;
+  },
+) {
+  {
     let action: SettleAction | null = null;
     if (args.phase === "APPROVED") action = "capture";
     else if (args.phase === "CANCELLED") action = "void";
@@ -311,14 +334,82 @@ export const request = internalMutationGeneric({
       attempt: 0,
     });
     return { kind: "opened" as const, opId, action, idempotencyKey };
-  },
-});
+  }
+}
 
 export const fenceArgs = {
   opId: v.id("settlementOps"),
   generation: v.number(),
   attempt: v.number(),
 };
+
+/**
+ * Open the settlement action implied by an observed terminal chain phase.
+ *
+ * The phase is read from `chainOrders`, never from a caller: a caller-supplied
+ * phase would let any internal caller authorize a capture the chain never
+ * approved. Everything the provider call needs is taken from the bound quote
+ * and its authorized payment, so this is the single entry point that makes
+ * capture and void reachable at all.
+ */
+export const openFromObservation = internalMutationGeneric({
+  args: { orderId: v.string() },
+  returns: v.union(
+    v.object({
+      kind: v.literal("opened"),
+      opId: v.id("settlementOps"),
+      action: v.union(v.literal("capture"), v.literal("void")),
+    }),
+    v.object({ kind: v.literal("noop"), reason: v.string() }),
+  ),
+  handler: async (ctx: AdmissionContext, args) => {
+    const chain = await ctx.db
+      .query("chainOrders")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .unique();
+    if (!chain)
+      return {
+        kind: "noop" as const,
+        reason: "no chain order is bound to this order",
+      };
+    if (
+      !settlementAuthorized(
+        chain.phase === "APPROVED" ? "capture" : "void",
+        chain.phase,
+      )
+    )
+      return {
+        kind: "noop" as const,
+        reason: "observed phase opens no settlement action",
+      };
+    const payment = await ctx.db
+      .query("paymentIntents")
+      .withIndex("by_quote", (q) => q.eq("quoteId", chain.quoteId))
+      .unique();
+    if (!payment)
+      return {
+        kind: "noop" as const,
+        reason: "no authorized payment is bound to this quote",
+      };
+    const opened = await openSettlement(ctx, {
+      orderId: chain.orderId,
+      contractRevision: chain.revision,
+      phase: chain.phase,
+      paymentIntentId: payment._id,
+      quoteId: payment.quoteId,
+      quoteVersion: payment.quoteVersion,
+      amountMinor: payment.amountMinor,
+      currency: payment.currency,
+    });
+    if (opened.kind === "noop")
+      return { kind: "noop" as const, reason: opened.reason };
+    return {
+      kind: "opened" as const,
+      opId: opened.opId,
+      action: opened.action,
+    };
+  },
+});
 
 /**
  * Claim fence. Matching pending claim → running + operation identity.
@@ -383,6 +474,7 @@ export const finish = internalMutationGeneric({
       v.literal("captured"),
       v.literal("voided"),
       v.literal("ambiguous"),
+      v.literal("retry"),
       v.literal("failed"),
     ),
     receipt: v.optional(
@@ -406,6 +498,19 @@ export const finish = internalMutationGeneric({
         state: "reconciliation",
         finishedAt: now,
         lastReason: "ambiguous provider result",
+      });
+      return null;
+    }
+    if (args.outcome === "retry") {
+      // A transient provider failure (5xx, rate limit, transport) is not a
+      // verdict. Return the operation to pending with backoff so the sweep
+      // resumes it; only a definite non-effect is terminal.
+      await ctx.db.patch(op._id, {
+        state: "pending",
+        attempt: op.attempt + 1,
+        nextAt: now + RETRY_BACKOFF_MS * Math.max(1, op.attempt + 1),
+        startedAt: undefined,
+        lastReason: "transient provider failure",
       });
       return null;
     }

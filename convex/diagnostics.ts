@@ -97,16 +97,47 @@ export const read = queryGeneric({
   }),
   handler: async (ctx: DiagContext, args) => {
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
-    const ops = args.paymentIntentId
-      ? await byIntentRows(
+    // `paymentIntents.buyerAccountId` holds an ACCOUNT id, while the session
+    // yields a SUBJECT. Comparing them directly is always false, so the scope is
+    // resolved through the caller's own membership rows first.
+    const memberships = await ctx.db
+      .query("memberships")
+      .withIndex("by_subject_scope", (q) => q.eq("privySubject", subject))
+      .take(32);
+    const accountIds = new Set(
+      memberships
+        .filter((row) => row.status === "active")
+        .map((row) => row.accountId),
+    );
+    // A payment intent is only readable by the buyer it was authorized for.
+    let ops: ByIntentRow[] = [];
+    if (args.paymentIntentId) {
+      const payment = await ctx.db.get(args.paymentIntentId);
+      if (payment && accountIds.has(payment.buyerAccountId))
+        ops = await byIntentRows(
           ctx.db as never,
           args.paymentIntentId as unknown as string,
-        )
-      : [];
-    const inbox = await ctx.db
-      .query("paymentInbox")
-      .withIndex("by_account", (q) => q.eq("accountId", subject))
-      .take(16);
+        );
+    }
+    // `paymentInbox.accountId` is the Stripe account, not the session subject, so
+    // a subject lookup on that index always misses. The caller's own intents are
+    // the correct scope for this view.
+    const inbox = [];
+    for (const accountId of accountIds) {
+      const ownIntents = await ctx.db
+        .query("paymentIntents")
+        .withIndex("by_buyer", (q) => q.eq("buyerAccountId", accountId))
+        .take(8);
+      for (const intent of ownIntents) {
+        const rows = await ctx.db
+          .query("paymentInbox")
+          .withIndex("by_intent", (q) =>
+            q.eq("paymentIntentRef", intent.stripePaymentIntentId),
+          )
+          .take(4);
+        inbox.push(...rows);
+      }
+    }
     return {
       subjectBound: true,
       ops,

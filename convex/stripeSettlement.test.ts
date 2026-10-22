@@ -29,8 +29,12 @@ describe("stripeSettlement:run provider action (D1d)", () => {
     expect(src).toContain("STRIPE_SECRET_KEY missing");
     expect(src).toContain("/capture");
     expect(src).toContain("/cancel");
-    expect(src).toContain("idempotency_key");
+    // The key must travel in the header: Stripe ignores a body parameter of
+    // that name, so a retry would otherwise be a second capture.
+    expect(src).toContain('"Idempotency-Key"');
+    expect(src).not.toContain("idempotency_key:");
     expect(src).toContain('outcome: "failed"');
     expect(src).toContain('outcome: "ambiguous"');
+    expect(src).toContain('outcome: "retry"');
   });
 });

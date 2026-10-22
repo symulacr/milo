@@ -38,9 +38,18 @@ function env(name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * One Stripe v1 POST.
+ *
+ * The idempotency key travels in the `Idempotency-Key` header: Stripe ignores
+ * any body parameter of that name, so a retry would otherwise be a second
+ * capture. Keys are retained for at least 24 hours and a retry with the same
+ * key returns the first response, including a cached 500.
+ */
 async function stripeForm(
   path: string,
   form: Record<string, string>,
+  idempotencyKey: string,
 ): Promise<{ status: number; body: string }> {
   const key = env("STRIPE_SECRET_KEY");
   if (!key) throw new Error("STRIPE_SECRET_KEY missing");
@@ -50,6 +59,7 @@ async function stripeForm(
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": idempotencyKey,
     },
     body,
   });
@@ -103,9 +113,7 @@ export const run = internalActionGeneric({
         started.action === "capture"
           ? `/payment_intents/${pi}/capture`
           : `/payment_intents/${pi}/cancel`;
-      const result = await stripeForm(path, {
-        idempotency_key: started.idempotencyKey,
-      });
+      const result = await stripeForm(path, {}, started.idempotencyKey);
       if (result.status >= 200 && result.status < 300) {
         let providerStatus =
           started.action === "capture" ? "succeeded" : "canceled";
@@ -136,10 +144,16 @@ export const run = internalActionGeneric({
         await ctx.runMutation(finishRef, { ...args, outcome: "ambiguous" });
         return null;
       }
+      if (result.status >= 500 || result.status === 429) {
+        // Transient: the same idempotency key makes the retry safe.
+        await ctx.runMutation(finishRef, { ...args, outcome: "retry" });
+        return null;
+      }
       await ctx.runMutation(finishRef, { ...args, outcome: "failed" });
       return null;
     } catch {
-      await ctx.runMutation(finishRef, { ...args, outcome: "ambiguous" });
+      // A transport failure is unknown, not a non-effect: retry under the key.
+      await ctx.runMutation(finishRef, { ...args, outcome: "retry" });
       return null;
     }
   },

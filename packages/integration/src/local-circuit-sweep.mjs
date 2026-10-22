@@ -147,7 +147,10 @@ function scenarioSteps(label) {
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "decline", actor: "merchant", revision: 1n, args: () => [] },
       ];
-    case "dispute-buyer":
+    case "dispute-buyer": {
+      // `resolve` must present the evidence the dispute recorded: the contract
+      // asserts the two are equal and never lets resolution rewrite the digest.
+      const evidence = bytes32();
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
@@ -155,16 +158,18 @@ function scenarioSteps(label) {
           circuit: "disputeBuyer",
           actor: "buyer",
           revision: 2n,
-          args: () => [bytes32()],
+          args: () => [evidence],
         },
         {
           circuit: "resolve",
           actor: "operator",
           revision: 3n,
-          args: () => [false, bytes32()],
+          args: () => [false, evidence],
         },
       ];
-    case "dispute-merchant":
+    }
+    case "dispute-merchant": {
+      const evidence = bytes32();
       return [
         { circuit: "reserve", actor: "buyer", revision: 0n, args: () => [] },
         { circuit: "accept", actor: "merchant", revision: 1n, args: () => [] },
@@ -172,7 +177,7 @@ function scenarioSteps(label) {
           circuit: "disputeMerchant",
           actor: "merchant",
           revision: 2n,
-          args: () => [bytes32()],
+          args: () => [evidence],
         },
         {
           circuit: "resolve",
@@ -180,9 +185,10 @@ function scenarioSteps(label) {
           revision: 3n,
           // disputeMerchant runs in ACCEPTED with no delivery; resolve(true)
           // asserts a submitted delivery. Always false here.
-          args: () => [false, bytes32()],
+          args: () => [false, evidence],
         },
       ];
+    }
     case "expire-bootstrap":
       return [
         {
@@ -776,19 +782,29 @@ async function main() {
         SCENARIOS.findIndex((s) => s.label === b.scenario),
     );
 
-    // Coverage: every proof circuit must have a SucceedEntirely row.
-    // Enforced when this process was not scenario-filtered, and also on the
-    // final write when all scenario files are present.
+    // Coverage: every proof circuit must have a SucceedEntirely row. A
+    // scenario-filtered run reports partial coverage but never claims the full
+    // set: the assertion is unconditional so a filtered run cannot be mistaken
+    // for a complete sweep.
     const called = new Set(merged.flatMap((s) => s.rows.map((r) => r.circuit)));
     const missing = ALL_CIRCUITS.filter((name) => !called.has(name));
     const allScenariosPresent = SCENARIOS.every((s) =>
       merged.some((m) => m.scenario === s.label),
     );
-    if (!onlyLabels || allScenariosPresent) {
+    if (allScenariosPresent) {
       assert.equal(
         missing.length,
         0,
         `sweep did not call circuits: ${missing.join(", ")}`,
+      );
+    } else {
+      assert.ok(
+        onlyLabels,
+        `sweep is missing scenarios: ${SCENARIOS.filter(
+          (s) => !merged.some((m) => m.scenario === s.label),
+        )
+          .map((s) => s.label)
+          .join(", ")}`,
       );
     }
 

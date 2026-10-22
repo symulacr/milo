@@ -148,7 +148,7 @@ const STRANGER: Identity = {
 /** Public Convex surfaces that must reject unauthenticated callers. */
 const PUBLIC_QUERY_MUTATION: Array<{
   name: string;
-  kind: "query" | "mutation";
+  kind: "query" | "mutation" | "action";
   invoke: (ctx: never) => Promise<unknown>;
 }> = [
   {
@@ -239,6 +239,15 @@ const PUBLIC_QUERY_MUTATION: Array<{
     name: "orders.read",
     kind: "query",
     invoke: (ctx) => handlerOf(orders.read)(ctx, { quoteId: "quote-1" }),
+  },
+  {
+    name: "files.serveFile",
+    kind: "action",
+    invoke: (ctx) =>
+      handlerOf(files.serveFileAction)(ctx, {
+        orderId: "order-1",
+        fileIndex: 0,
+      }),
   },
 ];
 
@@ -455,6 +464,9 @@ describe("M7 auth inventory — completeness vs source exports", () => {
       "files.requestUploadMutation": "files.requestUpload",
       "files.attachUploadMutation": "files.attachUpload",
       "files.freezeMutation": "files.freeze",
+      // Public byte transport: identity comes from the verified session, and
+      // the descriptor is resolved under that identity, never from arguments.
+      "files.serveFileAction": "files.serveFile",
       "http.stripeWebhook": "http.stripeWebhook",
       // Chain-projection read (B3): authenticated buyer/merchant only.
       "orders.read": "orders.read",

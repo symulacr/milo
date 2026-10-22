@@ -17,7 +17,7 @@
     "typecheck": "sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit",
     "check:plan": "sh scripts/with-bun.sh scripts/check-plan.ts",
     "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check .",
-    "test:unit": "sh scripts/with-bun.sh test apps/web packages/domain packages/contract packages/backend scripts",
+    "test:unit": "sh scripts/with-bun.sh test apps/web packages/domain packages/contract packages/backend packages/midnight-client convex e2e scripts/ingest-observation.test.ts scripts/native-processes.test.ts scripts/privy-test-login.test.ts scripts/public-config.test.ts",
     "test:integration": "sh scripts/with-bun.sh scripts/test-integration.ts",
     "test:native-network": "sh scripts/with-bun.sh scripts/setup-native-node.ts && python3 scripts/setup-native-services.py && sh scripts/with-bun.sh scripts/test-native-network.ts",
     "test:native-node": "sh scripts/with-bun.sh scripts/test-native-network.ts"
@@ -49,6 +49,6 @@
     "typescript": "7.0.2"
   },
   "engines": {
-    "node": "26.11.1"
+    "node": "24.x"
   }
 }

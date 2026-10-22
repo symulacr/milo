@@ -1,0 +1,290 @@
+{
+  "evidenceId": "obs_m11_indep_verify_2",
+  "at": "2026-09-30T15:40:58.395Z",
+  "indexer": "http://127.0.0.1:8088/api/v4/graphql",
+  "rows": [
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "b4a03403327f73b29313224041a51a7dd4aed82e0fab776b6668c4e513e23601",
+      "found": true,
+      "height": 8601
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "ee7582e0308bb0f86be5fc0166af73f9995770532c1da5f949083830c9f6d4cd",
+      "found": true,
+      "height": 8606
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "submitDelivery",
+      "txHash": "139bfeec29185c17abbeb8a6eda96d9958a047867c1225da0efe591786f54223",
+      "found": true,
+      "height": 8610
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "approve",
+      "txHash": "58e16030019624ac1e3cbe319aecbd8eb496de197e7203320decc6f578db1773",
+      "found": true,
+      "height": 8615
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "32d8cbbe0cae8c995dc3e902927afc4ecef13b0c7ba7d4cca4085b5ca2d2e916",
+      "found": true,
+      "height": 8625
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "cancelReserved",
+      "txHash": "58388a9ef7595604f35550f4e230e61528d6a9a1e9869b7f5270e9622716afb9",
+      "found": true,
+      "height": 8629
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "decline",
+      "txHash": "3ee267314c48db93256a21f6bd1dbfc41efab6c247c8c8d9b2974d5833e607b5",
+      "found": true,
+      "height": 8639
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "decline",
+      "txHash": "bae7f336c45a1f69f6f42f5b95d69065871ea293f543cdff8c4c1875319b4d38",
+      "found": true,
+      "height": 8643
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "5dea426b1d188a9aabbe9282f684107248d24e8a4a567ded6c199b26de4a38b2",
+      "found": true,
+      "height": 8653
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "ef20b44e5792d5ffd0d39b4210c606f37e43b479cd53ecab2f85b435b2e1b180",
+      "found": true,
+      "height": 8657
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "disputeBuyer",
+      "txHash": "ae6865875f0315de7b497fcf77e370b1dd9899941d2b1722a26b30fbd3f6fd3f",
+      "found": true,
+      "height": 8661
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "resolve",
+      "txHash": "f1906c27c828fd50a883c20e77eaa713a25478865760446160f018ea70c7032f",
+      "found": true,
+      "height": 8665
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "b33ab600765f8b966f179a5b18b08b70190a0dc0c43b711038eabb19653c6daa",
+      "found": true,
+      "height": 8675
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "13ad7415cca203e95fc9ec0b15679d208fd73607fa81a8e8be6dfc3357ed9954",
+      "found": true,
+      "height": 8679
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "disputeMerchant",
+      "txHash": "c14bb8ece6b0a676a9c5e5e763849a880afe10e92bfc7b4823101ba6e83e3423",
+      "found": true,
+      "height": 8682
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "resolve",
+      "txHash": "31172801398ddba6cf63d09a18a7ed2a2254a499811260043727130a0f108e13",
+      "found": true,
+      "height": 8686
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "expireBootstrap",
+      "txHash": "d389b9a51c461668a60aa291aad6f9dc0ac498ddeea3e096552e934b7a87a9df",
+      "found": true,
+      "height": 8721
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "1fbb942c0218e702f0561fa9840c6bff22a296375f7745e2c73a9968dfcc09ad",
+      "found": true,
+      "height": 8766
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "a63809497c3e2dfc2c11069b1a94a7d18655e0da1a6515a45367b7bd587ccc9a",
+      "found": true,
+      "height": 8777
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "92569e27955bb1c00df828ba3cbba76952ad083a13f73b3684457334ec4d17e1",
+      "found": true,
+      "height": 8841
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "358a68ed87730fd5809e8477fc42c84c46ed6186744e86e826024bcb5347ed8c",
+      "found": true,
+      "height": 8845
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "expireUndelivered",
+      "txHash": "6a4650db2bdc6177804a331fa1733bcf14c226a48ad65f9b6111de05538b8dbf",
+      "found": true,
+      "height": 8859
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "1a07bd048ee1805782430c704314f8e14f113763b93746f5c98ba941d563aebf",
+      "found": true,
+      "height": 8964
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "124baa8d890547b4b704bcd2e5d7d621e16f6fe77fc3d236ee6cb4476cf44b68",
+      "found": true,
+      "height": 8968
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "submitDelivery",
+      "txHash": "843b2f809d0bc329e1f91fa711334e9f93f76f169d4622d8bd6e258312404c4c",
+      "found": true,
+      "height": 8972
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "escalateUnreviewed",
+      "txHash": "c2ddeec238c8dbd492e8be22d0ed4d518c0c5f00ca10e04bb62c7498629da5a3",
+      "found": true,
+      "height": 9002
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "reserve",
+      "txHash": "8e2804ce0dd3ab28f8d9845a59db7a95dd9fc3c7829ac975357d0e52d638eb34",
+      "found": true,
+      "height": 9013
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "accept",
+      "txHash": "a357afb57d09d35959c52290f346dfbf84f4aca99c9a91f405ade97382f3e661",
+      "found": true,
+      "height": 9018
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "disputeBuyer",
+      "txHash": "eeac96c7ddc05b2e3b27b9e6ea85775b2e7e7d6e9d1a847d388eb705995fd022",
+      "found": true,
+      "height": 9022
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "expireDispute",
+      "txHash": "f639a440b31336d78867ec057b4140656cf22a51041e6510fab42d8743bc45c5",
+      "found": true,
+      "height": 9055
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "3b443ea39842826a22e6fffcced8619e071d39150ad22b78f2f30bd1b2dc55be",
+      "found": true,
+      "height": 8593
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "d864ec36943fbb9d10461b03b33b213249c07f5d0529f3299eff2a3a91a94909",
+      "found": true,
+      "height": 8596
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "62600bb5ca64d8c0ca8fb74be3be113972d5d24f518a27fa6df45f60583324ed",
+      "found": true,
+      "height": 8618
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "dc761c20ab9f3dc0c5eba3829f1be4644cc90a70b5ac9843283ef521f14e6702",
+      "found": true,
+      "height": 8621
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "decline",
+      "txHash": "f689f54c083db811b57b7521d1e3b5c2f2cb485da8cd1af1fa032d2891a48992",
+      "found": true,
+      "height": 8632
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": "decline",
+      "txHash": "27a1bf96d67b92883c6866d0a2966780a7c1ec6694c7b76555805d9d3b412dfc",
+      "found": true,
+      "height": 8635
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "da429fb0dde1a0b53297ad4de8e4614a554939271ae72bc8846fd155f5df9813",
+      "found": true,
+      "height": 8646
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "5da479e9ec3e0897ea9af3698aba194d34b8e3aa5c4eeeef04396facc1350be3",
+      "found": true,
+      "height": 8649
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "f2c34ffd26cbf35794e48bc216edfde0d25c715e588dd5bdc0fe4eef4549244a",
+      "found": true,
+      "height": 8668
+    },
+    {
+      "file": "audit/discovery/M2-circuit-table.md",
+      "circuit": null,
+      "txHash": "cf856b5cbaee4d2138b14a498d1686e403c30a9ead85193de7e9e798c18eb3ab",
+      "found": true,
+      "height": 8671
+    }
+  ],
+  "found": 40,
+  "total": 40,
+  "signatureSha256": "1a54004d46ee1682278d8e21004bcce0cc28b9f88b8b4ac8b54f8e9047bfb321"
+}
