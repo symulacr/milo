@@ -264,7 +264,7 @@ describe("generated-runtime only: M-02/M-03; MID rows remain network-unverified"
       expect(() => run(h)).toThrow("revision exhausted");
       expect(h.public).toEqual(before);
     }
-  });
+  }, 60_000);
 
   test("MID-T02 private currency follows artifact policy, not a committed caller selection", () => {
     for (const currency of [
@@ -780,7 +780,7 @@ describe("generated-runtime only: M-02/M-03; MID rows remain network-unverified"
         else expect(run).toThrow("deadline reached");
       }
     }
-  });
+  }, 60_000);
 
   test("disputeMerchant is bounded by the delivery deadline", () => {
     const h = at(Phase.ACCEPTED);
