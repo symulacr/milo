@@ -1,0 +1,50 @@
+# Render blueprint for the Preprod stress run.
+#
+# A cron job, not a background worker: the run starts, drives its bounded number of
+# operations, writes a receipt, and exits. Render tears the container down on exit,
+# so idle time costs nothing.
+#
+# The plan is 4 GB because the proof server runs inside the container. The lane
+# requires a loopback prover (it asserts isLoopbackHostname, since the prover
+# receives the serialized witness), so the two cannot be split across services.
+# Published sizing: 2 proving workers = 4 GB. This uses one worker at 4 GB, which
+# leaves headroom for the wallet and the Node heap.
+#
+# Secrets are set in the Render dashboard, never here:
+#   MIDNIGHT_PREPROD_SEED, MILO_PREPROD_BLOCKFROST_PROJECT_ID
+# The seed is a wallet key. A blueprint file is committed, so it must not carry one.
+
+services:
+  - type: cron
+    name: milo-preprod-stress
+    runtime: docker
+    dockerfilePath: ./deploy/stress/Dockerfile
+    dockerContext: .
+    # Weekly by default. Trigger a run from the dashboard when you want one; the
+    # schedule exists so the job is defined in version control.
+    schedule: "0 4 * * 0"
+    plan: standard
+    region: oregon
+    envVars:
+      - key: MIDNIGHT_PREPROD_SEED
+        sync: false
+      - key: MILO_PREPROD_BLOCKFROST_PROJECT_ID
+        sync: false
+      - key: MILO_PREPROD_ALLOW
+        value: disposable-owned-preprod
+      - key: MIDNIGHT_PREPROD_PROOF_HTTP
+        value: http://127.0.0.1:6300
+      - key: MIDNIGHT_PROOF_SERVER_NUM_WORKERS
+        value: "1"
+      # Bounds. The harness also refuses below 1.5 GB free memory, so a run stops
+      # itself with a recorded reason instead of being killed.
+      - key: MILO_STRESS_OPERATIONS
+        value: "200"
+      - key: MILO_STRESS_INSTANCES
+        value: "50"
+      - key: MILO_STRESS_CONCURRENCY
+        value: "5"
+      - key: MILO_STRESS_DEADLINE_MS
+        value: "5400000"
+      - key: MILO_AWAIT_TIMEOUT_MS
+        value: "1800000"

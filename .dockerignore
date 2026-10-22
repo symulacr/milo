@@ -1,0 +1,34 @@
+# Build context for the stress image.
+#
+# The image needs three things the repository does not track: the proof server
+# binary, its public parameters, and the compiled contract with its ZK keys. It
+# needs nothing else that is large. Without this file the build context is 2.2 GB
+# and the image lands at 4.36 GB, most of it toolchains the run never touches.
+
+# Toolchains that are only used to build or test on a developer machine.
+.tools/node-runtime
+.tools/bun
+.tools/compact
+.tools/compact-downloads
+.tools/convex-local
+
+# Version control and local state.
+.git
+.hoplite
+.vercel
+gates
+test-results
+node_modules
+**/node_modules
+
+# Secrets. The run reads them from the environment, never from the image.
+.env
+.env.*
+!.env.example
+
+# Documentation and assets that do not affect the run.
+audit
+docs/media
+pitch
+proto-midnight
+hardening

@@ -119,6 +119,16 @@ e2e/**/out/
 !/scripts/pr7-axe.mjs
 !/scripts/pr7-axe-all.mjs
 
+# Deployment artifacts. The stress image and its Render blueprint are how the
+# volume run is executed on a host with enough RAM, so they ship with the code
+# they describe. The build inputs they COPY (the prover, its params, the compiled
+# contract) stay ignored: they are large binaries, and the Dockerfile fails with a
+# named error rather than producing an image that cannot prove.
+!/.dockerignore
+!/render.yaml
+!/deploy/
+!/deploy/**
+
 # Durable audit evidence: the markdown reports and gate-result JSON that the
 # gates read by path. Run logs, screenshots and test output stay local.
 !/audit/
