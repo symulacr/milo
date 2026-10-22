@@ -61,6 +61,30 @@ test("MID-T02 receipt projection excludes transaction/private fields and rejects
     assert.throws(() => publicReceipt({ status }));
 });
 
+test("a bare transaction id from submitTxAsync is a submission, not a failure", () => {
+  // `submitTxAsync` is typed `Promise<string>` and returns an UNSHIELDED transaction id with
+  // no `0x` prefix. The projection used to require the `0x` prefix that only the
+  // extrinsic-hash submitter produces, so every staged deploy fell through to the status
+  // check, read `undefined`, and reported a submitted transaction as a failure. That is what
+  // made `--deploy` fail on Preprod with "Transaction did not succeed entirely" while the
+  // transaction was in fact submitted.
+  const txId = "00f7b0fc10059bc52d4fd5db53b9fb80f0c5f77388f48cf9e65190b7ff04123e99";
+  const receipt = publicReceipt(txId);
+  assert.equal(receipt.status, "Submitted");
+  assert.equal(receipt.txId, txId);
+  assert.equal(receipt.txHash, null);
+  assert.equal(receipt.blockHash, null);
+  assert.equal(receipt.blockHeight, null);
+
+  // The `0x`-prefixed extrinsic hash keeps working.
+  assert.equal(publicReceipt("0xabc").status, "Submitted");
+
+  // An empty string is not a submission, and a non-string non-receipt still fails closed.
+  assert.throws(() => publicReceipt(""));
+  assert.throws(() => publicReceipt(null));
+  assert.throws(() => publicReceipt(undefined));
+});
+
 test("MID-T01 staged bootstrap is explicit opt-in and unknown modes fail closed", () => {
   assert.equal(localConfig(config()).bootstrapMode, "full");
   assert.equal(

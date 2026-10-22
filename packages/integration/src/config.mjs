@@ -84,12 +84,18 @@ export function localConfig(env) {
 }
 
 export function publicReceipt(data) {
-  // Our socket/HTTP submitter returns the node's extrinsic hash rather than the SDK's finality
-  // receipt, so a bare hash means "the node accepted the extrinsic; finality is not yet
-  // observed". It is NOT a claim of success: for those paths the real confirmation comes from
-  // observed ledger state (inspectBootstrap, queryContractState), and the receipt records that
-  // separately. Throwing here instead reported a successful maintenance insert as a failure.
-  if (typeof data === "string" && data.startsWith("0x"))
+  // The non-blocking submitters return a bare transaction id rather than the SDK's finality
+  // receipt: `submitTxAsync` is typed `Promise<string>`, and our socket/HTTP submitter returns
+  // the node's extrinsic hash. A string therefore means "the node accepted the transaction;
+  // finality is not yet observed". It is NOT a claim of success: for those paths the real
+  // confirmation comes from observed ledger state (inspectContractState, queryContractState),
+  // and the receipt records that separately.
+  //
+  // This used to require the `0x` prefix, which only the extrinsic-hash submitter produces.
+  // `submitTxAsync` returns an unprefixed transaction id, so every staged deploy fell through
+  // to the status check below, read `undefined`, and reported a submitted transaction as a
+  // failure. Accept any non-empty string: the shape is the submitter's choice, not ours.
+  if (typeof data === "string" && data.length > 0)
     return {
       txId: data,
       txHash: null,
@@ -97,8 +103,21 @@ export function publicReceipt(data) {
       blockHeight: null,
       status: "Submitted",
     };
-  if (data.status !== "SucceedEntirely")
-    throw new Error("Transaction did not succeed entirely");
+  if (!data || data.status !== "SucceedEntirely")
+    // Carry the status and the identifiers into the message. Throwing a bare "did not
+    // succeed entirely" discards the only fields that say WHICH transaction the node
+    // refused, which turns every rejection into an unexplained failure that has to be
+    // re-run to investigate. FinalizedTxData carries no reason field: the status is the
+    // whole diagnosis (`FailEntirely` is a rejected transaction, `FailFallible` is a
+    // failed fallible segment), so name it.
+    throw new Error(
+      `Transaction did not succeed entirely: status=${data?.status}` +
+        (data?.txId ? ` txId=${data.txId}` : "") +
+        (Array.isArray(data?.identifiers) && data.identifiers.length > 0
+          ? ` identifiers=${data.identifiers.join(",")}`
+          : "") +
+        (data ? "" : ` payload=${typeof data}`),
+    );
   return {
     txId: data.txId,
     txHash: data.txHash,
