@@ -237,10 +237,23 @@ it owns no prior DUST to recover.
 
 ### Bounding the run
 
-A fresh Preprod sync measured **125 minutes** on this SDK cohort (the lane's own comment at
-`packages/integration/src/preprod-lane.mjs:940`, citing servicedesk #104); the file header
-also records an operator note that a fresh sync "can approach three hours". Budget 2-3
-hours and do not run it unattended without the receipt trail below.
+The **125-minute figure applies only to a wallet that must replay dust events from genesis**
+(the lane's own comment at `packages/integration/src/preprod-lane.mjs:940`, citing
+servicedesk #104; the file header also records an operator note that a fresh sync "can
+approach three hours"). It is not the cost of every Preprod run.
+
+A **fresh wallet does not pay it.** Measured on 2026-10-22 against a newly generated wallet
+with no snapshots: the collapsed-update seed completed in **7,294 ms** (`dust-seed-complete`,
+`tailEventsApplied: 0`, cutoff 1711225, height 3094888) and the run emitted `dust-seeded`,
+not `dust-seed-failed`. The fast path is available because a fresh wallet's NIGHT arrives at
+a future dust event id, always past the seed cutoff, so the tail replay covers it.
+
+That is the whole reason the refusal is scoped to wallets that already registered NIGHT
+(`walletHasRegisteredNight`). Only those have DUST UTXOs that predate the cutoff and can
+never be recovered.
+
+Budget 2-3 hours only for the from-genesis case, and do not run it unattended without the
+receipt trail below.
 
 `MILO_AWAIT_TIMEOUT_MS` is the only deadline that applies here. `awaitSync` calls
 `resolveAwaitTimeoutMs(process.env)` and races `wallet.waitForSyncedState()` against it. The
