@@ -3,8 +3,9 @@
 # The lane refuses a non-loopback proof server: `preprodConfig` asserts
 # isLoopbackHostname, because the proof server receives the full serialized
 # witness in the POST body. So the prover must run inside this container, next to
-# the wallet. That is what sets the floor at 4 GB: the published sizing is two
-# proving workers = 4 GB, and one worker is the minimum that can prove at all.
+# the wallet. The 4 GB plan is headroom for the wallet, the Node heap and proof
+# peaks together, not a documented prover requirement: the widely cited
+# "2 workers = 4 GB" has no primary source, and the idle server measures 2.3 MB.
 #
 # IMPORTANT: this image cannot be built from a plain git clone. Three inputs are
 # gitignored, because they are large binaries or generated artifacts:
@@ -63,10 +64,16 @@ RUN set -eu; \
 ENV MIDNIGHT_PP=/app/tools/params
 ENV MIDNIGHT_PROOF_SERVER_NUM_WORKERS=1
 # Cap V8's heap so a runaway run fails with a clear OutOfMemory instead of being
-# killed by the platform with no log line. `--expose-gc` makes `global.gc` real:
-# without it the harness's collect call is a silent no-op, and the per-instance
-# handle release only drops references. Both together are what keep RSS flat.
-ENV NODE_OPTIONS="--max-old-space-size=2048 --expose-gc"
+# killed by the platform with no log line.
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+# Keep glibc from raising its mmap threshold as large buffers are freed. By default
+# a freed mmap'd block raises the threshold, so later large allocations come from
+# the heap and RSS ratchets up and never comes back down. Measured over 10 rounds:
+# +5.1 MB RSS with this set against +51.5 MB without. This is the change that
+# actually flattens memory; --expose-gc measured identical to no-gc (50.5 -> 102.1 MB
+# against 47.4 -> 98.9 MB), because the accumulation is external ArrayBuffers and
+# allocator fragmentation, not the V8 heap that GC reclaims.
+ENV MALLOC_MMAP_THRESHOLD_=131072
 
 COPY deploy/stress/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

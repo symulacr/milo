@@ -141,10 +141,13 @@ funded wallet — so the best case is roughly 5× wall-clock, never 5× cheaper.
 The first real run was killed by the OOM killer after two operations. Three fixes, in order of
 effect:
 
-1. **Size the proof server to the RAM you have.** Each proving worker holds proving keys in
-   memory. The published sizing is 2 workers = 4 GB, 4 workers = 8 GB, 8 workers = 16 GB. The
-   repo's own `scripts/native-services-health.ts` already passes `--num-workers 1`; starting the
-   server without that flag defaults to a much larger pool and is what exhausted this host.
+1. **Size the proof server to the RAM you have.** A third-party sizing table claims 2 workers = 4 GB,
+   4 = 8 GB, 8 = 16 GB, but that figure is **unverified**: no primary Midnight source states it, and
+   the idle server on this host sits at 2.3 MB RSS. The closest official figure found is ~50 MB per
+   proof, which puts 8 workers near 500 MB. Treat the 4 GB plan as headroom for the wallet, the Node
+   heap and proof peaks together, not as a documented prover requirement. The repo's own
+   `scripts/native-services-health.ts` passes `--num-workers 1`; starting the server without that
+   flag defaults to a larger pool.
 2. **Cap Node's heap** so a runaway run fails with a clear `OutOfMemory` instead of being killed
    silently: `NODE_OPTIONS=--max-old-space-size=2048`.
 3. **Let the harness refuse rather than die.** `stressStopReason` returns

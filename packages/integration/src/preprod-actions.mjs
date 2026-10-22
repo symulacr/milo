@@ -570,6 +570,7 @@ async function stress({
   signingKey,
   emit,
   watchdog,
+  session,
 }) {
   const order = miloOrder(Contract);
   const maxOperations = Number(
@@ -585,18 +586,20 @@ async function stress({
   // Concurrency is capped by unlocked DUST UTXOs, not by the balance: a built
   // transaction locks the UTXOs that pay its fee until the wallet applies the
   // confirmation. Read the real count rather than assuming one per transaction.
-  let dustUtxos = 0;
-  try {
-    const state = await providers.walletProvider.state?.();
-    dustUtxos = state?.dust?.availableCoins?.length ?? 0;
-  } catch {
-    // Unknown UTXO count means no concurrency: one at a time always works.
-  }
+  //
+  // The wallet facade is `session.wallet`, not `providers.walletProvider`: the
+  // provider slot exposes only balanceTx and the two public keys, so reading state
+  // through it silently yielded 0. That made the ceiling 0, which made planBatches
+  // throw on every run, and it also made the DUST floor compare the floor against
+  // itself. One missing method disabled both guards.
+  const dustUtxos = await readDustUtxos(session);
   const requestedConcurrency = Number(process.env.MILO_STRESS_CONCURRENCY ?? 1);
-  const concurrency = concurrentCeiling({
-    dustUtxos,
-    maxConcurrency: requestedConcurrency,
-  });
+  // A wallet that cannot report its UTXOs must still be able to run: fall back to
+  // one at a time rather than refusing the whole run.
+  const concurrency = Math.max(
+    1,
+    concurrentCeiling({ dustUtxos, maxConcurrency: requestedConcurrency }),
+  );
   const batches = planBatches({ instances: plan.instances, concurrency });
   await emit({
     event: "stress-planned",
@@ -625,15 +628,10 @@ async function stress({
     });
 
     // Read the wallet's DUST before each deploy: the floor is what actually stops
-    // a run that is spending faster than the budget assumed.
-    let dustSpecks = STRESS_DEFAULTS.dustFloorSpecks;
-    try {
-      const state = await providers.walletProvider.state?.();
-      if (state?.dust) dustSpecks = BigInt(state.dust.balance(new Date()));
-    } catch {
-      // A wallet that cannot report a balance must not silently disable the
-      // floor; leave it at the floor value so the next check stops the run.
-    }
+    // a run that is spending faster than the budget assumed. This reads the facade
+    // (`session.wallet`), not the provider slot, which has no state method — the
+    // earlier read returned undefined and left the floor comparing itself.
+    const dustSpecks = await readDustBalance(session);
     const reason = stressStopReason({
       operationsDone: records.length,
       maxOperations: plan.operations,
@@ -742,16 +740,17 @@ async function stress({
     records.push(...driven.records);
     failures += driven.records.filter((record) => !record.ok).length;
 
-    // Release this instance before the next one starts. Each `findDeployedContract`
-    // handle holds compiled-contract and WASM state, and the loop used to keep all
-    // three alive for the whole run: at 50 instances that is 150 live handles, which
-    // is what pushed the host into the OOM killer. `records` above already copied the
-    // per-operation results, so dropping the handles loses no evidence.
+    // Release this instance before the next one starts. `records` above already
+    // copied the per-operation results, so dropping the handles loses no evidence.
     //
-    // Dropping the reference lets the handles be collected; it does not force it, and
-    // `global.gc` is undefined unless the process runs with `--expose-gc`. The stress
-    // image sets that flag, so the collect is real there. Locally, without the flag,
-    // this is only a reference drop plus a yield, which is still correct but weaker.
+    // Measured, not assumed: this is a small win, not the fix for the OOM kill. The
+    // handles themselves are cheap — the compiled contract is shared and immutable,
+    // and 200 instances moved heapUsed by 0.7 MB, all collectable. What actually
+    // ratchets RSS is proving-key material read from disk per proof, which the ZK
+    // cache in preprod-lane.mjs now avoids, plus glibc's mmap threshold, which the
+    // container pins. `global.gc` is undefined without `--expose-gc`, and with the
+    // flag it measured identical to no-gc, so this collect is kept only as a cheap
+    // tidiness step between instances.
     actors = undefined;
     await new Promise((done) => setImmediate(done));
     if (typeof globalThis.gc === "function") globalThis.gc();
@@ -767,6 +766,36 @@ async function stress({
   };
   await writeStressReceipt(config.runDir, receipt);
   return receipt;
+}
+
+/** Unlocked DUST UTXO count from the wallet facade, or 0 when unreadable.
+ *
+ * `session.wallet` is the facade; `providers.walletProvider` exposes only balanceTx
+ * and the two public keys, so reading state through the provider silently yielded
+ * nothing. 0 means "no concurrency", which is the safe answer. */
+async function readDustUtxos(session) {
+  try {
+    const Rx = await import("rxjs");
+    const state = await Rx.firstValueFrom(session.wallet.state());
+    return state?.dust?.availableCoins?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Spendable DUST in specks from the wallet facade.
+ *
+ * Returns the floor value when unreadable, so an unreadable balance stops the run
+ * at the next check rather than silently disabling the floor. */
+async function readDustBalance(session) {
+  try {
+    const Rx = await import("rxjs");
+    const state = await Rx.firstValueFrom(session.wallet.state());
+    if (state?.dust) return BigInt(state.dust.balance(new Date()));
+  } catch {
+    // fall through to the floor
+  }
+  return STRESS_DEFAULTS.dustFloorSpecks;
 }
 
 /** Free memory in bytes, or undefined when it cannot be read.
@@ -1343,6 +1372,7 @@ async function runMode({
   zkConfigProvider,
   emit,
   watchdog,
+  session,
 }) {
   if (mode === "--deploy") {
     const keyPath = await maintenanceKey(config);
@@ -1419,6 +1449,7 @@ async function runMode({
         signingKey,
         emit,
         watchdog,
+        session,
       });
     } catch (error) {
       const message = String(error?.message ?? error).slice(0, 600);

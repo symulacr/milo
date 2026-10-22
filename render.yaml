@@ -7,8 +7,9 @@
 # The plan is 4 GB because the proof server runs inside the container. The lane
 # requires a loopback prover (it asserts isLoopbackHostname, since the prover
 # receives the serialized witness), so the two cannot be split across services.
-# Published sizing: 2 proving workers = 4 GB. This uses one worker at 4 GB, which
-# leaves headroom for the wallet and the Node heap.
+# The 4 GB is headroom for the wallet, the Node heap and proof peaks together: the
+# commonly cited "2 workers = 4 GB" prover sizing has no primary source, and the
+# idle server here measures 2.3 MB RSS. One worker is the minimum that can prove.
 #
 # Secrets are set in the Render dashboard, never here:
 #   MIDNIGHT_PREPROD_SEED, MILO_PREPROD_BLOCKFROST_PROJECT_ID
