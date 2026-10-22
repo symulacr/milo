@@ -73,6 +73,46 @@ test("a stop reason is always explicit, never a silent break", () => {
   );
 });
 
+test("the memory floor turns an OOM kill into a recorded stop", () => {
+  // The first real run on this host was killed by the OOM killer after two
+  // operations, with no event and no receipt. A floor makes that a refusal the
+  // harness reports instead of a process that silently vanished.
+  const base = {
+    operationsDone: 2,
+    maxOperations: 200,
+    elapsedMs: 1000,
+    deadlineMs: 10_000,
+    dustSpecks: STRESS_DEFAULTS.dustFloorSpecks,
+    dustFloorSpecks: STRESS_DEFAULTS.dustFloorSpecks,
+    failures: 0,
+  };
+  assert.equal(
+    stressStopReason({
+      ...base,
+      freeBytes: STRESS_DEFAULTS.minFreeBytes - 1,
+      minFreeBytes: STRESS_DEFAULTS.minFreeBytes,
+    }),
+    "memory-floor-reached",
+  );
+  assert.equal(
+    stressStopReason({
+      ...base,
+      freeBytes: STRESS_DEFAULTS.minFreeBytes,
+      minFreeBytes: STRESS_DEFAULTS.minFreeBytes,
+    }),
+    null,
+  );
+  // Unknown memory skips the check rather than guessing.
+  assert.equal(
+    stressStopReason({
+      ...base,
+      freeBytes: undefined,
+      minFreeBytes: STRESS_DEFAULTS.minFreeBytes,
+    }),
+    null,
+  );
+});
+
 test("the summary is derived from records, not counted alongside them", () => {
   const records = [
     { instance: 0, circuit: "reserve", ok: true },

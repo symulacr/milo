@@ -62,6 +62,10 @@ export const STRESS_DEFAULTS = Object.freeze({
   dustFloorSpecks: 5n * 10n ** 15n,
   settleTimeoutMs: 180_000,
   settlePollMs: 2_000,
+  // A staged deploy plus its proofs is the memory high-water mark of a run. Below
+  // this much free memory the next instance is refused rather than attempted,
+  // because the OOM killer leaves no receipt and no event.
+  minFreeBytes: 1_500_000_000,
 });
 
 /**
@@ -106,6 +110,12 @@ export function planStressRun({
  * Separate from the loop so the stopping conditions are explicit and testable.
  * Every reason is a refusal, never a silent break: a stress run that stops early
  * must say why, or its operation count is a lie.
+ *
+ * `freeBytes` and `minFreeBytes` exist because the first real run on this host was
+ * killed by the OOM killer after two operations, with no event and no receipt: the
+ * process simply vanished. A memory floor turns that into a recorded stop, which is
+ * the difference between "the harness refused to continue" and "the harness is
+ * broken". Callers that cannot read memory pass `undefined` and the check is skipped.
  */
 export function stressStopReason({
   operationsDone,
@@ -116,11 +126,19 @@ export function stressStopReason({
   dustFloorSpecks,
   failures,
   maxFailures = 0,
+  freeBytes,
+  minFreeBytes,
 }) {
   if (operationsDone >= maxOperations) return "operation-budget-reached";
   if (elapsedMs >= deadlineMs) return "deadline-reached";
   if (failures > maxFailures) return "failure-threshold-reached";
   if (dustSpecks < dustFloorSpecks) return "dust-floor-reached";
+  if (
+    typeof freeBytes === "number" &&
+    typeof minFreeBytes === "number" &&
+    freeBytes < minFreeBytes
+  )
+    return "memory-floor-reached";
   return null;
 }
 

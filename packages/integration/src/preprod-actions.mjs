@@ -620,6 +620,8 @@ async function stress({
       dustSpecks,
       dustFloorSpecks: STRESS_DEFAULTS.dustFloorSpecks,
       failures,
+      freeBytes: await freeMemoryBytes(),
+      minFreeBytes: STRESS_DEFAULTS.minFreeBytes,
     });
     if (reason) {
       stopReason = reason;
@@ -729,6 +731,22 @@ async function stress({
   };
   await writeStressReceipt(config.runDir, receipt);
   return receipt;
+}
+
+/** Free memory in bytes, or undefined when it cannot be read.
+ *
+ * The first real stress run on this host was killed by the OOM killer after two
+ * operations: no event, no receipt, the process simply vanished. Reading free
+ * memory before each instance turns that into a recorded `memory-floor-reached`
+ * stop. Undefined means "unknown", which skips the check rather than guessing. */
+async function freeMemoryBytes() {
+  try {
+    const text = await readFile("/proc/meminfo", "utf8");
+    const match = text.match(/^MemAvailable:\s+(\d+)\s+kB$/m);
+    return match ? Number(match[1]) * 1024 : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Persist the run so a partial or failed stress still leaves its evidence. */
