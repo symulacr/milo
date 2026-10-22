@@ -123,6 +123,30 @@ Fee estimates were taken **before** submission. Seed material is never printed.
 | Label | SDK-connector / harness | — |
 | Seed | `.env.preprod` only — never printed | — |
 
+## Preprod staged deploy — 2026-10-22 (LANDED)
+
+The first Preprod deploy that landed. It failed for a year of runs for a reason that was not
+the chain: `publicReceipt` required a `0x` prefix, `submitTxAsync` returns an unprefixed
+transaction id, so every deploy was reported as "Transaction did not succeed entirely" for a
+transaction the node had accepted. Fixed in `packages/integration/src/config.mjs`.
+
+| Fact | Value |
+|---|---|
+| Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` |
+| Deploy tx | `000516b28419ab4ab957d6411cf957fb2be472bd8c5eaae7bc1afe784d2070da23` (7 circuits) |
+| Maintenance insert tx | `00b80c3ad0e375cb2373a6514996c1a72c5d3356b48c3a1b8a1bd1db640562e0e5` (7 circuits) |
+| Receipt status | `complete` |
+| On-chain block | 3095269 |
+| State | 54,590 hex chars, header `midnight:contract-state[v6]:` |
+| Circuits read back | **14 / 14** via `ContractState.deserialize(...).operations()` |
+| Maintenance authority | threshold 1, counter 1 |
+| Wallet | fresh seed, 45,000 NIGHT, 271.20 DUST at deploy time |
+| Fee estimate | 1 speck (the `additionalFeeOverhead` 0.3 DUST is a margin, not the fee) |
+
+**Deployment is not execution.** All fourteen keys are installed and the state deserializes,
+which proves the staged 7+7 path works end to end. No circuit has been *called* on Preprod, so
+execution remains 0/14 there. The 14/14 execution figure belongs to the local native lane.
+
 ## Preprod genesis replay (make the funded wallet spendable)
 
 Status: **not yet run.** This runbook documents the procedure; no step here has been

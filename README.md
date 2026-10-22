@@ -24,9 +24,17 @@ stay private; only the phase, the revision and commitments are public.
 | Browser workspace | Full order lifecycle runs in an **in-memory simulator**; Lace, Convex session, order record and payment monitor are real but read-only | `apps/web/` |
 
 Not done yet: a wallet-signed reserve from the browser, chain data driving the workspace, and a
-Preprod transaction. Acceptance is published as **0/6 provider** and **0/14 operation** until those
-land. Retained Preprod deploy attempts failed on DUST balancing, and the Midnight-hosted Preprod
-endpoints were decommissioned on 2026-10-09, so the proof evidence comes from local runs.
+circuit *call* on Preprod. Acceptance is published as **0/6 provider** and **0/14 operation**
+until those land.
+
+The contract **is deployed on Preprod**: `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb`
+at block 3095269, staged 7+7 (seven keys deployed, seven installed by one signed maintenance
+update), all fourteen operation names read back from chain state with `ledger-v8`. Deployment
+is not execution: no circuit has been called there, so execution remains 0/14 on Preprod and
+the 14/14 proof evidence still comes from local runs. Earlier deploy attempts failed on DUST
+balancing; that was a real blocker, and the failure after it was a reporting bug
+(`publicReceipt` rejected the unprefixed transaction id `submitTxAsync` returns), not a chain
+rejection. See `RECEIPTS.md`.
 
 ## The contract
 
