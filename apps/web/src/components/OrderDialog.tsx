@@ -1,4 +1,5 @@
 import { AlertDialog, Dialog } from "radix-ui";
+import type { ReactNode } from "react";
 import { sampleFiles } from "../assets";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
 import { useWorkspace } from "../workspace/model";
@@ -74,6 +75,16 @@ const confirmationCopy: Record<
   },
 };
 
+/** One `<dt>/<dd>` row of the shared `.confirmation-summary` list. */
+function Row({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt>{term}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
 export function OrderDialog() {
   const {
     modal,
@@ -115,6 +126,12 @@ export function OrderDialog() {
     setReason("");
     setModalReturn(null);
   }
+  /** Shared "Back" control: closes and clears, never acts. */
+  const back = (label = "Back") => (
+    <button type="button" className="button secondary full" onClick={close}>
+      {label}
+    </button>
+  );
   return confirmation ? (
     <AlertDialog.Root
       open
@@ -135,18 +152,9 @@ export function OrderDialog() {
           <AlertDialog.Title>{title}</AlertDialog.Title>
           <AlertDialog.Description>{description}</AlertDialog.Description>
           <dl className="confirmation-summary">
-            <div>
-              <dt>Agreement</dt>
-              <dd>{quote.name}</dd>
-            </div>
-            <div>
-              <dt>Agreed amount</dt>
-              <dd>{money} USD</dd>
-            </div>
-            <div>
-              <dt>Consequence</dt>
-              <dd>{confirmationCopy[confirmation].body}</dd>
-            </div>
+            <Row term="Agreement">{quote.name}</Row>
+            <Row term="Agreed amount">{money} USD</Row>
+            <Row term="Consequence">{confirmationCopy[confirmation].body}</Row>
           </dl>
           <div className="soft-note">
             This confirmation is a sample only — no wallet prompt, payment or
@@ -234,38 +242,22 @@ export function OrderDialog() {
           {modal === "approve" && (
             <>
               <dl className="confirmation-summary">
-                <div>
-                  <dt>Agreement</dt>
-                  <dd>{quote.name}</dd>
-                </div>
-                <div>
-                  <dt>Creative partner</dt>
-                  <dd>North Studio</dd>
-                </div>
-                <div>
-                  <dt>Delivery</dt>
-                  <dd>Three final sample images · fixed version</dd>
-                </div>
-                <div>
-                  <dt>Agreed amount</dt>
-                  <dd>{money} USD</dd>
-                </div>
-                <div>
-                  <dt>Byte check</dt>
-                  <dd>
-                    {state.filesVerified
-                      ? "All sample files match"
-                      : "Not checked"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>What becomes shared</dt>
-                  <dd>
-                    The order phase and your approval record — illustrated only.
-                    Brief, files and price stay off the public ledger in this
-                    design.
-                  </dd>
-                </div>
+                <Row term="Agreement">{quote.name}</Row>
+                <Row term="Creative partner">North Studio</Row>
+                <Row term="Delivery">
+                  Three final sample images · fixed version
+                </Row>
+                <Row term="Agreed amount">{money} USD</Row>
+                <Row term="Byte check">
+                  {state.filesVerified
+                    ? "All sample files match"
+                    : "Not checked"}
+                </Row>
+                <Row term="What becomes shared">
+                  The order phase and your approval record — illustrated only.
+                  Brief, files and price stay off the public ledger in this
+                  design.
+                </Row>
               </dl>
               <div className="soft-note">
                 Approval requests payment capture as a separate result; capture
@@ -300,13 +292,7 @@ export function OrderDialog() {
                     label is superseded. */}
                 Approve delivery and request payment capture
               </button>
-              <button
-                type="button"
-                className="button secondary full"
-                onClick={close}
-              >
-                Back to review
-              </button>
+              {back("Back to review")}
               <button
                 type="button"
                 className="quiet-button full"
@@ -325,18 +311,13 @@ export function OrderDialog() {
           {modal === "submit" && (
             <>
               <dl className="confirmation-summary">
-                <div>
-                  <dt>Agreement</dt>
-                  <dd>{quote.name}</dd>
-                </div>
-                <div>
-                  <dt>Delivery</dt>
-                  <dd>Three final sample images · fixed version</dd>
-                </div>
-                <div>
-                  <dt>Consequence</dt>
-                  <dd>No replacement or revision rounds after submission</dd>
-                </div>
+                <Row term="Agreement">{quote.name}</Row>
+                <Row term="Delivery">
+                  Three final sample images · fixed version
+                </Row>
+                <Row term="Consequence">
+                  No replacement or revision rounds after submission
+                </Row>
               </dl>
               <div className="soft-note">
                 The buyer reviews this exact version. A submitted delivery
@@ -367,42 +348,26 @@ export function OrderDialog() {
               >
                 Submit the delivery
               </button>
-              <button
-                type="button"
-                className="button secondary full"
-                onClick={close}
-              >
-                Back
-              </button>
+              {back()}
             </>
           )}
           {(modal === "resolve-approve" || modal === "resolve-cancel") && (
             <>
               <dl className="confirmation-summary">
-                <div>
-                  <dt>Agreement</dt>
-                  <dd>{quote.name}</dd>
-                </div>
-                <div>
-                  <dt>Authority</dt>
-                  <dd>Pre-agreed operator · committed before purchase</dd>
-                </div>
-                <div>
-                  <dt>Decision</dt>
-                  <dd>
-                    {modal === "resolve-approve"
-                      ? "Full approval of the submitted delivery"
-                      : "Full cancellation of the order"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Payment</dt>
-                  <dd>
-                    {modal === "resolve-approve"
-                      ? "Capture may be reconciled separately; not guaranteed"
-                      : "Any hold is released or refunded by the provider, reconciled separately"}
-                  </dd>
-                </div>
+                <Row term="Agreement">{quote.name}</Row>
+                <Row term="Authority">
+                  Pre-agreed operator · committed before purchase
+                </Row>
+                <Row term="Decision">
+                  {modal === "resolve-approve"
+                    ? "Full approval of the submitted delivery"
+                    : "Full cancellation of the order"}
+                </Row>
+                <Row term="Payment">
+                  {modal === "resolve-approve"
+                    ? "Capture may be reconciled separately; not guaranteed"
+                    : "Any hold is released or refunded by the provider, reconciled separately"}
+                </Row>
               </dl>
               <div className="soft-note">
                 Resolution is final in full — no partial approval, no reopened
@@ -418,38 +383,17 @@ export function OrderDialog() {
                   ? "Resolve: approve delivery"
                   : "Resolve: cancel order"}
               </button>
-              <button
-                type="button"
-                className="button secondary full"
-                onClick={close}
-              >
-                Back
-              </button>
+              {back()}
             </>
           )}
           {(modal === "reserve" || modal === "accept") && (
             <>
               <dl className="confirmation-summary">
-                <div>
-                  <dt>Agreement</dt>
-                  <dd>{quote.name}</dd>
-                </div>
-                <div>
-                  <dt>Scope</dt>
-                  <dd>Three final images · fixed version</dd>
-                </div>
-                <div>
-                  <dt>Agreed amount</dt>
-                  <dd>{money} USD</dd>
-                </div>
-                <div>
-                  <dt>Payment</dt>
-                  <dd>Hold authorized; not captured</dd>
-                </div>
-                <div>
-                  <dt>Deadline</dt>
-                  <dd>{REVIEW_DEADLINE} · sample clock</dd>
-                </div>
+                <Row term="Agreement">{quote.name}</Row>
+                <Row term="Scope">Three final images · fixed version</Row>
+                <Row term="Agreed amount">{money} USD</Row>
+                <Row term="Payment">Hold authorized; not captured</Row>
+                <Row term="Deadline">{REVIEW_DEADLINE} · sample clock</Row>
               </dl>
               <div className="soft-note">
                 {modal === "reserve"
@@ -470,13 +414,7 @@ export function OrderDialog() {
               >
                 {modal === "reserve" ? "Reserve the terms" : "Accept the order"}
               </button>
-              <button
-                type="button"
-                className="button secondary full"
-                onClick={close}
-              >
-                Back
-              </button>
+              {back()}
             </>
           )}
           {modal === "dispute" && (

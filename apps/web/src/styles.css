@@ -70,30 +70,20 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dark mode for the legacy/secondary aliases (04-ui-design §2.1). tokens.css
-   flips the --c-* primitives; these are the literal-valued aliases that would
-   otherwise stay light and fail AA on a dark surface. Same two entry points as
-   tokens.css so an explicit choice and the OS preference stay in agreement. */
+/* Dark mode for the literal-valued aliases only. Anything declared as
+   `var(--c-*)` in :root already flips with tokens.css; do not restate it. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --quiet: #100e0b;
     --quiet-hover: #26221c;
-    --quiet-line: #332e27;
-    --quiet-line-strong: #4a443c;
     --quiet-text: #b3aca2;
-    --badge-bg: #100e0b;
     --field-line: #4a443c;
     --art-bg: #1a1712;
     --art-line: #332e27;
     --art-deep: #221e18;
     --violet-ink: #d3c7fb;
-    --violet-line: #3d3358;
     --violet-accent: #a48ce8;
-    --success-bg: #16281f;
     --success-line: #2a4a39;
-    --warning-bg: #2a2113;
     --warning-line: #4a3c1f;
-    --danger-bg: #2c1618;
     --danger-line: #4a2a2c;
     --on-dark: #4a443c;
     --on-dark-accent: #3b22ae;
@@ -104,24 +94,16 @@
   }
 }
 :root[data-theme="dark"] {
-  --quiet: #100e0b;
   --quiet-hover: #26221c;
-  --quiet-line: #332e27;
-  --quiet-line-strong: #4a443c;
   --quiet-text: #b3aca2;
-  --badge-bg: #100e0b;
   --field-line: #4a443c;
   --art-bg: #1a1712;
   --art-line: #332e27;
   --art-deep: #221e18;
   --violet-ink: #d3c7fb;
-  --violet-line: #3d3358;
   --violet-accent: #a48ce8;
-  --success-bg: #16281f;
   --success-line: #2a4a39;
-  --warning-bg: #2a2113;
   --warning-line: #4a3c1f;
-  --danger-bg: #2c1618;
   --danger-line: #4a2a2c;
   --on-dark: #4a443c;
   --on-dark-accent: #3b22ae;
@@ -131,9 +113,8 @@
   --shadow-dialog: #000000b3;
 }
 
-/* Numeric alignment (04-ui-design §2.1): prices, hashes, timestamps and
-   ledger values use tabular figures so columns of digits line up and a value
-   does not reflow as it changes. */
+/* Numeric alignment (04-ui-design §2.1): tabular figures keep digit columns
+   aligned and stop a changing value from reflowing. */
 .payment-total,
 .detail-grid dd,
 .confirmation-summary dd,
@@ -152,8 +133,7 @@ code,
   overflow-wrap: anywhere;
 }
 
-/* Public shell framing: the header/footer stay pinned to the viewport edges
-   and short pages still fill the screen (04-ui-design §4.1). */
+/* Public shell framing: short pages still fill the viewport (§4.1). */
 .public-shell {
   min-height: 100dvh;
   display: flex;
@@ -218,9 +198,7 @@ h3 {
   font-weight: 500;
   line-height: 1.15;
 }
-h1 {
-  letter-spacing: var(--tracking-display);
-}
+h1,
 h2 {
   letter-spacing: var(--tracking-display);
 }
@@ -464,9 +442,8 @@ h2 {
   color: var(--muted);
   margin-top: 4px;
 }
-/* One status-pill concept (04 §2.1; 01 §7.5 single status vocabulary):
-   icon + text always, filled tint per documented tone. Used by the Badge
-   component and the public surfaces alike. */
+/* One status-pill concept (04 §2.1; 01 §7.5): icon + text, filled tint per
+   documented tone. Shared by the Badge component and public surfaces. */
 .tag {
   display: inline-flex;
   gap: 6px;
@@ -1049,10 +1026,16 @@ h2 {
   width: 200%;
   max-width: none;
 }
-.demo-caption {
+.demo-caption,
+.demo-note {
   font-size: var(--text-micro);
   color: var(--muted);
+}
+.demo-caption {
   margin-top: var(--space-2);
+}
+.demo-note {
+  margin-top: var(--space-3);
 }
 .demo-thumbs {
   display: flex;
@@ -1072,14 +1055,15 @@ h2 {
 .demo-thumb-img {
   border-radius: var(--radius-control);
 }
-.demo-window h2 {
-  font-family: var(--font-display);
-  font-size: var(--text-title);
-  margin-bottom: var(--space-4);
-}
+.demo-window h2,
 .demo-title {
   font-family: var(--font-display);
   font-size: var(--text-title);
+}
+.demo-window h2 {
+  margin-bottom: var(--space-4);
+}
+.demo-title {
   padding: var(--space-4) var(--space-5) 0;
 }
 .demo-facts h3 {
@@ -1105,9 +1089,7 @@ h2 {
 .demo-detail dd {
   margin: var(--space-1) 0 0;
 }
-/* Specificity 0,2,0 still outranks .demo-window details (0,1,1), which the
-   previous .demo-window.demo-window doubling achieved; no other rule targets
-   this element above 0,1,1, so the computed result is unchanged. */
+/* Specificity 0,2,0 outranks .demo-window details (0,1,1). */
 .demo-window .demo-case {
   border-top: 0;
   padding-block: var(--space-2);
@@ -1127,16 +1109,14 @@ h2 {
   min-height: 44px;
   align-content: center;
 }
-.demo-detail-copy {
-  font-size: var(--text-micro);
+.demo-detail-copy,
+.demo-panel-copy {
   color: var(--muted);
   line-height: 1.7;
   margin-top: var(--space-2);
 }
-.demo-note {
+.demo-detail-copy {
   font-size: var(--text-micro);
-  color: var(--muted);
-  margin-top: var(--space-3);
 }
 .demo-outcome {
   display: grid;
@@ -1151,11 +1131,6 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   padding: var(--space-4);
-}
-.demo-panel-copy {
-  color: var(--muted);
-  line-height: 1.7;
-  margin-top: var(--space-2);
 }
 /* demo outcome chips use the shared .tag pill */
 .demo-toggle {
@@ -1196,14 +1171,10 @@ h2 {
   }
 }
 
-/*
- * Motion grammar (04-ui-design §12.1): restrained card reveal on first view
- * and an origin-consistent seal response on inspection. Static first frame
- * remains complete; everything here is gated on no-preference.
- */
+/* Motion grammar (04-ui-design §12.1): restrained reveal and seal response,
+   gated on no-preference; the static first frame is already complete. */
 @media (prefers-reduced-motion: no-preference) {
-  /* 04 §12.1: the first frame is complete immediately; motion is a subtle
-     transform-only accent inside the 120–220ms budget (01 §7.4). */
+  /* 04 §12.1: transform-only accent inside the 120–220ms budget (01 §7.4). */
   @keyframes hero-rise {
     from {
       transform: translateY(10px);
@@ -1254,13 +1225,11 @@ h2 {
   }
 }
 
-/* Print: a confirmed order record is a document the buyer keeps, so printing
-   must produce the record and nothing else (04-ui-design §4.6). Navigation,
-   the prototype banner and every action control are removed; panels lose
-   their elevation and page background so ink is not wasted on chrome. */
+/* Print (04-ui-design §4.6): the record and nothing else — chrome and action
+   controls removed, elevation and page background dropped to save ink. */
 @media print {
-  /* `:root:root` (0,2,0) deliberately outranks the dark-mode token blocks
-     (0,1,1) so a dark-theme user still prints black-on-white. */
+  /* `:root:root` (0,2,0) outranks the dark-mode token blocks (0,1,1) so a
+     dark-theme user still prints black-on-white. */
   :root:root {
     color-scheme: light;
     --c-bg: #ffffff;
@@ -1274,25 +1243,16 @@ h2 {
     --c-accent: #000000;
     --c-accent-soft: #ffffff;
     --c-accent-line: #999999;
-    --quiet: #ffffff;
     --quiet-hover: #ffffff;
-    --quiet-line: #999999;
     --quiet-line-strong: #666666;
     --quiet-text: #3a3a3a;
-    --badge-bg: #ffffff;
     --field-line: #999999;
     --art-bg: #ffffff;
     --art-line: #999999;
     --violet-ink: #000000;
-    --violet-line: #999999;
-    --success-bg: #ffffff;
     --success-line: #999999;
-    --warning-bg: #ffffff;
     --warning-line: #999999;
-    --danger-bg: #ffffff;
     --danger-line: #999999;
-    --panel: #ffffff;
-    --paper: #ffffff;
   }
   @page {
     margin: 16mm;
@@ -1314,6 +1274,7 @@ h2 {
   .action-column,
   .primary-action,
   .dialog-close,
+  .dialog-overlay,
   .tabs,
   .scenario-links,
   .hero-art,
@@ -1325,16 +1286,16 @@ h2 {
   .text-link {
     display: none;
   }
-  .app-shell {
-    display: block;
-    min-height: 0;
-  }
+  .app-shell,
   .workspace-grid,
   .order-layout,
   .detail-grid,
   .confirmation-summary,
   .form-pair {
     display: block;
+  }
+  .app-shell {
+    min-height: 0;
   }
   .panel,
   .receipt,
@@ -1345,9 +1306,6 @@ h2 {
     box-shadow: none;
     background: #fff;
     break-inside: avoid;
-  }
-  .dialog-overlay {
-    display: none;
   }
   .dialog-content {
     position: static;

@@ -30,26 +30,16 @@ import {
 } from "./recovery-runtime";
 
 /**
- * The one order console's real, client-local recovery surface. It consumes the
- * pure recovery-kit state machine (packages/domain/src/recovery-kit.ts) through
- * native browser storage and real Privy identity. The buyer reserve path is
- * wired through midnight-client's fail-closed `prepareReserveCall` and the
- * recovery-kit operations (`checkpointAddress` / `beginOperation` /
- * `confirmOperation`): every missing prerequisite is an explicit blocked
- * reason, and nothing here claims a reserve succeeded without a real signed
- * transaction and a matching observation.
+ * Client-local recovery surface over the pure recovery-kit state machine.
+ * Nothing here claims a reserve succeeded without a real signed transaction
+ * and a matching observation.
  */
 const NETWORK = "preprod";
 
-/**
- * The seven recovery-kit operations (packages/domain/src/recovery-kit.ts).
- * Each row is either UI-wired on this panel or carries a written justification
- * for staying out of the browser surface — nothing is silently dead or faked.
- */
-type RecoveryKitOpDisposition = "ui-wired" | "justified";
+/** The seven recovery-kit ops: UI-wired on this panel or justified in writing. */
 type RecoveryKitOpRow = {
   op: string;
-  disposition: RecoveryKitOpDisposition;
+  disposition: "ui-wired" | "justified";
   detail: string;
 };
 
@@ -123,12 +113,7 @@ const scopeOf = (kit: RecoveryKit) => ({
   orderNonce: kit.orderNonce,
 });
 
-/**
- * One-line state of the stored kit for the current scope. `subscribeKitChanges`
- * comes from `recovery-runtime` beside the emitter and the event name, so the
- * same-document event and the cross-tab `storage` event are handled by one
- * implementation rather than a copy per reader.
- */
+/** One-line state of the stored kit for the current scope. */
 function contextStatus(kit: RecoveryKit | null): string {
   if (!kit)
     return "No local recovery context is stored for this actor and order nonce.";
@@ -163,8 +148,7 @@ export function RecoveryKitPanel({
     }
     setNotice("");
     setKit(readKit({ actorId, network: NETWORK, orderNonce }));
-    // Another mounted panel or another tab may write the same localStorage
-    // key; reload so this panel never shows a stale stage/address.
+    // Another panel or tab may write the same key; never show a stale stage.
     return subscribeKitChanges(() => {
       setKit(readKit({ actorId, network: NETWORK, orderNonce }));
     });
@@ -178,9 +162,8 @@ export function RecoveryKitPanel({
         ? "Recovery context saved in this browser’s local storage."
         : "This browser refused local storage. The context is shown but not persisted.",
     );
-    // Tell every other mounted panel and tab that this kit changed. Only on a
-    // real write: listeners re-read storage, and an unsaved kit would be
-    // replaced by the stale (or absent) stored one.
+    // Only on a real write: listeners re-read storage, so an unsaved kit
+    // would be replaced by the stale (or absent) stored one.
     if (saved) emitRecoveryKitChanged();
   }
   function prepare() {
@@ -249,38 +232,36 @@ export function RecoveryKitPanel({
           <p role="status">{contextStatus(kit)}</p>
           {notice && <p role="status">{notice}</p>}
           <div className="connection-actions">
-            <button
-              className="button"
-              type="button"
-              disabled={!bound || kit !== null}
-              onClick={prepare}
-            >
-              Prepare local context
-            </button>
-            <button
-              className="button secondary"
-              type="button"
-              disabled={kit?.stage !== "EXPORTED"}
-              onClick={verify}
-            >
-              Verify context
-            </button>
-            <button
-              className="button secondary"
-              type="button"
-              disabled={!kit || kit.stage === "LOST"}
-              onClick={lose}
-            >
-              Mark capability lost
-            </button>
-            <button
-              className="button secondary"
-              type="button"
-              disabled={!kit}
-              onClick={forget}
-            >
-              Forget local context
-            </button>
+            {[
+              {
+                label: "Prepare local context",
+                onClick: prepare,
+                disabled: !bound || kit !== null,
+                className: "button",
+              },
+              {
+                label: "Verify context",
+                onClick: verify,
+                disabled: kit?.stage !== "EXPORTED",
+                className: "button secondary",
+              },
+              {
+                label: "Mark capability lost",
+                onClick: lose,
+                disabled: !kit || kit.stage === "LOST",
+                className: "button secondary",
+              },
+              {
+                label: "Forget local context",
+                onClick: forget,
+                disabled: !kit,
+                className: "button secondary",
+              },
+            ].map(({ label, ...action }) => (
+              <button key={label} type="button" {...action}>
+                {label}
+              </button>
+            ))}
           </div>
           {kit?.requiresReconciliation && (
             <p role="alert">
@@ -390,9 +371,8 @@ export function CheckpointSection({
 
 /**
  * Buyer reserve scaffolding: Lace wallet connection plus midnight-client
- * `prepareReserveCall`. Fail closed on every missing prerequisite. The prepare
- * action produces a descriptor only — never a signature and never a completed
- * reserve. `beginOperation` runs only when a real submission identity exists.
+ * `prepareReserveCall`. Fail closed on every missing prerequisite; prepare
+ * returns a descriptor only, never a signature or a completed reserve.
  */
 export function BuyerReserveSection({
   kit,
@@ -407,10 +387,28 @@ export function BuyerReserveSection({
   const [walletNotice, setWalletNotice] = useState(
     "Not connected. Midnight Lace API v4 is required in this browser.",
   );
-  const [candidates] = useState(() =>
+  const [candidates, setCandidates] = useState(() =>
     typeof window === "undefined" ? [] : discoverWallets(window.midnight),
   );
-  const [selected, setSelected] = useState(0);
+  // Selection is keyed by CAIP-372 `rdns`, not list position: a wallet that
+  // arrives after mount must not silently steal or lose the user's choice.
+  const [selectedRdns, setSelectedRdns] = useState(
+    () => candidates[0]?.rdns ?? "",
+  );
+  const selected = Math.max(
+    0,
+    candidates.findIndex((w) => w.rdns === selectedRdns),
+  );
+  // A wallet injected after mount (extension or SDK boot) is connectable
+  // without a reload: discovery re-runs on the registry ping and on focus.
+  useEffect(() => {
+    const refresh = () => setCandidates(discoverWallets(window.midnight));
+    const events = ["milo:midnight-registry", "focus"] as const;
+    for (const event of events) window.addEventListener(event, refresh);
+    return () => {
+      for (const event of events) window.removeEventListener(event, refresh);
+    };
+  }, []);
   const connector = useMemo(
     () =>
       new LaceWalletConnector((state) => {
@@ -428,9 +426,7 @@ export function BuyerReserveSection({
   const prepareInput: PrepareReserveInput = {
     kit,
     wallet,
-    // Actor-local private state is not collected in this panel (secrets never
-    // enter form fields). The gate reports the missing state until a local
-    // private-state store is wired.
+    // Secrets never enter form fields; the gate reports the missing state.
     privateState: null,
     providers,
     expectedRevision: 0n,
@@ -438,7 +434,13 @@ export function BuyerReserveSection({
   const prepareGate = assessPrepareReserve(prepareInput);
 
   function connect() {
-    void connector.connect(candidates[selected]);
+    // Re-discover at click time so a wallet injected after mount connects on
+    // the first click instead of requiring a page reload.
+    const fresh = discoverWallets(window.midnight);
+    setCandidates(fresh);
+    void connector.connect(
+      fresh.find((w) => w.rdns === selectedRdns) ?? fresh[selected] ?? fresh[0],
+    );
   }
   function forget() {
     connector.disconnect();
@@ -463,8 +465,7 @@ export function BuyerReserveSection({
   }
   function runConfirm() {
     if (!kit) return;
-    // No observation source is wired in this build: confirm always fails
-    // closed rather than inventing a chain result.
+    // No observation source is wired in this build: confirm fails closed.
     const result = confirmObservedReserve(kit, null);
     setPrepareNotice(result.message);
   }
@@ -496,7 +497,11 @@ export function BuyerReserveSection({
               Wallet to connect
               <select
                 value={selected}
-                onChange={(event) => setSelected(Number(event.target.value))}
+                onChange={(event) =>
+                  setSelectedRdns(
+                    candidates[Number(event.target.value)]?.rdns ?? "",
+                  )
+                }
               >
                 {candidates.map((entry, index) => (
                   <option key={entry.rdns || index} value={index}>
@@ -543,26 +548,29 @@ export function BuyerReserveSection({
         transaction identity from an actual submission; this panel never invents
         one.
       </p>
-      <label className="field">
-        Operation identity (from a real submission)
-        <input
-          type="text"
-          autoComplete="off"
-          value={operationIdentity}
-          onChange={(event) => setOperationIdentity(event.target.value)}
-          disabled={kit?.stage !== "CHECKPOINTED"}
-        />
-      </label>
-      <label className="field">
-        Expected revision
-        <input
-          type="text"
-          autoComplete="off"
-          value={operationRevision}
-          onChange={(event) => setOperationRevision(event.target.value)}
-          disabled={kit?.stage !== "CHECKPOINTED"}
-        />
-      </label>
+      {[
+        {
+          label: "Operation identity (from a real submission)",
+          value: operationIdentity,
+          onChange: setOperationIdentity,
+        },
+        {
+          label: "Expected revision",
+          value: operationRevision,
+          onChange: setOperationRevision,
+        },
+      ].map(({ label, value, onChange }) => (
+        <label className="field" key={label}>
+          {label}
+          <input
+            type="text"
+            autoComplete="off"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            disabled={kit?.stage !== "CHECKPOINTED"}
+          />
+        </label>
+      ))}
       <div className="connection-actions">
         <button
           className="button secondary"
@@ -591,14 +599,10 @@ export function BuyerReserveSection({
 }
 
 function walletMessage(state: WalletConnectionState): string {
-  switch (state.status) {
-    case "connected":
-      return `Connected to PREPROD as ${state.account.unshieldedAddress}. No transaction has been signed.`;
-    case "connecting":
-      return "Approve the PREPROD connection in Midnight Lace. No signature is requested.";
-    case "error":
-      return state.message;
-    default:
-      return "Not connected. Midnight Lace API v4 is required in this browser.";
-  }
+  if (state.status === "connected")
+    return `Connected to PREPROD as ${state.account.unshieldedAddress}. No transaction has been signed.`;
+  if (state.status === "connecting")
+    return "Approve the PREPROD connection in Midnight Lace. No signature is requested.";
+  if (state.status === "error") return state.message;
+  return "Not connected. Midnight Lace API v4 is required in this browser.";
 }

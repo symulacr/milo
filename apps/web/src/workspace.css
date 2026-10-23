@@ -37,8 +37,7 @@
   box-shadow: var(--s1);
   font-weight: 600;
 }
-/* The active marker is a hairline on the leading edge, drawn rather than
-   typed so it never enters the accessible name. */
+/* Active marker: a hairline on the leading edge, drawn not typed. */
 .sidebar nav > a.active::before {
   content: "";
   position: absolute;
@@ -202,8 +201,7 @@
   font-size: var(--text-micro);
   text-decoration: none;
 }
-/* The privacy tag is a fixed dark chip on both themes, so its label is pinned
-   to the light paper value rather than inheriting the theme ink. */
+/* Privacy tag is a fixed dark chip on both themes; label pinned to paper. */
 .app-topbar .tag.violet {
   background: var(--c-privacy);
   color: #f4f1ea;
@@ -368,7 +366,7 @@
 .progress-track li.reached::after {
   background: var(--c-accent);
 }
-.progress-track li > .icon {
+.progress-track :where(li) > .icon {
   position: absolute;
   top: 0;
   left: 0;
@@ -395,7 +393,7 @@
   background: var(--c-warning-bg);
   border-color: var(--c-warning);
 }
-.progress-track li.halted > .icon {
+.progress-track :where(li.halted) > .icon {
   color: var(--c-warning);
 }
 .workspace-grid {
@@ -418,8 +416,7 @@
 .primary-action {
   grid-area: action;
   min-width: 0;
-}
-/* Desktop keeps the action rail in view while the work column scrolls. */
+} /* Desktop keeps the action rail in view while the work column scrolls. */
 @media (width > 950px) {
   .primary-action {
     position: sticky;
@@ -520,8 +517,7 @@
   text-align: center;
   font-size: var(--text-small);
 }
-/* Drawn, not typed: a glyph here would count as visible text and break the
-   card's accessible name. */
+/* Drawn, not typed: a glyph here would join the card's accessible name. */
 .image-expand::before {
   content: "";
   display: block;
@@ -972,9 +968,7 @@ dd {
   font-size: 13px;
   font-weight: 400;
 }
-/* Scoped to the panel that owns it (same convention as .reading-panel
-   .intro-copy); specificity 0,2,0 still outranks .reading-panel p (0,1,1),
-   which the previous .form-error.form-error doubling achieved. */
+/* Scoped to the owning panel; 0,2,0 outranks .reading-panel p (0,1,1). */
 .reading-panel .form-error {
   color: var(--danger);
   font-size: 13px;
@@ -1223,17 +1217,12 @@ dd {
   .workspace-grid {
     grid-template-columns: 1fr;
   }
-  /* Mobile order: the delivered work is reviewed first, then the action that
-     acts on it, then payment. The previous "action" first order inverted the
-     documented journey and put an approve control above the files it approves
-     (04-ui-design §4.4). */
+  /* Mobile order: work, then the action on it, then payment (§4.4). */
   .order-layout {
     grid-template-areas: "work" "action" "payment";
     grid-template-rows: auto;
   }
-  /* On mobile the full action panel sits in document flow right below the
-     delivered work so it never covers the images while scrolling; safe-area
-     padding keeps the bottom controls clear of the home indicator. */
+  /* Action panel sits in flow below the work; safe-area clears the indicator. */
   .order-layout > .primary-action {
     position: static;
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -1355,9 +1344,7 @@ dd {
   .action-panel h2 {
     font-size: 29px;
   }
-  .quiet-button {
-    font-size: 13px;
-  }
+  .quiet-button,
   .privacy-inline {
     font-size: 13px;
   }
@@ -1437,11 +1424,9 @@ dd {
   margin-block: 20px;
 }
 
-/* New component classes (Wave 2 wires these; the styles ship here so the
-   markup and its presentation land together). */
+/* New component classes (Wave 2 wires these). */
 
-/* Health stepper: a compact, ordered set of verification stages. Distinct
-   from .progress-track because it reports condition, not journey position. */
+/* Health stepper: verification stages; reports condition, not position. */
 .health-stepper {
   list-style: none;
   padding: 0;
@@ -1478,27 +1463,22 @@ dd {
   border-color: var(--success-line);
   background: var(--success-bg);
 }
-.health-step[data-state="pass"]::before {
-  border-color: var(--c-success);
-  background: var(--c-success);
-}
 .health-step[data-state="warn"] {
   color: var(--c-warning);
   border-color: var(--warning-line);
   background: var(--warning-bg);
-}
-.health-step[data-state="warn"]::before {
-  border-color: var(--c-warning);
-  background: var(--c-warning);
 }
 .health-step[data-state="fail"] {
   color: var(--c-danger);
   border-color: var(--danger-line);
   background: var(--danger-bg);
 }
+/* The dot mirrors the inherited state color: one pair covers all three. */
+.health-step[data-state="pass"]::before,
+.health-step[data-state="warn"]::before,
 .health-step[data-state="fail"]::before {
-  border-color: var(--c-danger);
-  background: var(--c-danger);
+  border-color: currentColor;
+  background: currentColor;
 }
 .health-step[data-state="pending"] {
   color: var(--c-muted);
@@ -1514,7 +1494,6 @@ dd {
   color: var(--c-muted);
   margin-top: 2px;
 }
-
 /* Verify slots: the three delivered files and their byte-check state. */
 .verify-slots {
   list-style: none;
@@ -1550,14 +1529,16 @@ dd {
   border-color: var(--success-line);
   background: var(--success-bg);
 }
-.verify-slot[data-state="match"] :where(strong) {
-  color: var(--c-success);
-}
 .verify-slot[data-state="mismatch"] {
   border-color: var(--danger-line);
   background: var(--danger-bg);
 }
-.verify-slot[data-state="mismatch"] :where(strong) {
+/* `:where(.verify-slot)` keeps these at (0,1,0), equal to the base rule, so
+   source order decides and noDescendingSpecificity stays quiet. */
+:where(.verify-slot)[data-state="match"] :where(strong) {
+  color: var(--c-success);
+}
+:where(.verify-slot)[data-state="mismatch"] :where(strong) {
   color: var(--c-danger);
 }
 .verify-slot[data-state="pending"] {
@@ -1568,7 +1549,6 @@ dd {
     grid-template-columns: 1fr;
   }
 }
-
 /* Guard note: a standing constraint shown beside an irreversible action. */
 .guard-note {
   display: flex;
@@ -1607,9 +1587,7 @@ dd {
   background: var(--success-bg);
   color: var(--c-success);
 }
-
-/* Dispute reason card: one selectable reason, with its consequence spelled
-   out so the choice is informed before it is submitted. */
+/* Dispute reason card: one selectable reason with its consequence. */
 .dispute-reason-card {
   display: flex;
   align-items: flex-start;
@@ -1651,8 +1629,7 @@ dd {
   color: var(--c-muted);
 }
 
-/* Proximate disclosure: the short, always-visible statement of who can see
-   what, placed next to the control it qualifies (01 §7.5). */
+/* Proximate disclosure: who can see what, beside the control (01 §7.5). */
 .proximate-disclosure {
   margin: var(--space-3) 0 0;
   padding: 10px 12px;
@@ -1670,8 +1647,7 @@ dd {
   text-underline-offset: 3px;
 }
 
-/* Persona banner: names which participant's view is on screen, so a shared
-   screen cannot be mistaken for the other party's. */
+/* Persona banner: names whose view is on screen. */
 .persona-banner {
   display: flex;
   align-items: center;
@@ -1724,12 +1700,16 @@ dd {
     height: 2px;
   }
 }
+/* Reduced motion without !important: name every ungated transition so source
+   order and equal-or-higher specificity carry the override. */
 @media (prefers-reduced-motion: reduce) {
+  .app-shell,
   .app-shell *,
+  .image-wrap img,
   .dialog-overlay,
   .dialog-content {
-    transition: none !important;
-    animation: none !important;
-    scroll-behavior: auto !important;
+    transition: none;
+    animation: none;
+    scroll-behavior: auto;
   }
 }
