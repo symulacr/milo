@@ -2,6 +2,7 @@ import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexReactClient, useConvexAuth, useQueries } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { authClientFor, type MiloAuthClient } from "./auth-client";
 import { backendSessionStatus } from "./convex-session-runtime";
 import { OrderRecordPanel } from "./OrderRecordPanel";
@@ -13,14 +14,20 @@ const currentSession = makeFunctionReference<
   { subject: string }
 >("auth/session:current");
 
+const SESSION_QUERY = { session: { query: currentSession, args: {} } };
+const NO_QUERY = {};
+
 function BackendSession({ authClient }: { authClient: MiloAuthClient }) {
   const { data: session } = authClient.useSession();
   const subject = session?.user?.id;
   const { isLoading, isAuthenticated, isRefreshing } = useConvexAuth();
+  // Keep the subscription mounted while a token refresh is in flight. Swapping to `NO_QUERY`
+  // during refresh tore the query down and re-ran it on every refresh, so a slow refresh
+  // looked like a failed verification and the record/monitoring panels unmounted and
+  // remounted. `isRefreshing` still reaches `backendSessionStatus`, which keeps the
+  // verification status fail-closed (unverified, "waiting") for the whole refresh window.
   const results = useQueries(
-    subject && isAuthenticated && !isRefreshing
-      ? { session: { query: currentSession, args: {} } }
-      : {},
+    subject && isAuthenticated ? SESSION_QUERY : NO_QUERY,
   );
   const status = backendSessionStatus(
     Boolean(subject),
@@ -78,14 +85,13 @@ function SessionStatus({ authClient }: { authClient: MiloAuthClient }) {
           Sign out
         </button>
       ) : (
-        <button
-          type="button"
-          className="button"
-          disabled={isPending}
-          onClick={() => setError("")}
-        >
-          Continue to your order
-        </button>
+        // The signed-out state used to render a button whose whole handler was
+        // `setError("")`: a control that looked like a navigation CTA and did nothing. A link
+        // to the synthetic sample order is the honest action here — it needs no identity and
+        // creates nothing.
+        <Link className="button secondary" to="/orders/sample-001">
+          Continue to sample order ↗
+        </Link>
       )}
     </>
   );
@@ -108,8 +114,16 @@ export default function SessionConnection({
   const authClient = useMemo(() => authClientFor(authUrl), [authUrl]);
   const [client, setClient] = useState<ConvexReactClient>();
   useEffect(() => {
+    // `ConvexReactClient` throws "Provided address was not an absolute URL." on an empty
+    // string, so an unconfigured deployment crashed this panel before it could report that
+    // Convex is not configured. Guard first: no URL means no client, and the render below
+    // already has an honest "not configured" state.
+    if (!convexUrl) {
+      setClient(undefined);
+      return;
+    }
     // Keep provider diagnostics and authenticated query contents out of browser logs.
-    const connection = new ConvexReactClient(convexUrl ?? "", {
+    const connection = new ConvexReactClient(convexUrl, {
       logger: false,
     });
     setClient(connection);

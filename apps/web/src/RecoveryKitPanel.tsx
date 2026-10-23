@@ -22,9 +22,10 @@ import {
   reserveRunStatus,
 } from "./buyer-reserve-runtime";
 import {
+  emitRecoveryKitChanged,
   forgetKit,
-  RECOVERY_KIT_CHANGED,
   readKit,
+  subscribeKitChanges,
   writeKit,
 } from "./recovery-runtime";
 
@@ -122,6 +123,12 @@ const scopeOf = (kit: RecoveryKit) => ({
   orderNonce: kit.orderNonce,
 });
 
+/**
+ * One-line state of the stored kit for the current scope. `subscribeKitChanges`
+ * comes from `recovery-runtime` beside the emitter and the event name, so the
+ * same-document event and the cross-tab `storage` event are handled by one
+ * implementation rather than a copy per reader.
+ */
 function contextStatus(kit: RecoveryKit | null): string {
   if (!kit)
     return "No local recovery context is stored for this actor and order nonce.";
@@ -134,12 +141,16 @@ function contextStatus(kit: RecoveryKit | null): string {
   return "Local recovery context created on this device. Verify it before any payment hold.";
 }
 
-export function RecoveryKitPanel() {
+export function RecoveryKitPanel({
+  defaultOrderNonce,
+}: {
+  defaultOrderNonce?: string;
+} = {}) {
   const { data: session } = useMiloAuth().useSession();
   const authenticated = Boolean(session?.user);
   const user = session?.user;
   const actorId = user?.id;
-  const [nonce, setNonce] = useState("");
+  const [nonce, setNonce] = useState(defaultOrderNonce ?? "");
   const [kit, setKit] = useState<RecoveryKit | null>(null);
   const [notice, setNotice] = useState("");
   const bound = authenticated && !!actorId && nonce.trim().length > 0;
@@ -152,22 +163,25 @@ export function RecoveryKitPanel() {
     }
     setNotice("");
     setKit(readKit({ actorId, network: NETWORK, orderNonce }));
-    // A projected checkpoint from OrderRecordPanel writes the same localStorage
+    // Another mounted panel or another tab may write the same localStorage
     // key; reload so this panel never shows a stale stage/address.
-    const reload = () => {
+    return subscribeKitChanges(() => {
       setKit(readKit({ actorId, network: NETWORK, orderNonce }));
-    };
-    window.addEventListener(RECOVERY_KIT_CHANGED, reload);
-    return () => window.removeEventListener(RECOVERY_KIT_CHANGED, reload);
+    });
   }, [authenticated, actorId, nonce]);
 
   function persist(next: RecoveryKit) {
     setKit(next);
+    const saved = writeKit(scopeOf(next), next);
     setNotice(
-      writeKit(scopeOf(next), next)
+      saved
         ? "Recovery context saved in this browser’s local storage."
         : "This browser refused local storage. The context is shown but not persisted.",
     );
+    // Tell every other mounted panel and tab that this kit changed. Only on a
+    // real write: listeners re-read storage, and an unsaved kit would be
+    // replaced by the stale (or absent) stored one.
+    if (saved) emitRecoveryKitChanged();
   }
   function prepare() {
     const orderNonce = nonce.trim();
@@ -201,6 +215,7 @@ export function RecoveryKitPanel() {
     forgetKit(scopeOf(kit));
     setKit(null);
     setNotice("Local recovery context discarded from this browser.");
+    emitRecoveryKitChanged();
   }
 
   return (

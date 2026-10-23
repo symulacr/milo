@@ -129,4 +129,86 @@ describe("approve flow", () => {
     );
     expect(window.document.title).toBe("Milo — Page not found");
   }, 10000);
+
+  test("three-slot SHA-256 strip transitions to match and order record disclosure mounts", async () => {
+    await renderApp("/orders/sample-001?scenario=review&role=buyer");
+    await flush(3000);
+    const slots = [...container.querySelectorAll(".verify-slot")];
+    expect(slots).toHaveLength(3);
+    for (const slot of slots) {
+      expect(slot.getAttribute("data-state")).toBe("match");
+      expect(slot.textContent).toContain("✓ SHA-256 verified");
+    }
+    expect(container.textContent).toContain(
+      "Chain-backed order record & payment monitoring (sample-001)",
+    );
+  }, 10000);
+
+  test("switching perspectives preserves per-role setup checks across buyer and merchant views", async () => {
+    await renderApp("/quotes/sample-001?scenario=fresh&role=buyer");
+    await flush();
+    const prepareBtn = byText<HTMLButtonElement>(
+      "button",
+      "Prepare this device",
+    );
+    expect(prepareBtn).not.toBeNull();
+    await act(async () => {
+      prepareBtn?.click();
+    });
+    const verifyBtn = byText<HTMLButtonElement>(
+      "button",
+      "Verify the recovery kit",
+    );
+    expect(verifyBtn).not.toBeNull();
+    await act(async () => {
+      verifyBtn?.click();
+    });
+    const doneItemsBefore = container.querySelectorAll(
+      '.setup-list li[data-state="done"]',
+    );
+    expect(doneItemsBefore.length).toBeGreaterThanOrEqual(2);
+
+    // Switch to merchant perspective via the Explore button or select, then back to buyer
+    const selects = [...container.querySelectorAll("select")];
+    const roleSelect = selects.find((el) =>
+      [...el.querySelectorAll("option")].some((o) => o.value === "merchant"),
+    );
+    expect(roleSelect).toBeDefined();
+    await act(async () => {
+      if (roleSelect) {
+        roleSelect.value = "merchant";
+        roleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    const returnBuyerBtn = byText<HTMLButtonElement>(
+      "button",
+      "Explore buyer setup",
+    );
+    expect(returnBuyerBtn).not.toBeNull();
+    await act(async () => {
+      returnBuyerBtn?.click();
+    });
+    const doneItemsAfter = container.querySelectorAll(
+      '.setup-list li[data-state="done"]',
+    );
+    expect(doneItemsAfter.length).toBeGreaterThanOrEqual(2);
+  }, 10000);
+
+  test("receipt renders all three pinned SHA-256 digests and print action", async () => {
+    await renderApp("/orders/sample-001/receipt");
+    await flush();
+    expect(container.textContent).toContain(
+      "Manifest SHA-256 digests (3 files)",
+    );
+    expect(container.textContent).toContain(
+      "a70f248e5504aeec43e59ac68ebd9516614dd5c839a338635bceabf2cdfa8fda",
+    );
+    expect(container.textContent).toContain(
+      "3a07f69f751b1ec4bee4ffe0fd95dbaed043d7553bf5375f6dba9f3d797cf8bf",
+    );
+    expect(container.textContent).toContain(
+      "e994848a179a98868efdf731e761b0560790aaea029626d455e2a5a7fd9ba9a7",
+    );
+    expect(byText<HTMLButtonElement>("button", "Print receipt")).not.toBeNull();
+  }, 10000);
 });

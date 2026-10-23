@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { PageTitle } from "../components/PageTitle";
 import { Badge, Panel } from "../components/ui";
+import { RecoveryKitPanel } from "../RecoveryKitPanel";
 import { roleNames, useWorkspace } from "../workspace/model";
 
 export function Account() {
@@ -42,6 +43,14 @@ export function Account() {
         >
           Explore lost-capability recovery ↗
         </Link>
+        {/* The account page is where recovery is explained, so the local vault
+            itself is reachable here rather than only in diagnostics. */}
+        <details className="evidence-panel">
+          <summary>
+            Local recovery kit vault &amp; 7 recovery operations (sample-001)
+          </summary>
+          <RecoveryKitPanel defaultOrderNonce="sample-001" />
+        </details>
       </Panel>
     </>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { RoleRequired } from "../components/gates";
 import { PageTitle } from "../components/PageTitle";
 import { Panel } from "../components/ui";
@@ -41,6 +42,9 @@ export function NewQuote() {
                 setDraft({ ...draft, name: event.target.value })
               }
             />
+            <span className="micro muted">
+              {draft.name.trim().length}/80 characters (minimum 5)
+            </span>
           </label>
           <label className="field">
             The agreed creative brief
@@ -55,6 +59,9 @@ export function NewQuote() {
                 setDraft({ ...draft, brief: event.target.value })
               }
             />
+            <span className="micro muted">
+              {draft.brief.trim().length}/500 characters (minimum 20)
+            </span>
           </label>
           <div className="form-pair">
             <label className="field">
@@ -108,6 +115,11 @@ export function NewQuote() {
           <button type="submit" className="button">
             Review the sample quote ↗
           </button>
+          {/* Leaving the form used to be impossible without submitting, so a
+              merchant who only wanted to look back had to reset the draft. */}
+          <Link to="/quotes/sample-001" className="button secondary">
+            Cancel · keep current quote
+          </Link>
         </form>
       </Panel>
     </RoleRequired>

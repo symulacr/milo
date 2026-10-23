@@ -24,7 +24,11 @@ const stopMutation = makeFunctionReference<
   unknown
 >("paymentMonitoring:stop");
 
-export function PaymentMonitoring() {
+export function PaymentMonitoring({
+  defaultQuoteId,
+}: {
+  defaultQuoteId?: string;
+} = {}) {
   const client = useConvex();
   const transport = useMemo<MonitoringTransport>(
     () => ({
@@ -38,15 +42,56 @@ export function PaymentMonitoring() {
     }),
     [client],
   );
-  return <PaymentMonitoringControls transport={transport} />;
+  return (
+    <PaymentMonitoringControls
+      transport={transport}
+      defaultQuoteId={defaultQuoteId}
+    />
+  );
+}
+
+/**
+ * The monitoring section without a Convex provider.
+ *
+ * `PaymentMonitoring` calls `useConvex()`, which throws outside a `ConvexProvider`. When Convex
+ * is unconfigured the order view still renders this section, so it reports the absence
+ * honestly and offers no controls that could not work.
+ */
+export function UnconfiguredPaymentMonitoring({
+  defaultQuoteId,
+}: {
+  defaultQuoteId?: string;
+}) {
+  return (
+    <section aria-labelledby="payment-monitoring-title">
+      <h3 id="payment-monitoring-title">Read-only test payment monitoring</h3>
+      <p>
+        Observes an existing Stripe test payment by quote ID. It cannot create,
+        capture or settle anything.
+      </p>
+      <p role="status">
+        Convex is not configured, so no payment monitoring state is reachable
+        and no monitoring controls are available. No payment is observed,
+        started or settled.
+      </p>
+      {defaultQuoteId ? (
+        <p>
+          Quote ID <code>{defaultQuoteId}</code> is held locally only; it is not
+          sent anywhere.
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 function PaymentMonitoringControls({
   transport,
+  defaultQuoteId,
 }: {
   transport: MonitoringTransport;
+  defaultQuoteId?: string | undefined;
 }) {
-  const [quoteId, setQuoteId] = useState("");
+  const [quoteId, setQuoteId] = useState(defaultQuoteId ?? "");
   return (
     <section aria-labelledby="payment-monitoring-title">
       <h3 id="payment-monitoring-title">Read-only test payment monitoring</h3>

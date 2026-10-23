@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -80,8 +81,24 @@ type WorkspaceModal =
   | "submit"
   | "reserve"
   | "accept"
+  | "decline"
+  | "cancel"
+  | "deploy"
   | { kind: "image"; index: number }
   | null;
+
+/** Which dialog opened the current one, so a nested dialog can offer Back. */
+export type ModalReturn = "approve" | null;
+
+/** Per-file SHA-256 check results for the 3-slot verification strip. */
+export type FileResults = Record<string, "ok" | "fail" | "pending">;
+
+/** The three setup checks that survive a perspective switch. */
+type RoleFlags = {
+  ready: boolean;
+  recoveryVerified: boolean;
+  filesVerified: boolean;
+};
 
 /** Per-route document titles; matched most-specific first. */
 export function routeTitle(pathname: string): string {
@@ -139,10 +156,24 @@ export function useModel() {
   const [fileCheckError, setFileCheckError] = useState("");
   const [modal, updateModal] = useState<WorkspaceModal>(null);
   const [consent, setConsent] = useState(false);
-  const [reason, setReason] = useState("");
+  const [reason, setReasonState] = useState("");
+  // Mirrors `reason` so `act` stays referentially stable while typing.
+  const reasonRef = useRef("");
+  const setReason = useCallback((value: string) => {
+    reasonRef.current = value;
+    setReasonState(value);
+  }, []);
+  const [disputeReason, setDisputeReason] = useState(
+    "Second image colorway does not match agreed brief.",
+  );
+  const [fileResults, setFileResults] = useState<FileResults>({});
+  const [modalReturn, setModalReturn] = useState<ModalReturn>(null);
   const [tab, setTab] = useState("delivery");
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
+  // Setup checks are per-role, so a perspective switch parks them here and
+  // restores them when the user comes back (see chooseRole).
+  const roleFlags = useRef<Partial<Record<Role, RoleFlags>>>({});
   const navigate = useNavigate();
   const location = useLocation();
   const mainHeading = useRef<HTMLHeadingElement>(null);
@@ -150,78 +181,131 @@ export function useModel() {
   // only when the user navigated (see the title effect below).
   const headingMounted = useRef(false);
   const modalOrigin = useRef<HTMLElement | null>(null);
-  function setModal(value: WorkspaceModal) {
-    if (value && !modal && document.activeElement instanceof HTMLElement) {
+  // Mirrors `modal` so setModal can stay referentially stable; only setModal
+  // writes the modal, so the mirror cannot diverge.
+  const modalRef = useRef<WorkspaceModal>(null);
+  const setModal = useCallback((value: WorkspaceModal) => {
+    if (
+      value &&
+      !modalRef.current &&
+      document.activeElement instanceof HTMLElement
+    ) {
       modalOrigin.current = document.activeElement;
     }
+    modalRef.current = value;
     updateModal(value);
-  }
+  }, []);
   const money = usd.format(quote.amount);
   const actions = useMemo(() => new Set(availableActions(state)), [state]);
-  const can = (action: Action) => actions.has(action);
+  const can = useCallback((action: Action) => actions.has(action), [actions]);
 
-  function commit(next: SimState) {
+  const commit = useCallback((next: SimState) => {
     latestState.current = next;
     setState(next);
-  }
-  function cancelFileCheck() {
+  }, []);
+  const cancelFileCheck = useCallback(() => {
     generation.current++;
     request.current?.abort();
     request.current = null;
     setChecking(false);
-  }
-  function invalidate() {
+  }, []);
+  const invalidate = useCallback(() => {
     cancelFileCheck();
     setModal(null);
     setConsent(false);
     setNotice("");
-  }
+  }, [cancelFileCheck, setModal]);
   // Query string last applied or written by the model, so our own URL writes
   // do not re-trigger the deep-link effect.
   const appliedLink = useRef(searchParams.toString());
-  function syncDeepLink(nextScenario: Scenario, nextRole: Role) {
-    const params = new URLSearchParams({
-      scenario: nextScenario,
-      role: nextRole,
-    });
-    appliedLink.current = params.toString();
-    setSearchParams(params, { replace: true });
-  }
-  function reset(value: Scenario, nextQuote = originalQuote, role?: Role) {
-    invalidate();
-    setScenario(value);
-    setQuote(nextQuote);
-    setTab("delivery");
-    const base = createScenario(value);
-    const next = role && role !== base.role ? changeRole(base, role) : base;
-    commit(next);
-    syncDeepLink(value, next.role);
-  }
-  function chooseRole(role: Role) {
-    invalidate();
-    commit(changeRole(latestState.current, role));
-    syncDeepLink(scenario, role);
-  }
-  function act(action: Action) {
-    // A state change makes any in-flight check stale; let it finish silently
-    // instead of reporting a spurious failure.
-    if (request.current) cancelFileCheck();
-    try {
-      commit(transition(latestState.current, action));
-      setNotice(
-        `${actionLabels[action] ?? "Sample updated"} (simulation only).`,
+  const syncDeepLink = useCallback(
+    (nextScenario: Scenario, nextRole: Role) => {
+      const params = new URLSearchParams({
+        scenario: nextScenario,
+        role: nextRole,
+      });
+      appliedLink.current = params.toString();
+      setSearchParams(params, { replace: true });
+    },
+    [setSearchParams],
+  );
+  const reset = useCallback(
+    (value: Scenario, nextQuote = originalQuote, role?: Role) => {
+      invalidate();
+      roleFlags.current = {};
+      setScenario(value);
+      setQuote(nextQuote);
+      setTab("delivery");
+      setDisputeReason("Second image colorway does not match agreed brief.");
+      setFileResults({});
+      setModalReturn(null);
+      setReason("");
+      const base = createScenario(value);
+      const next = role && role !== base.role ? changeRole(base, role) : base;
+      commit(next);
+      syncDeepLink(value, next.role);
+    },
+    [commit, invalidate, setReason, syncDeepLink],
+  );
+  const chooseRole = useCallback(
+    (role: Role) => {
+      invalidate();
+      const current = latestState.current;
+      // Park the outgoing role's setup checks so switching perspectives is
+      // never a silent loss of progress, then restore the target role's.
+      roleFlags.current[current.role] = {
+        ready: current.ready,
+        recoveryVerified: current.recoveryVerified,
+        filesVerified: current.filesVerified,
+      };
+      const switched = changeRole(current, role);
+      const saved = roleFlags.current[role];
+      commit(
+        saved
+          ? {
+              ...switched,
+              ready: saved.ready,
+              recoveryVerified: saved.recoveryVerified,
+              filesVerified: saved.filesVerified,
+            }
+          : switched,
       );
-      setModal(null);
-      setConsent(false);
-    } catch (error) {
-      setNotice(
-        error instanceof Error
-          ? error.message
-          : "That action is not available.",
-      );
-    }
-  }
-  async function checkFiles() {
+      syncDeepLink(scenario, role);
+    },
+    [commit, invalidate, scenario, syncDeepLink],
+  );
+  const act = useCallback(
+    (action: Action): boolean => {
+      // A state change makes any in-flight check stale; let it finish silently
+      // instead of reporting a spurious failure.
+      if (request.current) cancelFileCheck();
+      try {
+        commit(transition(latestState.current, action));
+        // Keep the submitted dispute reason so the operator desk and the order
+        // view can show what the buyer actually wrote.
+        const submitted = reasonRef.current.trim();
+        if (action === "dispute" && submitted.length >= 10)
+          setDisputeReason(submitted);
+        setNotice(
+          `${actionLabels[action] ?? "Sample updated"} (simulation only).`,
+        );
+        setModal(null);
+        setConsent(false);
+        setReason("");
+        setModalReturn(null);
+        return true;
+      } catch (error) {
+        setNotice(
+          error instanceof Error
+            ? error.message
+            : "That action is not available.",
+        );
+        return false;
+      }
+    },
+    [cancelFileCheck, commit, setModal, setReason],
+  );
+  const checkFiles = useCallback(async () => {
     commit(invalidateFileVerification(latestState.current));
     const current = ++generation.current;
     request.current?.abort();
@@ -229,6 +313,7 @@ export function useModel() {
     request.current = controller;
     setChecking(true);
     setNotice("Checking file…");
+    setFileResults({ "01": "pending", "02": "pending", "03": "pending" });
     try {
       const ids = await verifySampleFiles(controller.signal);
       if (generation.current !== current) return;
@@ -237,6 +322,8 @@ export function useModel() {
       );
       setFileCheckError("");
       setNotice("All three files match the submitted manifest.");
+      // Three-slot strip: every pinned digest matched, so every slot is ok.
+      setFileResults({ "01": "ok", "02": "ok", "03": "ok" });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (generation.current === current) {
@@ -247,6 +334,7 @@ export function useModel() {
             : "Could not check these files.";
         setFileCheckError(message);
         setNotice(message);
+        setFileResults({ "01": "fail", "02": "fail", "03": "fail" });
       }
     } finally {
       if (generation.current === current) {
@@ -254,7 +342,7 @@ export function useModel() {
         setChecking(false);
       }
     }
-  }
+  }, [commit]);
   useEffect(() => () => request.current?.abort(), []);
   const linkKey = searchParams.toString();
   // In-app links such as ?scenario=lost-capability from Account arrive after mount;
@@ -279,7 +367,7 @@ export function useModel() {
     mainHeading.current?.focus();
   }, [location.pathname]);
 
-  function exportReceipt() {
+  const exportReceipt = useCallback(() => {
     const data = {
       environment: "synthetic-ui-prototype",
       notAChainReceipt: true,
@@ -307,33 +395,68 @@ export function useModel() {
     // is short-lived, so a single deferred revoke is sufficient.
     setTimeout(() => URL.revokeObjectURL(url), 0);
     setNotice("Receipt downloaded — not blockchain or payment evidence.");
-  }
-  return {
-    state,
-    quote,
-    scenario,
-    notice,
-    checking,
-    fileCheckError,
-    modal,
-    setModal,
-    consent,
-    setConsent,
-    reason,
-    setReason,
-    tab,
-    setTab,
-    navigate,
-    mainHeading,
-    modalOrigin,
-    money,
-    can,
-    reset,
-    chooseRole,
-    act,
-    checkFiles,
-    exportReceipt,
-  };
+  }, [quote, state.phase, state.payment, state.filesVerified, state.revision]);
+  // Memoized so a keystroke in `reason` only re-renders consumers that read
+  // `reason` — the stable callbacks above keep the dependency list honest.
+  const value = useMemo(
+    () => ({
+      state,
+      quote,
+      scenario,
+      notice,
+      checking,
+      fileCheckError,
+      modal,
+      setModal,
+      consent,
+      setConsent,
+      reason,
+      setReason,
+      disputeReason,
+      setDisputeReason,
+      fileResults,
+      modalReturn,
+      setModalReturn,
+      tab,
+      setTab,
+      navigate,
+      mainHeading,
+      modalOrigin,
+      money,
+      can,
+      reset,
+      chooseRole,
+      act,
+      checkFiles,
+      exportReceipt,
+    }),
+    [
+      state,
+      quote,
+      scenario,
+      notice,
+      checking,
+      fileCheckError,
+      modal,
+      setModal,
+      consent,
+      reason,
+      setReason,
+      disputeReason,
+      fileResults,
+      modalReturn,
+      tab,
+      navigate,
+      money,
+      can,
+      reset,
+      chooseRole,
+      act,
+      checkFiles,
+      exportReceipt,
+    ],
+  );
+  return value;
 }
 
 type WorkspaceModel = ReturnType<typeof useModel>;

@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import type { Action } from "../../../../packages/domain/src/prototype";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
 import { paymentBadge } from "../workspace/framing";
 import { actionLabels, useWorkspace } from "../workspace/model";
@@ -220,6 +219,7 @@ export function ActionPanel() {
     setConsent,
     setModal,
     setReason,
+    disputeReason,
   } = useWorkspace();
   return (
     <Panel className="action-panel">
@@ -339,6 +339,11 @@ export function ActionPanel() {
         <>
           <h2>Resolve the dispute</h2>
           <p>The pre-agreed operator decides: approve or cancel, in full.</p>
+          {/* The recorded reason stays readable in the action panel for every
+              perspective, not only the operator's case page. */}
+          <div className="guard-note">
+            <strong>Recorded dispute reason:</strong> “{disputeReason}”
+          </div>
           {state.role === "operator" ? (
             <>
               {/* Resolution is terminal and full; it gets the same deliberate
@@ -382,20 +387,17 @@ export function ActionPanel() {
           {state.phase === "DRAFT" && (
             <p>Review the quote, then setup, hold and reservation.</p>
           )}
-          {(["accept", "decline", "submit", "cancel"] as Action[])
+          {(["accept", "decline", "submit", "cancel"] as const)
             .filter(can)
             .map((action) => (
               <button
                 type="button"
                 key={action}
                 className="button full"
-                onClick={() =>
-                  action === "submit"
-                    ? setModal("submit")
-                    : action === "accept"
-                      ? setModal("accept")
-                      : act(action)
-                }
+                // Every one of these is a committed, terminal-ish step, so each
+                // opens its confirmation dialog (accept/submit natively;
+                // decline/cancel via the AlertDialog branch).
+                onClick={() => setModal(action)}
               >
                 {actionLabels[action]}
               </button>
@@ -419,6 +421,9 @@ export function ActionPanel() {
           )}
         </>
       )}
+      <p className="proximate-disclosure">
+        Sample action · no wallet signature or live funds
+      </p>
       <div className="action-footnote">
         <Icon>◇</Icon> Sample actions only — no wallet prompts. Wrong state?
         Switch scenario or perspective above.

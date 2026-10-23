@@ -69,6 +69,99 @@
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Dark mode for the legacy/secondary aliases (04-ui-design §2.1). tokens.css
+   flips the --c-* primitives; these are the literal-valued aliases that would
+   otherwise stay light and fail AA on a dark surface. Same two entry points as
+   tokens.css so an explicit choice and the OS preference stay in agreement. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --quiet: #100e0b;
+    --quiet-hover: #26221c;
+    --quiet-line: #332e27;
+    --quiet-line-strong: #4a443c;
+    --quiet-text: #b3aca2;
+    --badge-bg: #100e0b;
+    --field-line: #4a443c;
+    --art-bg: #1a1712;
+    --art-line: #332e27;
+    --art-deep: #221e18;
+    --violet-ink: #d3c7fb;
+    --violet-line: #3d3358;
+    --violet-accent: #a48ce8;
+    --success-bg: #16281f;
+    --success-line: #2a4a39;
+    --warning-bg: #2a2113;
+    --warning-line: #4a3c1f;
+    --danger-bg: #2c1618;
+    --danger-line: #4a2a2c;
+    --on-dark: #4a443c;
+    --on-dark-accent: #3b22ae;
+    --on-violet: #1a1030;
+    --shadow-card: #00000073;
+    --shadow-soft: #00000059;
+    --shadow-dialog: #000000b3;
+  }
+}
+:root[data-theme="dark"] {
+  --quiet: #100e0b;
+  --quiet-hover: #26221c;
+  --quiet-line: #332e27;
+  --quiet-line-strong: #4a443c;
+  --quiet-text: #b3aca2;
+  --badge-bg: #100e0b;
+  --field-line: #4a443c;
+  --art-bg: #1a1712;
+  --art-line: #332e27;
+  --art-deep: #221e18;
+  --violet-ink: #d3c7fb;
+  --violet-line: #3d3358;
+  --violet-accent: #a48ce8;
+  --success-bg: #16281f;
+  --success-line: #2a4a39;
+  --warning-bg: #2a2113;
+  --warning-line: #4a3c1f;
+  --danger-bg: #2c1618;
+  --danger-line: #4a2a2c;
+  --on-dark: #4a443c;
+  --on-dark-accent: #3b22ae;
+  --on-violet: #1a1030;
+  --shadow-card: #00000073;
+  --shadow-soft: #00000059;
+  --shadow-dialog: #000000b3;
+}
+
+/* Numeric alignment (04-ui-design §2.1): prices, hashes, timestamps and
+   ledger values use tabular figures so columns of digits line up and a value
+   does not reflow as it changes. */
+.payment-total,
+.detail-grid dd,
+.confirmation-summary dd,
+.order-status,
+.timeline-item,
+code,
+.hash,
+.mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+code,
+.hash,
+.mono {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Public shell framing: the header/footer stay pinned to the viewport edges
+   and short pages still fill the screen (04-ui-design §4.1). */
+.public-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.public-shell > main {
+  flex: 1 0 auto;
+}
 * {
   box-sizing: border-box;
 }
@@ -1158,5 +1251,135 @@ h2 {
     /* biome-ignore lint/complexity/noImportantStyles: the reduce guard must outrank every component transition (04-ui-design §12.1) */
     transition: none !important;
     scroll-behavior: auto;
+  }
+}
+
+/* Print: a confirmed order record is a document the buyer keeps, so printing
+   must produce the record and nothing else (04-ui-design §4.6). Navigation,
+   the prototype banner and every action control are removed; panels lose
+   their elevation and page background so ink is not wasted on chrome. */
+@media print {
+  /* `:root:root` (0,2,0) deliberately outranks the dark-mode token blocks
+     (0,1,1) so a dark-theme user still prints black-on-white. */
+  :root:root {
+    color-scheme: light;
+    --c-bg: #ffffff;
+    --c-surface: #ffffff;
+    --c-surface-sunken: #ffffff;
+    --c-ink: #000000;
+    --c-ink-2: #1a1a1a;
+    --c-muted: #3a3a3a;
+    --c-line: #999999;
+    --c-line-strong: #666666;
+    --c-accent: #000000;
+    --c-accent-soft: #ffffff;
+    --c-accent-line: #999999;
+    --quiet: #ffffff;
+    --quiet-hover: #ffffff;
+    --quiet-line: #999999;
+    --quiet-line-strong: #666666;
+    --quiet-text: #3a3a3a;
+    --badge-bg: #ffffff;
+    --field-line: #999999;
+    --art-bg: #ffffff;
+    --art-line: #999999;
+    --violet-ink: #000000;
+    --violet-line: #999999;
+    --success-bg: #ffffff;
+    --success-line: #999999;
+    --warning-bg: #ffffff;
+    --warning-line: #999999;
+    --danger-bg: #ffffff;
+    --danger-line: #999999;
+    --panel: #ffffff;
+    --paper: #ffffff;
+  }
+  @page {
+    margin: 16mm;
+  }
+  html,
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+  .skip-link,
+  .public-notice,
+  .public-header,
+  .public-footer,
+  .app-topbar,
+  .prototype-toolbar,
+  .sidebar,
+  .workspace-footer,
+  .action-column,
+  .primary-action,
+  .dialog-close,
+  .tabs,
+  .scenario-links,
+  .hero-art,
+  .closing-cta,
+  .demo-actions,
+  .demo-thumbs,
+  .quiet-button,
+  .button,
+  .text-link {
+    display: none;
+  }
+  .app-shell {
+    display: block;
+    min-height: 0;
+  }
+  .workspace-grid,
+  .order-layout,
+  .detail-grid,
+  .confirmation-summary,
+  .form-pair {
+    display: block;
+  }
+  .panel,
+  .receipt,
+  .confirmation-summary,
+  .demo-window {
+    border: 1px solid #999;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+    break-inside: avoid;
+  }
+  .dialog-overlay {
+    display: none;
+  }
+  .dialog-content {
+    position: static;
+    transform: none;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    background: #fff;
+  }
+  .receipt-mark {
+    border-color: #666;
+    color: #000;
+  }
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #555;
+  }
+  a[href^="#"]::after,
+  a[href^="javascript:"]::after {
+    content: "";
+  }
+  img {
+    max-width: 100%;
+    break-inside: avoid;
+  }
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
   }
 }

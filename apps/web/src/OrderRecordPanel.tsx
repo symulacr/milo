@@ -48,21 +48,57 @@ export function OrderRecordPanel({
   );
 }
 
+/**
+ * Module-level so its identity is stable: `OrderRecordControls` keys its controller on the
+ * transport, and a fresh object per render would rebuild the controller (and its snapshot)
+ * on every render.
+ */
+const UNCONFIGURED_TRANSPORT: OrderRecordTransport = {
+  read: async () => null,
+};
+
+/**
+ * The chain-backed order record without a Convex provider.
+ *
+ * `OrderRecordPanel` calls `useConvex()`, which throws outside a `ConvexProvider`. Routes like
+ * the order view must still show the record section when Convex is unconfigured, so this
+ * variant supplies a transport that never resolves a record and renders the explicit
+ * "unconfigured" absence instead of crashing the tree.
+ */
+export function UnconfiguredOrderRecordPanel({
+  defaultQuoteId,
+}: {
+  defaultQuoteId?: string;
+}) {
+  return (
+    <OrderRecordControls
+      transport={UNCONFIGURED_TRANSPORT}
+      unconfigured
+      defaultQuoteId={defaultQuoteId}
+    />
+  );
+}
+
 export function OrderRecordControls({
   transport,
   actorId,
   onRecord,
   unconfigured = false,
+  defaultQuoteId,
 }: {
   transport: OrderRecordTransport;
   actorId?: string | undefined;
   onRecord?: (view: OrderRecordView) => void;
   unconfigured?: boolean;
+  defaultQuoteId?: string | undefined;
 }) {
-  const controller = useMemo(
-    () => new OrderRecordController(transport),
-    [transport],
-  );
+  const controller = useMemo(() => {
+    const created = new OrderRecordController(transport);
+    // Seed the quote id only when the caller supplied one. An absent prop must leave the
+    // controller's own `""` default untouched, so the no-quote state stays exactly as before.
+    if (defaultQuoteId !== undefined) created.setQuoteId(defaultQuoteId);
+    return created;
+  }, [transport, defaultQuoteId]);
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,

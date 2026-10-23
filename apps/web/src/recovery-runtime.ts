@@ -21,9 +21,39 @@ const KEY_PREFIX = "milo.recovery-kit.";
 /** Same-document kit-change ping (storage events do not fire for same-tab writes). */
 export const RECOVERY_KIT_CHANGED = "milo:recovery-kit-changed";
 
+/**
+ * Synchronous, deliberately: the change is announced inside the same task as the write, so a
+ * listener that reads storage immediately afterwards already sees the new kit. Nothing here is
+ * queued or deferred.
+ */
 export function emitRecoveryKitChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(RECOVERY_KIT_CHANGED));
+}
+
+/**
+ * Subscribe to every local recovery-kit change, from this tab and from others.
+ *
+ * Two events are needed because neither alone is sufficient: `RECOVERY_KIT_CHANGED` is the
+ * same-document ping dispatched by `emitRecoveryKitChanged`, and `"storage"` is the platform
+ * event other tabs receive (it never fires for the writing tab). The storage listener filters
+ * to this module's keys — `event.key === null` is the `clear()` case, which can drop every kit
+ * — so unrelated localStorage writes do not re-render kit readers.
+ *
+ * Returns the unsubscribe function; safe to call on the server, where there is nothing to
+ * subscribe to.
+ */
+export function subscribeKitChanges(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key.startsWith(KEY_PREFIX)) listener();
+  };
+  window.addEventListener(RECOVERY_KIT_CHANGED, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(RECOVERY_KIT_CHANGED, listener);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 const STAGES = ["EXPORTED", "VERIFIED", "CHECKPOINTED", "LOST"] as const;
 const OPERATIONS = ["deploy", "reserve", "submit", "approve"] as const;

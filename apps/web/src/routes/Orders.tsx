@@ -13,6 +13,11 @@ export function Orders({ merchant = false }: { merchant?: boolean }) {
       <PageTitle title={merchant ? "Studio queue" : "Your orders"} />
       <div className="list-toolbar">
         <span className="muted">1 sample order · refresh resets</span>
+        {(state.phase === "APPROVED" || state.phase === "CANCELLED") && (
+          <Link className="text-link" to="/orders/sample-001/receipt">
+            View sample receipt →
+          </Link>
+        )}
         {merchant && (
           <Link className="button small" to="/merchant/quotes/new">
             Prepare a sample quote ↗

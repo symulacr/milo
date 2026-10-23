@@ -4,7 +4,7 @@ import { Panel } from "../components/ui";
 import { useWorkspace } from "../workspace/model";
 
 export function OperatorCases() {
-  const { state, reset, navigate } = useWorkspace();
+  const { state, reset, navigate, disputeReason, quote } = useWorkspace();
   return (
     <RoleRequired requiredRole="operator">
       <PageTitle title="Resolution desk" />
@@ -20,11 +20,17 @@ export function OperatorCases() {
           §3.4.3); this sample collapses them into one operator role for
           exploration.
         </p>
+        <div className="guard-note">
+          <strong>Sample 001 — {quote.name}</strong>
+          <p>“{disputeReason}”</p>
+        </div>
         <button
           type="button"
           className="button"
           onClick={() => {
-            reset("dispute");
+            // Only seed the fixture when no dispute is open: an operator
+            // clicking through from a custom dispute must not have it wiped.
+            if (state.phase !== "DISPUTED") reset("dispute");
             navigate("/operator/cases/sample-001");
           }}
         >

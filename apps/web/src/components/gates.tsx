@@ -31,6 +31,11 @@ export function RoleRequired({
         Switch the sample role to continue. Real access requires membership and
         capabilities.
       </p>
+      <p className="persona-banner">
+        Switching perspectives preserves your setup checks (device readiness,
+        recovery kit, and file verification) so you can return to the{" "}
+        {state.role} view without losing progress.
+      </p>
       <button
         type="button"
         className="button"

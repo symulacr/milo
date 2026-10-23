@@ -1,4 +1,4 @@
-import { Outlet } from "react-router";
+import { Link, Outlet } from "react-router";
 import { ArrowUpRightIcon } from "../components/icons";
 import { WordmarkStar } from "../components/Wordmark";
 
@@ -22,18 +22,18 @@ export function PublicShell() {
           <WordmarkStar />
         </a>
         <nav aria-label="Main navigation">
-          <a href="/how-it-works">How it works</a>
-          <a href="/privacy" data-testid="public-header-privacy">
+          <Link to="/how-it-works">How it works</Link>
+          <Link to="/privacy" data-testid="public-header-privacy">
             Privacy
-          </a>
-          <a href="/sign-in">Sign in</a>
-          <a
+          </Link>
+          <Link to="/sign-in">Sign in</Link>
+          <Link
             className="button small"
-            href="/demo"
+            to="/demo"
             data-testid="public-header-demo-cta"
           >
             Explore a sample order <ArrowUpRightIcon />
-          </a>
+          </Link>
         </nav>
       </header>
       <main id="main" className="public-main page-width">
@@ -46,11 +46,11 @@ export function PublicShell() {
         </a>
         <p>Private agreements. Clear approvals.</p>
         <nav aria-label="Footer">
-          <a href="/privacy" data-testid="public-footer-privacy">
+          <Link to="/privacy" data-testid="public-footer-privacy">
             Privacy
-          </a>
-          <a href="/terms">Terms</a>
-          <a href="/pilot">Pilot status</a>
+          </Link>
+          <Link to="/terms">Terms</Link>
+          <Link to="/pilot">Pilot status</Link>
         </nav>
         <span className="micro muted">Sample product photography · 2026</span>
       </footer>

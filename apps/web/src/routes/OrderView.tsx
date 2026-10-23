@@ -11,6 +11,8 @@ import {
   Timeline,
 } from "../components/order";
 import { Badge, Icon, Panel } from "../components/ui";
+import { UnconfiguredOrderRecordPanel } from "../OrderRecordPanel";
+import { UnconfiguredPaymentMonitoring } from "../PaymentMonitoring";
 import { phaseFrame } from "../workspace/framing";
 import { useWorkspace } from "../workspace/model";
 
@@ -25,6 +27,7 @@ export function OrderView() {
     checking,
     checkFiles,
     fileCheckError,
+    fileResults,
   } = useWorkspace();
   const frame = phaseFrame(state.phase, state.role);
   // The browser already holds the delivered bytes, so run the pinned-byte
@@ -130,6 +133,42 @@ export function OrderView() {
                   </p>
                   <span>PNG · 3 files</span>
                 </div>
+                {/* Three-slot SHA-256 strip: one slot per pinned digest, so a
+                    partial or failed check is visible per file, never summed
+                    into a single opaque "verified" claim. */}
+                <section
+                  className="verify-slots"
+                  aria-label="SHA-256 file verification"
+                >
+                  {sampleFiles.map((file) => {
+                    const slotState = state.filesVerified
+                      ? "match"
+                      : fileResults[file.id] === "fail"
+                        ? "mismatch"
+                        : "pending";
+                    return (
+                      <div
+                        key={file.id}
+                        className="verify-slot"
+                        data-state={slotState}
+                      >
+                        <strong>
+                          {file.id} · {file.title}
+                        </strong>
+                        <code className="hash">{file.hash.slice(0, 16)}…</code>
+                        <span>
+                          {slotState === "match"
+                            ? "✓ SHA-256 verified"
+                            : slotState === "mismatch"
+                              ? "× Digest mismatch"
+                              : checking
+                                ? "⋯ Checking bytes…"
+                                : "○ Pending byte check"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </section>
                 {!["SUBMITTED", "DISPUTED", "APPROVED"].includes(
                   state.phase,
                 ) && (
@@ -149,6 +188,13 @@ export function OrderView() {
             <h2 className="activity-heading">Activity</h2>
             <Timeline />
             <EvidencePanel />
+            <details className="evidence-panel">
+              <summary>
+                Chain-backed order record &amp; payment monitoring (sample-001)
+              </summary>
+              <UnconfiguredOrderRecordPanel defaultQuoteId="sample-001" />
+              <UnconfiguredPaymentMonitoring defaultQuoteId="sample-001" />
+            </details>
           </Panel>
           <div className="work-notes">
             <p className="privacy-inline">

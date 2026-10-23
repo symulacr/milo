@@ -1,8 +1,8 @@
 import { Link } from "react-router";
-import type { Action } from "../../../../packages/domain/src/prototype";
 import { PaymentPanel, Scope } from "../components/order";
 import { PageTitle } from "../components/PageTitle";
 import { Icon, Panel } from "../components/ui";
+import { RecoveryKitPanel } from "../RecoveryKitPanel";
 import { actionLabels, useWorkspace } from "../workspace/model";
 
 export function QuoteView() {
@@ -13,6 +13,16 @@ export function QuoteView() {
       <div className="workspace-grid">
         <Panel>
           <Scope />
+          {/* The recovery kit belongs next to the order it protects: preparing
+              the order needs the local context and the canonical address
+              checkpoint, so both are inspectable here instead of only on the
+              diagnostics and account surfaces. */}
+          <details className="evidence-panel">
+            <summary>
+              Order recovery kit &amp; capability checkpoint (sample-001)
+            </summary>
+            <RecoveryKitPanel defaultOrderNonce="sample-001" />
+          </details>
         </Panel>
         <aside
           className="action-column"
@@ -84,19 +94,27 @@ export function QuoteView() {
                 Explore buyer setup
               </button>
             ) : (
-              (["deploy", "reserve"] as Action[]).filter(can).map((action) => (
-                <button
-                  className="button full"
-                  type="button"
-                  key={action}
-                  onClick={() => {
-                    if (action === "reserve") setModal("reserve");
-                    else act(action);
-                  }}
-                >
-                  {actionLabels[action]}
-                </button>
-              ))
+              <>
+                {/* Both setup actions are irreversible-shaped, so both open the
+                    confirmation modal. Deploy used to act immediately, which
+                    made the two buttons promise different levels of consent.
+                    `as const` keeps the element type as the literal union, which
+                    is what `setModal` accepts (`Action` is wider than
+                    `WorkspaceModal`). */}
+                <p className="proximate-disclosure">
+                  Sample setup · no live hold or on-chain deploy
+                </p>
+                {(["deploy", "reserve"] as const).filter(can).map((action) => (
+                  <button
+                    className="button full"
+                    type="button"
+                    key={action}
+                    onClick={() => setModal(action)}
+                  >
+                    {actionLabels[action]}
+                  </button>
+                ))}
+              </>
             )}
             {!["DRAFT", "DEPLOYED"].includes(state.phase) && (
               <Link to="/orders/sample-001" className="button full">

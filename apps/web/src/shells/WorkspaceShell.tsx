@@ -80,6 +80,12 @@ export function WorkspaceShell() {
             </Icon>
             <span className="nav-text">Studio queue</span>
           </NavLink>
+          <NavLink to="/merchant/quotes/new" aria-label="New quote">
+            <Icon>
+              <FileIcon />
+            </Icon>
+            <span className="nav-text">New quote</span>
+          </NavLink>
           <NavLink to="/operator/cases" aria-label="Resolution desk">
             <Icon>
               <FlagIcon />
@@ -127,6 +133,9 @@ export function WorkspaceShell() {
                 ? "Connection diagnostics"
                 : "Synthetic sample · no wallet, payment or transaction"}
             </Badge>
+            {!isConnections && (
+              <Badge tone="neutral">Perspective: {roleNames[state.role]}</Badge>
+            )}
             <a href="/">
               Back to Milo <ArrowUpRightIcon />
             </a>

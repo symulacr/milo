@@ -1,16 +1,17 @@
 .app-shell {
-  min-height: 100vh;
+  --text-micro: 13px;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
 }
 .sidebar {
-  background: var(--quiet);
+  background: var(--c-surface-sunken);
   border-right: 1px solid var(--line);
   padding: 31px 20px 22px;
   display: flex;
   flex-direction: column;
   position: sticky;
-  height: 100vh;
+  height: 100dvh;
   top: 0;
 }
 .sidebar nav {
@@ -25,13 +26,28 @@
   padding: 12px 13px;
   border-radius: var(--radius-control);
   text-decoration: none;
-  font-size: 13px;
+  position: relative;
+  font-size: 14px;
+  color: var(--c-ink-2);
   min-height: 44px;
 }
 .sidebar :where(nav > a.active) {
-  color: var(--violet);
-  background: var(--violet-soft);
+  color: var(--c-ink);
+  background: var(--c-surface);
+  box-shadow: var(--s1);
   font-weight: 600;
+}
+/* The active marker is a hairline on the leading edge, drawn rather than
+   typed so it never enters the accessible name. */
+.sidebar nav > a.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: var(--r-pill);
+  background: var(--c-accent);
 }
 .sidebar :where(nav > a:hover) {
   background: var(--quiet-hover);
@@ -43,6 +59,18 @@
   font-weight: 400;
   font-size: 17px;
   line-height: 1;
+}
+.svg-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.icon .svg-icon {
+  width: 1em;
+  height: 1em;
+}
+.tag .icon {
+  font-size: 14px;
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -174,6 +202,13 @@
   font-size: var(--text-micro);
   text-decoration: none;
 }
+/* The privacy tag is a fixed dark chip on both themes, so its label is pinned
+   to the light paper value rather than inheriting the theme ink. */
+.app-topbar .tag.violet {
+  background: var(--c-privacy);
+  color: #f4f1ea;
+  border-color: var(--c-privacy);
+}
 /* The single status-pill implementation is .tag in styles.css (04 §2.1). */
 .prototype-toolbar {
   background: var(--badge-bg);
@@ -252,6 +287,8 @@
   margin-bottom: 26px;
 }
 .page-heading h1 {
+  font-family: var(--f-display);
+  letter-spacing: var(--tracking-display);
   font-size: var(--text-title);
   margin-top: 12px;
   line-height: 1.15;
@@ -278,6 +315,7 @@
 .dot-divider {
   margin-inline: 6px;
 }
+/* Circular-node stepper: the single definition of .progress-track. */
 .progress-track {
   list-style: none;
   padding: 0;
@@ -285,31 +323,80 @@
   display: flex;
   width: 100%;
   font-size: var(--text-micro);
-  color: var(--quiet-text);
+  align-items: flex-start;
+  color: var(--c-muted);
 }
 .progress-track li {
   display: flex;
-  align-items: center;
-  gap: 9px;
+  position: relative;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   flex: 1;
+  padding-top: 0;
+  min-height: 44px;
+}
+.progress-track li::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-pill);
+  border: 2px solid var(--c-line-strong);
+  background: var(--c-surface);
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
 }
 .progress-track li:not(:last-child)::after {
   content: "";
-  background: var(--line);
-  height: 1px;
-  flex: 1;
-  margin-right: 15px;
+  position: absolute;
+  top: 7px;
+  left: 20px;
+  right: 4px;
+  height: 2px;
+  margin: 0;
+  background: var(--c-line);
+  border-radius: var(--r-pill);
 }
 .progress-track li.reached {
-  color: var(--violet);
+  color: var(--c-ink-2);
+}
+.progress-track li.reached::before {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.progress-track li.reached::after {
+  background: var(--c-accent);
+}
+.progress-track li > .icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+  color: #fff;
+  z-index: 2;
 }
 .progress-track li[aria-current="step"] {
-  color: var(--ink);
+  color: var(--c-ink);
   font-weight: 600;
 }
+.progress-track li[aria-current="step"]::before {
+  border-color: var(--c-accent);
+  box-shadow: var(--ring);
+}
 .progress-track li.halted {
-  color: var(--warning);
+  color: var(--c-warning);
   font-weight: 600;
+}
+.progress-track li.halted::before {
+  background: var(--c-warning-bg);
+  border-color: var(--c-warning);
+}
+.progress-track li.halted > .icon {
+  color: var(--c-warning);
 }
 .workspace-grid {
   display: grid;
@@ -332,15 +419,29 @@
   grid-area: action;
   min-width: 0;
 }
+/* Desktop keeps the action rail in view while the work column scrolls. */
+@media (width > 950px) {
+  .primary-action {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    z-index: 1;
+  }
+}
 .payment-summary {
   grid-area: payment;
   min-width: 0;
 }
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--s1);
   overflow: hidden;
+}
+.panel h2 {
+  font-family: var(--f-display);
+  letter-spacing: var(--tracking-display);
 }
 .tabs {
   border-bottom: 1px solid var(--line);
@@ -390,15 +491,17 @@
 .image-wrap {
   overflow: hidden;
   border: 1px solid var(--art-line);
-  border-radius: var(--radius-control);
+  border-radius: var(--r-md);
   position: relative;
-  background: var(--art-bg);
+  background: var(--c-surface-sunken);
+  padding: 6px;
 }
 .image-wrap img {
   width: 100%;
   height: auto;
   aspect-ratio: 0.74;
   object-fit: cover;
+  border-radius: calc(var(--r-md) - 4px);
   transition: transform 160ms ease;
 }
 .image-card:where(:hover) :where(.image-wrap img) {
@@ -528,8 +631,10 @@
 }
 .action-panel {
   padding: 23px;
-  background: var(--violet-soft);
-  border-color: var(--violet-line);
+  background: var(--c-surface);
+  border-color: var(--c-line);
+  border-top: 3px solid var(--c-accent);
+  box-shadow: var(--s2);
 }
 .panel-heading {
   display: flex;
@@ -888,10 +993,11 @@ dd {
   font-size: 13px;
 }
 .notice {
-  border: 1px solid var(--violet-line);
+  border: 1px solid var(--c-line);
   border-radius: var(--radius-control);
-  background: var(--violet-soft);
-  color: var(--violet-ink);
+  background: var(--c-surface);
+  color: var(--c-ink-2);
+  box-shadow: var(--s1);
   padding: 12px 16px;
   font-size: var(--text-label);
   margin-bottom: 24px;
@@ -912,8 +1018,8 @@ dd {
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: #1b16255c;
-  backdrop-filter: blur(4px);
+  background: var(--c-overlay);
+  backdrop-filter: blur(8px);
   z-index: 30;
 }
 .dialog-content {
@@ -926,9 +1032,9 @@ dd {
   overflow: auto;
   background: var(--panel);
   padding: 32px;
-  border-radius: var(--radius-panel);
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
-  box-shadow: 0 30px 90px var(--shadow-dialog);
+  box-shadow: var(--s3);
   z-index: 31;
 }
 .dialog-content h2 {
@@ -1117,13 +1223,24 @@ dd {
   .workspace-grid {
     grid-template-columns: 1fr;
   }
+  /* Mobile order: the delivered work is reviewed first, then the action that
+     acts on it, then payment. The previous "action" first order inverted the
+     documented journey and put an approve control above the files it approves
+     (04-ui-design §4.4). */
   .order-layout {
-    grid-template-areas: "action" "work" "payment";
+    grid-template-areas: "work" "action" "payment";
     grid-template-rows: auto;
+  }
+  /* On mobile the full action panel sits in document flow right below the
+     delivered work so it never covers the images while scrolling; safe-area
+     padding keeps the bottom controls clear of the home indicator. */
+  .order-layout > .primary-action {
+    position: static;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .action-column {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     align-items: start;
   }
   .page-heading {
@@ -1320,178 +1437,266 @@ dd {
   margin-block: 20px;
 }
 
-/* Sealed Ledger x Studio layer */
-.app-shell {
-  --text-micro: 13px;
-}
-.sidebar {
-  background: var(--c-surface-sunken);
-}
-.sidebar :where(nav > a) {
-  position: relative;
-  font-size: 14px;
-  color: var(--c-ink-2);
-}
-.sidebar :where(nav > a.active) {
-  color: var(--c-ink);
-  background: var(--c-surface);
-  box-shadow: var(--s1);
-}
-.sidebar nav > a.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 2px;
-  border-radius: var(--r-pill);
-  background: var(--c-accent);
-}
-.svg-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-.icon .svg-icon {
-  width: 1em;
-  height: 1em;
-}
-.tag .icon {
-  font-size: 14px;
-}
-.app-topbar .tag.violet {
-  background: var(--c-privacy);
-  color: #f4f1ea;
-  border-color: var(--c-privacy);
-}
-.notice {
-  background: var(--c-surface);
-  border-color: var(--c-line);
-  color: var(--c-ink-2);
-  box-shadow: var(--s1);
-}
-.panel {
-  background: var(--c-surface);
-  border: 1px solid var(--c-line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--s1);
-}
-.action-panel {
-  background: var(--c-surface);
-  border-color: var(--c-line);
-  border-top: 3px solid var(--c-accent);
-  box-shadow: var(--s2);
-}
-@media (width > 950px) {
-  .primary-action {
-    position: sticky;
-    top: 24px;
-    align-self: start;
-    z-index: 1;
-  }
-}
-.image-wrap {
-  border-radius: var(--r-md);
-  background: var(--c-surface-sunken);
-  padding: 6px;
-}
-.image-wrap img {
-  border-radius: calc(var(--r-md) - 4px);
-}
-.page-heading h1,
-.panel h2,
-.dialog-content h2 {
-  font-family: var(--f-display);
-  letter-spacing: var(--tracking-display);
-}
+/* New component classes (Wave 2 wires these; the styles ship here so the
+   markup and its presentation land together). */
 
-/* Circular-node stepper */
-.progress-track {
-  align-items: flex-start;
+/* Health stepper: a compact, ordered set of verification stages. Distinct
+   from .progress-track because it reports condition, not journey position. */
+.health-stepper {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4);
+  display: grid;
+  gap: 8px;
+  font-size: var(--text-micro);
   color: var(--c-muted);
 }
-.progress-track li {
-  position: relative;
-  flex-direction: column;
+.health-step {
+  display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding-top: 0;
+  gap: 9px;
   min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface);
+  line-height: 1.5;
 }
-.progress-track li::before {
+.health-step::before {
   content: "";
-  width: 16px;
-  height: 16px;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
   border-radius: var(--r-pill);
   border: 2px solid var(--c-line-strong);
-  background: var(--c-surface);
+  background: transparent;
   box-sizing: border-box;
-  position: relative;
-  z-index: 1;
 }
-.progress-track li:not(:last-child)::after {
-  position: absolute;
-  top: 7px;
-  left: 20px;
-  right: 4px;
-  height: 2px;
-  margin: 0;
-  background: var(--c-line);
-  border-radius: var(--r-pill);
+.health-step[data-state="pass"] {
+  color: var(--c-success);
+  border-color: var(--success-line);
+  background: var(--success-bg);
 }
-.progress-track li.reached {
-  color: var(--c-ink-2);
+.health-step[data-state="pass"]::before {
+  border-color: var(--c-success);
+  background: var(--c-success);
 }
-.progress-track li.reached::before {
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-}
-.progress-track li.reached::after {
-  background: var(--c-accent);
-}
-.progress-track li > .icon {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
-  font-size: 10px;
-  color: #fff;
-  z-index: 2;
-}
-.progress-track li[aria-current="step"] {
-  color: var(--c-ink);
-}
-.progress-track li[aria-current="step"]::before {
-  border-color: var(--c-accent);
-  box-shadow: var(--ring);
-}
-.progress-track li.halted {
+.health-step[data-state="warn"] {
   color: var(--c-warning);
+  border-color: var(--warning-line);
+  background: var(--warning-bg);
 }
-.progress-track li.halted::before {
-  background: var(--c-warning-bg);
+.health-step[data-state="warn"]::before {
   border-color: var(--c-warning);
+  background: var(--c-warning);
 }
-.progress-track li.halted > .icon {
-  color: var(--c-warning);
+.health-step[data-state="fail"] {
+  color: var(--c-danger);
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
+}
+.health-step[data-state="fail"]::before {
+  border-color: var(--c-danger);
+  background: var(--c-danger);
+}
+.health-step[data-state="pending"] {
+  color: var(--c-muted);
+  border-style: dashed;
+}
+.health-step :where(strong) {
+  display: block;
+  font-weight: 600;
+  color: inherit;
+}
+.health-step :where(span) {
+  display: block;
+  color: var(--c-muted);
+  margin-top: 2px;
 }
 
-/* Dialog */
-.dialog-overlay {
-  background: var(--c-overlay);
-  backdrop-filter: blur(8px);
+/* Verify slots: the three delivered files and their byte-check state. */
+.verify-slots {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
 }
-.dialog-content {
-  border-radius: var(--r-lg);
-  box-shadow: var(--s3);
+.verify-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.verify-slot :where(strong) {
+  font-weight: 600;
+  font-size: var(--text-micro);
+}
+.verify-slot .hash,
+.verify-slot :where(code) {
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.verify-slot[data-state="match"] {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+}
+.verify-slot[data-state="match"] :where(strong) {
+  color: var(--c-success);
+}
+.verify-slot[data-state="mismatch"] {
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
+}
+.verify-slot[data-state="mismatch"] :where(strong) {
+  color: var(--c-danger);
+}
+.verify-slot[data-state="pending"] {
+  border-style: dashed;
+}
+@media (width <= 760px) {
+  .verify-slots {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Guard note: a standing constraint shown beside an irreversible action. */
+.guard-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: var(--space-3) 0;
+  padding: 11px 13px;
+  border: 1px solid var(--warning-line);
+  border-left-width: 3px;
+  border-radius: var(--radius-control);
+  background: var(--warning-bg);
+  color: var(--c-warning);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+}
+.guard-note > :where(.icon) {
+  flex: 0 0 auto;
+  font-size: 13px;
+  margin-top: 1px;
+}
+.guard-note :where(strong) {
+  font-weight: 600;
+  color: inherit;
+}
+.guard-note :where(p) {
+  margin: 0;
+  color: var(--c-ink-2);
+}
+.guard-note[data-tone="danger"] {
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
+  color: var(--c-danger);
+}
+.guard-note[data-tone="success"] {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+  color: var(--c-success);
+}
+
+/* Dispute reason card: one selectable reason, with its consequence spelled
+   out so the choice is informed before it is submitted. */
+.dispute-reason-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface);
+  cursor: pointer;
+  min-height: 44px;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+.dispute-reason-card:hover {
+  border-color: var(--c-line-strong);
+  background: var(--quiet-hover);
+}
+.dispute-reason-card:has(input:checked) {
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  box-shadow: var(--ring);
+}
+.dispute-reason-card :where(input) {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--c-accent);
+}
+.dispute-reason-card :where(strong) {
+  display: block;
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+.dispute-reason-card :where(span) {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--text-micro);
+  color: var(--c-muted);
+}
+
+/* Proximate disclosure: the short, always-visible statement of who can see
+   what, placed next to the control it qualifies (01 §7.5). */
+.proximate-disclosure {
+  margin: var(--space-3) 0 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--c-line);
+  font-size: var(--text-micro);
+  line-height: 1.7;
+  color: var(--c-muted);
+}
+.proximate-disclosure :where(strong) {
+  color: var(--c-ink-2);
+  font-weight: 600;
+}
+.proximate-disclosure :where(a) {
+  color: var(--c-accent);
+  text-underline-offset: 3px;
+}
+
+/* Persona banner: names which participant's view is on screen, so a shared
+   screen cannot be mistaken for the other party's. */
+.persona-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 9px 14px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-control);
+  background: var(--c-surface-sunken);
+  color: var(--c-ink-2);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+}
+.persona-banner :where(strong) {
+  font-weight: 600;
+  color: var(--c-ink);
+}
+.persona-banner .tag {
+  margin-left: auto;
 }
 
 @media (width <= 950px) {
   .app-shell,
   .sidebar,
-  .workspace-main,
   .app-shell > * {
     min-width: 0;
   }

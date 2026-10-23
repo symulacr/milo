@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { sampleFiles } from "../assets";
 import { PageTitle } from "../components/PageTitle";
 import { Panel } from "../components/ui";
 import { paymentLine, phaseFrame } from "../workspace/framing";
@@ -48,8 +49,28 @@ export function Receipt() {
             <dd>{state.revision}</dd>
           </div>
         </dl>
+        <h3>Manifest SHA-256 digests (3 files)</h3>
+        <dl className="detail-grid">
+          {sampleFiles.map((file) => (
+            <div key={file.id}>
+              <dt>
+                {file.id} · {file.title}
+              </dt>
+              <dd>
+                <code className="hash">{file.hash}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
         <button type="button" className="button" onClick={exportReceipt}>
           Download receipt ↓
+        </button>
+        <button
+          type="button"
+          className="button secondary"
+          onClick={() => window.print()}
+        >
+          Print receipt
         </button>
         <p>
           <Link className="text-link" to="/orders/sample-001">

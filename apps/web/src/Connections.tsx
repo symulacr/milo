@@ -51,10 +51,23 @@ function LaceStatus() {
   const [candidates] = useState(() =>
     typeof window === "undefined" ? [] : discoverLaceWallets(window.midnight),
   );
-  const [selected, setSelected] = useState(0);
+  // Selection is tracked by the wallet's reverse-DNS id, not its index. Injection keys are
+  // UUIDs and their enumeration order is not stable across reloads, so an index would silently
+  // point at a different wallet after a reload. The index is kept only as a fallback for
+  // wallets that omit `rdns`.
+  const [selectedRdns, setSelectedRdns] = useState(
+    () => candidates[0]?.rdns ?? "",
+  );
+  const selected = Math.max(
+    0,
+    candidates.findIndex((wallet) => wallet.rdns === selectedRdns),
+  );
   const connection = useMemo(() => new LaceConnection(setState), []);
   useEffect(() => {
     const timer = setInterval(() => {
+      // A hidden tab does not need a wallet round-trip; the check resumes on the next tick
+      // after the tab is visible again.
+      if (typeof document !== "undefined" && document.hidden) return;
       void connection.refresh();
     }, 15000);
     return () => {
@@ -98,7 +111,11 @@ function LaceStatus() {
                 Wallet to connect
                 <select
                   value={selected}
-                  onChange={(event) => setSelected(Number(event.target.value))}
+                  onChange={(event) =>
+                    setSelectedRdns(
+                      candidates[Number(event.target.value)]?.rdns ?? "",
+                    )
+                  }
                 >
                   {candidates.map((wallet, index) => (
                     <option key={wallet.rdns || index} value={index}>
@@ -146,6 +163,81 @@ function LaceStatus() {
   );
 }
 
+/**
+ * Five-stage readiness view of the connection surface.
+ *
+ * The page previously made the reader assemble the overall state from three separate panels.
+ * This stepper states each prerequisite and its live status in one place. It reports only what
+ * the browser can actually observe: configuration presence, the injected wallet's API version
+ * and the prover slots the order console requires. A "configured" stage is never a claim that
+ * the dependency works — the panels below remain the authority.
+ */
+function ConnectionReadiness({ config }: { config: PublicConfig }) {
+  const [wallets] = useState(() =>
+    typeof window === "undefined" ? [] : discoverLaceWallets(window.midnight),
+  );
+  const stages = [
+    {
+      name: "Public config",
+      status: "Loaded",
+      detail: `/api/public-config loaded: ${config.midnightNetwork.toUpperCase()}`,
+      ready: true,
+    },
+    {
+      name: "Email identity",
+      status: config.betterAuthUrl ? "Configured" : "Not configured",
+      detail: config.betterAuthUrl
+        ? "Better Auth service URL is present. Sign-in is attempted in the panel below."
+        : "BETTER_AUTH_URL is unset, so email sign-in is unavailable.",
+      ready: Boolean(config.betterAuthUrl),
+    },
+    {
+      name: "Convex backend",
+      status: config.convexUrl ? "Configured" : "Not configured",
+      detail: config.convexUrl
+        ? "Convex deployment URL is present. Backend token verification runs after sign-in."
+        : "CONVEX_URL is unset, so no backend records are reachable.",
+      ready: Boolean(config.convexUrl),
+    },
+    {
+      name: "Midnight Lace wallet",
+      status:
+        wallets.length === 0
+          ? "No v4 wallet detected"
+          : wallets.length === 1
+            ? "1 v4 wallet detected"
+            : `${wallets.length} v4 wallets detected`,
+      detail: "PREPROD v4 connector. Mainnet is blocked.",
+      ready: wallets.length > 0,
+    },
+    {
+      name: "Provider & Prover slots",
+      status: "6 required",
+      detail:
+        "6 required MidnightProviders slots · local prover :6300 vs wallet-delegated prover disclosure",
+      // Slot wiring is a build-time concern the browser cannot verify, so this stage never
+      // claims readiness on its own.
+      ready: false,
+    },
+  ];
+  return (
+    <ol className="health-stepper" aria-label="Connection readiness stages">
+      {stages.map((stage) => (
+        <li
+          key={stage.name}
+          className="health-step"
+          data-state={stage.ready ? "pass" : "pending"}
+          data-ready={stage.ready ? "true" : "false"}
+        >
+          <strong>{stage.name}</strong>
+          <span className="health-stepper-status">{stage.status}</span>
+          <span className="micro muted">{stage.detail}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function Connections({
   headingRef: externalHeadingRef,
 }: {
@@ -170,6 +262,7 @@ export function Connections({
       <PublicConfigGate onRetry={() => headingRef.current?.focus()}>
         {(config) => (
           <>
+            <ConnectionReadiness config={config} />
             <section
               className="panel reading-panel"
               aria-labelledby="identity-title"

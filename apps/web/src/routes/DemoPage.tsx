@@ -17,6 +17,26 @@ import {
 
 const stepNames = ["Scope", "Delivery", "Approval", "Outcome"] as const;
 
+/**
+ * Deep-linkable step index: `?step=1..4` maps to the internal 0-based index.
+ * Anything absent or out of range falls back to the first step, so a stale or
+ * hand-edited query string can never land the tour on a blank stage.
+ */
+const stepFromParam = (value: string | null): number => {
+  switch (value) {
+    case "1":
+      return 0;
+    case "2":
+      return 1;
+    case "3":
+      return 2;
+    case "4":
+      return 3;
+    default:
+      return 0;
+  }
+};
+
 function DemoSummary({
   context,
   full = true,
@@ -58,7 +78,9 @@ function DemoSummary({
 export function DemoPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const context = demoContextById(searchParams.get("context"));
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() =>
+    stepFromParam(searchParams.get("step")),
+  );
   const [imageIndex, setImageIndex] = useState(0);
   const [zoomed, setZoomed] = useState(false);
   const [pendingExample, setPendingExample] = useState(false);
@@ -134,8 +156,12 @@ export function DemoPage() {
 
       <ol className="demo-steps" aria-label="Sample progress">
         {stepNames.map((name, i) => (
-          <li key={name} aria-current={i === step ? "step" : undefined}>
-            {i + 1} {name}
+          <li
+            key={name}
+            aria-current={i === step ? "step" : undefined}
+            className={i < step ? "reached" : undefined}
+          >
+            {i < step ? `✓ ${name}` : `${i + 1} ${name}`}
           </li>
         ))}
       </ol>
@@ -221,7 +247,10 @@ export function DemoPage() {
             <h2 tabIndex={-1} ref={stepHeading}>
               Approval is deliberate
             </h2>
-            <details>
+            {/* Approval and capture are separate results; that separation is
+                the point of this step, so it opens expanded rather than
+                waiting for a click (04-ui-design §4.4). */}
+            <details open>
               <summary>What approval means</summary>
               <p className="demo-detail-copy">
                 Approval records the buyer's decision against the agreed scope
@@ -328,6 +357,12 @@ export function DemoPage() {
             <Link className="button" to="/pilot">
               Discuss a merchant pilot
             </Link>
+            {/* The guided tour is static; this is the only exit into the full
+                interactive workspace, so it is a plain anchor rather than a
+                router Link (the workspace is a separate bundle). */}
+            <a className="button secondary" href="/orders/sample-001">
+              Open interactive workspace ↗
+            </a>
             <button
               type="button"
               className="quiet-button"

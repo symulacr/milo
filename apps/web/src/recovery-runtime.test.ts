@@ -9,10 +9,12 @@ import {
   verifyKit,
 } from "../../../packages/domain/src/recovery-kit";
 import {
+  emitRecoveryKitChanged,
   forgetKit,
   parseKit,
   readKit,
   recoveryKey,
+  subscribeKitChanges,
   writeKit,
 } from "./recovery-runtime";
 
@@ -129,5 +131,31 @@ describe("recovery context persistence", () => {
     forgetKit(scope, storage);
     expect(readKit(scope, storage)).toBeNull();
     expect(readKit(other, storage)).not.toBeNull();
+  });
+
+  test("subscribeKitChanges notifies on same-tab emit and scoped storage events", () => {
+    let calls = 0;
+    const unsubscribe = subscribeKitChanges(() => {
+      calls += 1;
+    });
+    emitRecoveryKitChanged();
+    if (typeof window !== "undefined") {
+      expect(calls).toBe(1);
+      const storageEvent = Object.assign(new Event("storage"), {
+        key: recoveryKey(scope),
+      });
+      window.dispatchEvent(storageEvent);
+      expect(calls).toBe(2);
+      const unrelatedEvent = Object.assign(new Event("storage"), {
+        key: "unrelated.key",
+      });
+      window.dispatchEvent(unrelatedEvent);
+      expect(calls).toBe(2);
+    }
+    unsubscribe();
+    emitRecoveryKitChanged();
+    if (typeof window !== "undefined") {
+      expect(calls).toBe(2);
+    }
   });
 });
