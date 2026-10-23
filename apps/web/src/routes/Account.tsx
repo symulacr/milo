@@ -4,6 +4,18 @@ import { Badge, Panel } from "../components/ui";
 import { RecoveryKitPanel } from "../RecoveryKitPanel";
 import { roleNames, useWorkspace } from "../workspace/model";
 
+const BOUNDARIES = [
+  ["Wallet recovery", "Restores only what the wallet backs up."],
+  [
+    "Order capability",
+    "Lives in order-scoped private state — email reset cannot recreate it.",
+  ],
+  [
+    "Application records",
+    "App restore covers records and files, not wallet secrets.",
+  ],
+];
+
 export function Account() {
   const { state } = useWorkspace();
   return (
@@ -12,39 +24,23 @@ export function Account() {
       <Panel className="reading-panel">
         <Badge>Sample identity</Badge>
         <h2>{roleNames[state.role]}</h2>
-        <p>
-          Not authenticated. Sign-in and wallet checks live in connection
-          diagnostics; neither grants authority over orders.
-        </p>
         <Link className="button secondary" to="/connections">
           Open connection diagnostics ↗
         </Link>
         <div className="boundary-cards">
-          <div>
-            <h3>Wallet recovery</h3>
-            <p>Restores only what the wallet backs up.</p>
-          </div>
-          <div>
-            <h3>Order capability</h3>
-            <p>
-              Lives in order-scoped private state — email reset cannot recreate
-              it.
-            </p>
-          </div>
-          <div>
-            <h3>Application records</h3>
-            <p>App restore covers records and files, not wallet secrets.</p>
-          </div>
+          {BOUNDARIES.map(([title, body]) => (
+            <div key={title}>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </div>
+          ))}
         </div>
-        {/* Deep link restores the scenario without a hidden global reset. */}
         <Link
           className="button secondary"
           to="/orders/sample-001?scenario=lost-capability&role=buyer"
         >
           Explore lost-capability recovery ↗
         </Link>
-        {/* The account page is where recovery is explained, so the local vault
-            itself is reachable here rather than only in diagnostics. */}
         <details className="evidence-panel">
           <summary>
             Local recovery kit vault &amp; 7 recovery operations (sample-001)

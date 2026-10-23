@@ -1,6 +1,12 @@
 import { useConvex } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   MonitoringController,
   type MonitoringTransport,
@@ -23,6 +29,19 @@ const stopMutation = makeFunctionReference<
   { quoteId: string },
   unknown
 >("paymentMonitoring:stop");
+
+const TITLE = "Read-only test payment monitoring";
+const TITLE_ID = "payment-monitoring-title";
+
+function Section({ children }: { children: ReactNode }) {
+  return (
+    <section aria-labelledby={TITLE_ID}>
+      <h3 id={TITLE_ID}>{TITLE}</h3>
+      <p>Observes an existing Stripe test payment by quote ID.</p>
+      {children}
+    </section>
+  );
+}
 
 export function PaymentMonitoring({
   defaultQuoteId,
@@ -50,37 +69,22 @@ export function PaymentMonitoring({
   );
 }
 
-/**
- * The monitoring section without a Convex provider.
- *
- * `PaymentMonitoring` calls `useConvex()`, which throws outside a `ConvexProvider`. When Convex
- * is unconfigured the order view still renders this section, so it reports the absence
- * honestly and offers no controls that could not work.
- */
 export function UnconfiguredPaymentMonitoring({
   defaultQuoteId,
 }: {
   defaultQuoteId?: string;
 }) {
   return (
-    <section aria-labelledby="payment-monitoring-title">
-      <h3 id="payment-monitoring-title">Read-only test payment monitoring</h3>
-      <p>
-        Observes an existing Stripe test payment by quote ID. It cannot create,
-        capture or settle anything.
-      </p>
+    <Section>
       <p role="status">
-        Convex is not configured, so no payment monitoring state is reachable
-        and no monitoring controls are available. No payment is observed,
-        started or settled.
+        Convex is not configured, so no payment monitoring state is reachable.
       </p>
       {defaultQuoteId ? (
         <p>
-          Quote ID <code>{defaultQuoteId}</code> is held locally only; it is not
-          sent anywhere.
+          Quote ID <code>{defaultQuoteId}</code> is held locally only.
         </p>
       ) : null}
-    </section>
+    </Section>
   );
 }
 
@@ -93,13 +97,7 @@ function PaymentMonitoringControls({
 }) {
   const [quoteId, setQuoteId] = useState(defaultQuoteId ?? "");
   return (
-    <section aria-labelledby="payment-monitoring-title">
-      <h3 id="payment-monitoring-title">Read-only test payment monitoring</h3>
-      <p>
-        Observes an existing Stripe test payment by quote ID. It cannot create,
-        capture or settle anything.
-      </p>
-      <p>Sessions expire after five minutes, with no automatic renewal.</p>
+    <Section>
       <label htmlFor="monitor-quote-id">Quote ID</label>
       <input
         id="monitor-quote-id"
@@ -117,7 +115,7 @@ function PaymentMonitoringControls({
       ) : (
         <p role="status">Enter a quote ID to look up monitoring status.</p>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -150,12 +148,13 @@ function QuoteMonitoring({
     return () => clearTimeout(timer);
   }, [expiresAt]);
   const controls = monitoringControls(snapshot.status, now);
+  const fenced = snapshot.busy || snapshot.needsRefresh;
   return (
     <>
       <p role="status">{snapshot.message}</p>
       {snapshot.status && (
         <p>
-          Last checked monitoring state:{" "}
+          Monitoring state:{" "}
           <strong>
             {controls.stale
               ? "expired (local clock; refresh to verify)"
@@ -172,60 +171,42 @@ function QuoteMonitoring({
           )}
         </p>
       )}
-      {controls.stale && (
-        <p>
-          Local expiry does not grant permission to start again. Refresh for
-          server-authorized controls.
-        </p>
-      )}
       <label className="connection-consent">
         <input
           type="checkbox"
           checked={snapshot.consent}
-          disabled={
-            snapshot.busy || snapshot.needsRefresh || !controls.canStart
-          }
+          disabled={fenced || !controls.canStart}
           onChange={(event) => controller.consent(event.target.checked)}
         />{" "}
         I consent to five minutes of read-only observation of this quote’s
         existing Stripe test payment. This is not consent to move money.
       </label>
       <div className="connection-actions">
-        <button
-          className="button secondary"
-          type="button"
-          disabled={snapshot.busy}
-          onClick={() => {
-            void controller.refresh();
-          }}
-        >
-          Refresh monitoring status
-        </button>
-        <button
-          className="button"
-          type="button"
-          disabled={
-            snapshot.busy ||
-            snapshot.needsRefresh ||
-            !snapshot.consent ||
-            !controls.canStart
-          }
-          onClick={() => {
-            void controller.mutate("start");
-          }}
-        >
-          Start read-only monitoring
-        </button>
-        <button
-          className="button secondary"
-          type="button"
-          disabled={snapshot.busy || snapshot.needsRefresh || !controls.canStop}
-          onClick={() => {
-            void controller.mutate("stop");
-          }}
-        >
-          Stop monitoring
-        </button>
+        {(
+          [
+            ["Refresh monitoring status", snapshot.busy, "refresh", true],
+            [
+              "Start read-only monitoring",
+              fenced || !snapshot.consent || !controls.canStart,
+              "start",
+              false,
+            ],
+            ["Stop monitoring", fenced || !controls.canStop, "stop", true],
+          ] as const
+        ).map(([label, disabled, action, secondary]) => (
+          <button
+            key={label}
+            className={secondary ? "button secondary" : "button"}
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              if (action === "refresh") void controller.refresh();
+              else void controller.mutate(action);
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </>
   );

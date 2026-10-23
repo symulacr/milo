@@ -8,12 +8,13 @@ import { useWorkspace } from "../workspace/model";
 export function Orders({ merchant = false }: { merchant?: boolean }) {
   const { state, quote, money } = useWorkspace();
   const frame = phaseFrame(state.phase, state.role);
+  const settled = state.phase === "APPROVED" || state.phase === "CANCELLED";
   return (
     <>
       <PageTitle title={merchant ? "Studio queue" : "Your orders"} />
       <div className="list-toolbar">
         <span className="muted">1 sample order · refresh resets</span>
-        {(state.phase === "APPROVED" || state.phase === "CANCELLED") && (
+        {settled && (
           <Link className="text-link" to="/orders/sample-001/receipt">
             View sample receipt →
           </Link>

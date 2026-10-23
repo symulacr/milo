@@ -6,36 +6,33 @@ import {
   demoContexts,
 } from "../demo-fixtures";
 
-/**
- * Public guided sample tour (04-ui-design §4.4). Explicit synthetic view
- * model only: no workspace simulator, no wallet/payment/chain provider
- * imports, no mutation callbacks. Direct navigation, reload and new tab
- * render this standalone page; the modal-over-landing variant never
- * triggers because the static landing holds no in-app background location.
- * The import boundary is enforced by demo-boundary.test.tsx.
- */
-
 const stepNames = ["Scope", "Delivery", "Approval", "Outcome"] as const;
 
-/**
- * Deep-linkable step index: `?step=1..4` maps to the internal 0-based index.
- * Anything absent or out of range falls back to the first step, so a stale or
- * hand-edited query string can never land the tour on a blank stage.
- */
-const stepFromParam = (value: string | null): number => {
-  switch (value) {
-    case "1":
-      return 0;
-    case "2":
-      return 1;
-    case "3":
-      return 2;
-    case "4":
-      return 3;
-    default:
-      return 0;
-  }
-};
+const STEP_PARAMS: Record<string, number> = { "1": 0, "2": 1, "3": 2, "4": 3 };
+
+const stepFromParam = (value: string | null): number =>
+  (value !== null ? STEP_PARAMS[value] : undefined) ?? 0;
+
+const NEXT_LABELS = [
+  "Explore the delivery",
+  "See how approval works",
+  "Show sample outcome",
+] as const;
+
+const APPROVAL_FACTS: readonly (readonly [string, string])[] = [
+  [
+    "What approval means",
+    "Approval records the buyer's decision against the agreed scope and this exact delivery. It is not immediate payment: capture is a separate, independently observed result that can still fail.",
+  ],
+  [
+    "What stays private?",
+    "Commercial terms stay off the public ledger. Milo, the merchant and the chosen proving path each see what they receive; this sample collects nothing.",
+  ],
+  [
+    "What is shared?",
+    "A public record can show that an order exists, its phase and commitments — never the brief, files or price in this design. A proof is not a quality guarantee.",
+  ],
+];
 
 function DemoSummary({
   context,
@@ -44,6 +41,11 @@ function DemoSummary({
   context: DemoContext;
   full?: boolean;
 }) {
+  const rows = [
+    ["Usage rights", context.rights],
+    ["Review deadline", context.deadline],
+    ["Fixed price", `${context.amount} · one pack`],
+  ] as const;
   return (
     <div className="demo-facts">
       <h3>{context.pack}</h3>
@@ -51,18 +53,12 @@ function DemoSummary({
       <p className="demo-scope">{context.scope}</p>
       {full && (
         <dl className="demo-detail">
-          <div>
-            <dt>Usage rights</dt>
-            <dd>{context.rights}</dd>
-          </div>
-          <div>
-            <dt>Review deadline</dt>
-            <dd>{context.deadline}</dd>
-          </div>
-          <div>
-            <dt>Fixed price</dt>
-            <dd>{context.amount} · one pack</dd>
-          </div>
+          {rows.map(([term, value]) => (
+            <div key={term}>
+              <dt>{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
         </dl>
       )}
       <details className="demo-case">
@@ -89,15 +85,6 @@ export function DemoPage() {
   const mounted = useRef(false);
   const contextChanged = useRef(false);
 
-  // New step headings receive deliberate focus on in-page navigation (04 §4.4
-  // dialog rules), and a context switch keeps focus on the selector (04:153).
-  //
-  // The page heading is deliberately NOT focused on first mount. Focusing it
-  // here moved the browser's sequential-focus starting point into <main>, so
-  // the first Tab after a cold load skipped the skip link that PublicShell
-  // renders first in the DOM and landed on the next control inside the demo
-  // (WCAG 2.2 SC 2.4.1 Bypass Blocks; see e2e/flows/fl-keyboard.mjs).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: step is the intentional focus trigger
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
@@ -107,21 +94,18 @@ export function DemoPage() {
       contextChanged.current = false;
       return;
     }
-    stepHeading.current?.focus();
+    if (step >= 0) stepHeading.current?.focus();
   }, [step]);
 
   function chooseContext(id: string) {
-    // Context changes reset step, image, evidence and outcome together;
-    // replace the current history entry rather than trapping Back (04 §4.4).
+    const next = demoContextById(id);
     contextChanged.current = true;
-    setSearchParams({ context: demoContextById(id).id }, { replace: true });
+    setSearchParams({ context: next.id }, { replace: true });
     setStep(0);
     setImageIndex(0);
     setZoomed(false);
     setPendingExample(false);
-    setAnnouncement(
-      `Showing the ${demoContextById(id).label} sample from ${demoContextById(id).merchant}.`,
-    );
+    setAnnouncement(`Showing the ${next.label} sample from ${next.merchant}.`);
   }
 
   const image = context.images[imageIndex] ?? context.images[0];
@@ -231,9 +215,6 @@ export function DemoPage() {
               Inspect the exact delivery
             </h2>
             <DemoSummary context={context} full={false} />
-            <p className="demo-note">
-              Sample artwork, not protected customer assets.
-            </p>
           </div>
         </div>
       )}
@@ -247,33 +228,12 @@ export function DemoPage() {
             <h2 tabIndex={-1} ref={stepHeading}>
               Approval is deliberate
             </h2>
-            {/* Approval and capture are separate results; that separation is
-                the point of this step, so it opens expanded rather than
-                waiting for a click (04-ui-design §4.4). */}
-            <details open>
-              <summary>What approval means</summary>
-              <p className="demo-detail-copy">
-                Approval records the buyer's decision against the agreed scope
-                and this exact delivery. It is not immediate payment: capture is
-                a separate, independently observed result that can still fail.
-              </p>
-            </details>
-            <details>
-              <summary>What stays private?</summary>
-              <p className="demo-detail-copy">
-                Commercial terms stay off the public ledger. Milo, the merchant
-                and the chosen proving path each see what they receive; this
-                sample collects nothing.
-              </p>
-            </details>
-            <details>
-              <summary>What is shared?</summary>
-              <p className="demo-detail-copy">
-                A public record can show that an order exists, its phase and
-                commitments — never the brief, files or price in this design. A
-                proof is not a quality guarantee.
-              </p>
-            </details>
+            {APPROVAL_FACTS.map(([summary, copy], i) => (
+              <details key={summary} open={i === 0}>
+                <summary>{summary}</summary>
+                <p className="demo-detail-copy">{copy}</p>
+              </details>
+            ))}
           </div>
         </div>
       )}
@@ -289,10 +249,6 @@ export function DemoPage() {
               <p>
                 <span className="tag success">✓ Approved example</span>
               </p>
-              <p className="demo-panel-copy">
-                The buyer approved this exact delivery. Approval alone is not a
-                paid invoice.
-              </p>
             </section>
             <section className="demo-panel">
               <h3>Payment observation</h3>
@@ -302,11 +258,6 @@ export function DemoPage() {
                 ) : (
                   <span className="tag">○ Captured example</span>
                 )}
-              </p>
-              <p className="demo-panel-copy">
-                {pendingExample
-                  ? "The hold is still unresolved; the order stays approved while payment is checked."
-                  : "Payment captured separately from the approval, observed on its own track."}
               </p>
               <label className="demo-toggle">
                 <input
@@ -318,10 +269,6 @@ export function DemoPage() {
               </label>
             </section>
           </div>
-          <p className="demo-note">
-            No transaction ID, no paid receipt — this is an illustrated outcome,
-            not executed evidence.
-          </p>
         </div>
       )}
 
@@ -337,19 +284,13 @@ export function DemoPage() {
         ) : (
           <span />
         )}
-        {step === 0 && (
-          <button type="button" className="button" onClick={() => setStep(1)}>
-            Explore the delivery
-          </button>
-        )}
-        {step === 1 && (
-          <button type="button" className="button" onClick={() => setStep(2)}>
-            See how approval works
-          </button>
-        )}
-        {step === 2 && (
-          <button type="button" className="button" onClick={() => setStep(3)}>
-            Show sample outcome
+        {step < 3 && (
+          <button
+            type="button"
+            className="button"
+            onClick={() => setStep(step + 1)}
+          >
+            {NEXT_LABELS[step]}
           </button>
         )}
         {step === 3 && (
@@ -357,9 +298,6 @@ export function DemoPage() {
             <Link className="button" to="/pilot">
               Discuss a merchant pilot
             </Link>
-            {/* The guided tour is static; this is the only exit into the full
-                interactive workspace, so it is a plain anchor rather than a
-                router Link (the workspace is a separate bundle). */}
             <a className="button secondary" href="/orders/sample-001">
               Open interactive workspace ↗
             </a>

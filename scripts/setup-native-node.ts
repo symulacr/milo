@@ -18,6 +18,7 @@ await mkdir(`${directory}/downloads`, { recursive: true });
 await mkdir(`${directory}/node`, { recursive: true });
 const expected =
   "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf";
+const checksum = "Native release checksum mismatch";
 if (
   !(await Bun.file(archive).exists()) ||
   (await sha256File(archive)) !== expected
@@ -29,21 +30,13 @@ if (
   const temporary = `${archive}.${crypto.randomUUID()}.part`;
   try {
     await Bun.write(temporary, response);
-    assert.equal(
-      await sha256File(temporary),
-      expected,
-      "Native release checksum mismatch",
-    );
+    assert.equal(await sha256File(temporary), expected, checksum);
     await rename(temporary, archive);
   } finally {
     await rm(temporary, { force: true });
   }
 }
-assert.equal(
-  await sha256File(archive),
-  expected,
-  "Native release checksum mismatch",
-);
+assert.equal(await sha256File(archive), expected, checksum);
 const extraction = ownNativeProcess(
   Bun.spawn(["tar", "-xzf", archive, "-C", `${directory}/node`]),
 );

@@ -6,6 +6,13 @@ import { Panel } from "../components/ui";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
 import { quoteSchema, useWorkspace } from "../workspace/model";
 
+const FIXED = [
+  ["Deliverables", "Exactly three final PNG images"],
+  ["Usage", "Website and organic social"],
+  ["Review deadline", REVIEW_DEADLINE],
+  ["Resolution", "Pre-agreed operator · full approval or cancellation"],
+];
+
 export function NewQuote() {
   const { quote, reset, navigate } = useWorkspace();
   const [error, setError] = useState("");
@@ -13,6 +20,8 @@ export function NewQuote() {
     ...quote,
     amount: String(quote.amount),
   }));
+  const set = (field: "name" | "brief" | "amount") => (value: string) =>
+    setDraft((prior) => ({ ...prior, [field]: value }));
   return (
     <RoleRequired requiredRole="merchant">
       <PageTitle title="New sample quote" />
@@ -38,9 +47,7 @@ export function NewQuote() {
               minLength={5}
               maxLength={80}
               value={draft.name}
-              onChange={(event) =>
-                setDraft({ ...draft, name: event.target.value })
-              }
+              onChange={(event) => set("name")(event.target.value)}
             />
             <span className="micro muted">
               {draft.name.trim().length}/80 characters (minimum 5)
@@ -55,58 +62,31 @@ export function NewQuote() {
               maxLength={500}
               rows={5}
               value={draft.brief}
-              onChange={(event) =>
-                setDraft({ ...draft, brief: event.target.value })
-              }
+              onChange={(event) => set("brief")(event.target.value)}
             />
             <span className="micro muted">
               {draft.brief.trim().length}/500 characters (minimum 20)
             </span>
           </label>
-          <div className="form-pair">
-            <label className="field">
-              Fixed price (USD)
-              <input
-                name="amount"
-                type="number"
-                required
-                min={1}
-                max={5000}
-                step={1}
-                value={draft.amount}
-                onChange={(event) =>
-                  setDraft({ ...draft, amount: event.target.value })
-                }
-              />
-            </label>
-            <div className="field">
-              Deliverables
-              <strong className="fixed-field">
-                Exactly three final PNG images
-              </strong>
+          <label className="field">
+            Fixed price (USD)
+            <input
+              name="amount"
+              type="number"
+              required
+              min={1}
+              max={5000}
+              step={1}
+              value={draft.amount}
+              onChange={(event) => set("amount")(event.target.value)}
+            />
+          </label>
+          {FIXED.map(([label, value]) => (
+            <div className="field" key={label}>
+              {label}
+              <strong className="fixed-field">{value}</strong>
             </div>
-          </div>
-          <div className="form-pair">
-            <div className="field">
-              Usage
-              <strong className="fixed-field">
-                Website and organic social
-              </strong>
-            </div>
-            <div className="field">
-              Review deadline
-              <strong className="fixed-field">{REVIEW_DEADLINE}</strong>
-            </div>
-          </div>
-          <div className="field">
-            Resolution
-            <strong className="fixed-field">
-              Pre-agreed operator · full approval or cancellation
-            </strong>
-          </div>
-          <p className="soft-note">
-            Replaces the current sample order; nothing is sent.
-          </p>
+          ))}
           {error && (
             <p className="form-error" role="alert">
               {error}
@@ -115,8 +95,6 @@ export function NewQuote() {
           <button type="submit" className="button">
             Review the sample quote ↗
           </button>
-          {/* Leaving the form used to be impossible without submitting, so a
-              merchant who only wanted to look back had to reset the draft. */}
           <Link to="/quotes/sample-001" className="button secondary">
             Cancel · keep current quote
           </Link>

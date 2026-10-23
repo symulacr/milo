@@ -1,26 +1,24 @@
-/**
- * Typed Midnight indexer GraphQL client (convergence CVG2).
- * Single place for GraphQL strings used by ingest/observer/diagnostics.
- */
 export type IndexerEndpoints = {
   http: string;
   ws: string;
 };
 
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+const INDEXER_TIMEOUT_MS = 15_000;
+const INDEXER_HEADERS = { "content-type": "application/json" } as const;
+
 export async function indexerQuery<T>(
   endpoints: IndexerEndpoints,
   query: string,
   variables?: Record<string, unknown>,
-  fetchImpl: (
-    input: string,
-    init?: RequestInit,
-  ) => Promise<Response> = fetch as never,
+  fetchImpl: FetchLike = fetch as never,
 ): Promise<T> {
   const res = await fetchImpl(endpoints.http, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: INDEXER_HEADERS,
     body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(INDEXER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`indexer HTTP ${res.status}`);
   const body = (await res.json()) as { data?: T; errors?: unknown[] };

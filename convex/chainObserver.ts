@@ -1,18 +1,3 @@
-/**
- * Preprod chain observer. Nothing else polls the Midnight chain, so `chainOrders`
- * and `orders` were created at DEPLOYED and never advanced, leaving `files.*`
- * (which requires ACCEPTED) permanently unreachable.
- *
- * Preprod serves indexer 4.3.3, which exposes `contractAction` but not
- * `contract`, `stateAt`, or `contractEvents`. Only `contractAction` is used.
- *
- * The decode chain is hex -> Uint8Array -> ContractState.deserialize -> .data ->
- * ledger(). `ledger()` takes a ChargedState (`.data`), never bytes or a
- * ContractState. That decode needs the Compact WASM runtime, which cannot load
- * in the Convex isolate runtime, so it is a seam: `planObservation` is pure and
- * takes the decoder, and the action loads the runtime decoder per poll.
- */
-
 import {
   internalActionGeneric,
   internalMutationGeneric,
@@ -41,6 +26,8 @@ export const PHASES = [
 
 export type Phase = (typeof PHASES)[number];
 
+const PHASE_SET: ReadonlySet<string> = new Set(PHASES);
+const THROTTLE_PATTERN = /throttl|rate.?limit|too many requests/i;
 const ZERO_COMMITMENT = "0".repeat(64);
 
 const LATEST_CONTRACT_STATE = `query LatestContractState($address: HexEncoded!) {
@@ -82,17 +69,12 @@ export type ObservationPlan =
   | { kind: "immature"; headHeight: number; blockHeight: number }
   | { kind: "absent" };
 
-function isPhase(value: unknown): value is Phase {
-  return (
-    typeof value === "string" && (PHASES as readonly string[]).includes(value)
-  );
-}
+const isPhase = (value: unknown): value is Phase =>
+  typeof value === "string" && PHASE_SET.has(value);
 
-/**
- * Pure projection decision. Finality is gated before the decode so an immature
- * action never costs a WASM decode, and the raw state hex is compared before
- * decoding so a re-observed identical state writes nothing.
- */
+const isIndex = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+
 export function planObservation(input: {
   action: ContractAction | null | undefined;
   headHeight: number;
@@ -103,10 +85,8 @@ export function planObservation(input: {
   if (!action || typeof action.state !== "string" || action.state.length === 0)
     return { kind: "absent" };
   const block = action.transaction?.block;
-  if (!block || !Number.isSafeInteger(block.height) || block.height < 0)
-    return { kind: "absent" };
-  if (!Number.isSafeInteger(input.headHeight) || input.headHeight < 0)
-    return { kind: "absent" };
+  if (!block || !isIndex(block.height)) return { kind: "absent" };
+  if (!isIndex(input.headHeight)) return { kind: "absent" };
   if (input.headHeight - block.height < FINALITY_DEPTH)
     return {
       kind: "immature",
@@ -117,7 +97,7 @@ export function planObservation(input: {
   const decoded = input.decode(action.state);
   if (!isPhase(decoded.phase))
     throw new Error("decoded ledger phase is not a known order phase");
-  if (!Number.isSafeInteger(decoded.revision) || decoded.revision < 0)
+  if (!isIndex(decoded.revision))
     throw new Error("decoded ledger revision is not a safe integer");
   return {
     kind: "project",
@@ -134,15 +114,10 @@ export type AttemptResult<T> =
   | { ok: true; value: T }
   | { ok: false; retryable: boolean; reason: string };
 
-/**
- * 403 is overloaded: Blockfrost returns it for a wrong-network token (permanent)
- * and for throttling (transient). Only the throttle body is retried.
- */
 export function isRetryableStatus(status: number, body: string): boolean {
   if (status === 429) return true;
   if (status >= 500 && status <= 599) return true;
-  if (status === 403)
-    return /throttl|rate.?limit|too many requests/i.test(body);
+  if (status === 403) return THROTTLE_PATTERN.test(body);
   return false;
 }
 
@@ -151,11 +126,6 @@ export function backoffMs(attempt: number, random: () => number): number {
   return base + Math.floor(random() * base * BACKOFF_JITTER);
 }
 
-/**
- * Actions are not auto-retried by Convex, so the retry lives here. A
- * non-retryable verdict throws on the first attempt; a retryable one is retried
- * up to MAX_ATTEMPTS with jittered backoff.
- */
 export async function withRetry<T>(
   attempt: () => Promise<AttemptResult<T>>,
   sleep: (ms: number) => Promise<void>,
@@ -176,11 +146,6 @@ export async function withRetry<T>(
   );
 }
 
-/**
- * Local redactor. `packages/integration/src/blockfrost.mjs` carries no
- * declaration file, so importing it from `convex/` fails the typecheck under
- * `strict`; this mirrors its `project_id` handling.
- */
 export function redactIndexerUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -192,7 +157,6 @@ export function redactIndexerUrl(url: string): string {
   }
 }
 
-/** The token travels as a query parameter; the wallet SDKs used here send no header. */
 export function indexerEndpoint(url: string, token: string): string {
   const parsed = new URL(url);
   if (parsed.username || parsed.password)
@@ -209,11 +173,6 @@ export type IndexerTransport = {
   ) => Promise<AttemptResult<unknown>>;
 };
 
-/**
- * One GraphQL POST per attempt. Failure reasons carry the status or the error
- * name only, never the endpoint, so a token cannot reach a log line through a
- * thrown message. Every emitted line passes through `redactIndexerUrl`.
- */
 export function createIndexerTransport(
   url: string,
   token: string,
@@ -262,9 +221,8 @@ export function createIndexerTransport(
 function parseHead(data: unknown): number {
   const height = (data as { block?: { height?: unknown } } | null)?.block
     ?.height;
-  if (!Number.isSafeInteger(height) || (height as number) < 0)
-    throw new Error("indexer head block is missing");
-  return height as number;
+  if (!isIndex(height)) throw new Error("indexer head block is missing");
+  return height;
 }
 
 function parseAction(data: unknown): ContractAction | null {
@@ -286,24 +244,16 @@ function parseAction(data: unknown): ContractAction | null {
   if (
     !transaction ||
     typeof transaction.hash !== "string" ||
-    !Number.isSafeInteger(height) ||
+    !isIndex(height) ||
     typeof hash !== "string"
   )
     return null;
   return {
     state: action.state,
-    transaction: {
-      hash: transaction.hash,
-      block: { height: height as number, hash },
-    },
+    transaction: { hash: transaction.hash, block: { height, hash } },
   };
 }
 
-/**
- * Raised when the Compact runtime cannot be loaded in this Convex runtime. Named
- * so a caller or a log line can distinguish "this deployment cannot decode" from
- * an indexer failure, which is retryable and unrelated.
- */
 export class ChainRuntimeUnavailableError extends Error {
   constructor(
     message = "chain state decoding requires the Compact runtime, which is unavailable in this runtime",
@@ -314,20 +264,11 @@ export class ChainRuntimeUnavailableError extends Error {
   }
 }
 
-/**
- * Fails closed on a missing decoder. Separate from the loader so the guard is
- * exercisable without a WASM runtime and cannot drift from the error it raises.
- */
 export function requireDecoder<T>(decode: T | null): T {
   if (!decode) throw new ChainRuntimeUnavailableError();
   return decode;
 }
 
-/**
- * The Compact runtime is WASM-backed and its generated glue cannot load under
- * the Convex isolate runtime, so the decoder is loaded per poll and returned as
- * a plain function. A missing runtime is a named error, not a silent skip.
- */
 async function loadRuntimeDecoder(): Promise<
   ((stateHex: string) => DecodedState) | null
 > {
@@ -377,16 +318,26 @@ function indexerConfig(): { url: string; token: string } {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+export type PendingOrder = {
+  orderId: string;
+  address: string;
+  nonce: string;
+  artifactFingerprint: string;
+  lastStateHex: string | null;
+};
+
+const pendingOrderValidator = v.object({
+  orderId: v.string(),
+  address: v.string(),
+  nonce: v.string(),
+  artifactFingerprint: v.string(),
+  lastStateHex: v.union(v.string(), v.null()),
+});
+
 const pendingOrdersRef = makeFunctionReference<
   "query",
   Record<string, never>,
-  {
-    orderId: string;
-    address: string;
-    nonce: string;
-    artifactFingerprint: string;
-    lastStateHex: string | null;
-  }[]
+  PendingOrder[]
 >("chainObserver:pendingOrders");
 
 const recordObservationRef = makeFunctionReference<"mutation">(
@@ -399,15 +350,7 @@ const markObservedRef = makeFunctionReference<"mutation">(
 
 export const pendingOrders = internalQueryGeneric({
   args: {},
-  returns: v.array(
-    v.object({
-      orderId: v.string(),
-      address: v.string(),
-      nonce: v.string(),
-      artifactFingerprint: v.string(),
-      lastStateHex: v.union(v.string(), v.null()),
-    }),
-  ),
+  returns: v.array(pendingOrderValidator),
   handler: async (ctx) => {
     const rows = await ctx.db
       .query("chainOrders")
@@ -423,11 +366,6 @@ export const pendingOrders = internalQueryGeneric({
   },
 });
 
-/**
- * Stamps the raw state hex and its block on the chain row. Kept separate from
- * `orders:recordObservation` because that kernel only projects a phase; the hex
- * is observation bookkeeping used for change detection on the next poll.
- */
 export const markObserved = internalMutationGeneric({
   args: {
     orderId: v.string(),
@@ -459,15 +397,7 @@ export type PollSummary = {
 };
 
 export type PollDeps = {
-  runQuery: () => Promise<
-    {
-      orderId: string;
-      address: string;
-      nonce: string;
-      artifactFingerprint: string;
-      lastStateHex: string | null;
-    }[]
-  >;
+  runQuery: () => Promise<PendingOrder[]>;
   runMutation: (
     ref: unknown,
     args: Record<string, unknown>,
@@ -477,11 +407,31 @@ export type PollDeps = {
   fetchImpl: typeof fetch;
 };
 
-/**
- * The poll body, with every effect injected. The decoder is loaded before any
- * indexer traffic: a missing runtime is a permanent property of the deployment,
- * so discovering it after the head query only burns indexer quota on every run.
- */
+const retryParse = <T>(
+  transport: IndexerTransport,
+  query: string,
+  variables: Record<string, unknown> | undefined,
+  parse: (data: unknown) => T,
+  fallback: string,
+): Promise<T> =>
+  withRetry(
+    async () => {
+      const result = await transport.post(query, variables);
+      if (!result.ok) return result;
+      try {
+        return { ok: true as const, value: parse(result.value) };
+      } catch (error) {
+        return {
+          ok: false as const,
+          retryable: false,
+          reason: error instanceof Error ? error.message : fallback,
+        };
+      }
+    },
+    sleep,
+    Math.random,
+  );
+
 export async function runPoll(deps: PollDeps): Promise<PollSummary> {
   const pending = await deps.runQuery();
   const summary: PollSummary = {
@@ -494,35 +444,21 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
   const decode = requireDecoder(await deps.loadDecoder());
   const { url, token } = deps.config();
   const transport = createIndexerTransport(url, token, deps.fetchImpl);
-  const headHeight = await withRetry(
-    async () => {
-      const result = await transport.post(HEAD_BLOCK);
-      if (!result.ok) return result;
-      try {
-        return { ok: true as const, value: parseHead(result.value) };
-      } catch (error) {
-        return {
-          ok: false as const,
-          retryable: false,
-          reason: error instanceof Error ? error.message : "bad head block",
-        };
-      }
-    },
-    sleep,
-    Math.random,
+  const headHeight = await retryParse(
+    transport,
+    HEAD_BLOCK,
+    undefined,
+    parseHead,
+    "bad head block",
   );
   for (const order of pending) {
     try {
-      const action = await withRetry(
-        async () => {
-          const result = await transport.post(LATEST_CONTRACT_STATE, {
-            address: order.address,
-          });
-          if (!result.ok) return result;
-          return { ok: true as const, value: parseAction(result.value) };
-        },
-        sleep,
-        Math.random,
+      const action = await retryParse(
+        transport,
+        LATEST_CONTRACT_STATE,
+        { address: order.address },
+        parseAction,
+        "bad contract action",
       );
       const plan = planObservation({
         action,
@@ -543,9 +479,6 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
         revision: plan.revision,
         deliveryManifest: plan.deliveryManifest,
       })) as { kind: string } | null;
-      // Record the hex only for a state the kernel accepted. Stamping a
-      // contradictory or stale state would suppress it forever, because the
-      // next poll would then see an unchanged hex and skip the write.
       if (verdict?.kind !== "bind") {
         summary.skipped += 1;
         continue;

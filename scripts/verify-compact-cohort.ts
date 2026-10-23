@@ -16,25 +16,28 @@ assert.equal(
 );
 assert.equal(CompactState, OnchainState, "WASM runtime identities must match");
 
+const packageVersion = async (path: string): Promise<string> =>
+  (await Bun.file(path).json()).version as string;
+
 const versions = {
-  compactRuntime: (
-    await Bun.file(
-      require.resolve("@midnight-ntwrk/compact-runtime/package.json"),
-    ).json()
-  ).version as string,
-  onchainRuntime: (
-    await Bun.file(join(dirname(onchainEntry), "package.json")).json()
-  ).version as string,
+  compactRuntime: await packageVersion(
+    require.resolve("@midnight-ntwrk/compact-runtime/package.json"),
+  ),
+  onchainRuntime: await packageVersion(
+    join(dirname(onchainEntry), "package.json"),
+  ),
 };
 assert.equal(versions.compactRuntime, "0.16.0");
 assert.equal(versions.onchainRuntime, "3.1.2");
 
-for (const [flag, expected] of [
+const EXPECTED_VERSIONS = [
   ["--version", "0.31.1"],
   ["--language-version", "0.23.0"],
   ["--runtime-version", "0.16.0"],
   ["--ledger-version", "ledger-8.0.2"],
-] as const) {
+] as const;
+
+for (const [flag, expected] of EXPECTED_VERSIONS) {
   const result = Bun.spawnSync([".tools/compact/compiler/compactc", flag]);
   assert.equal(result.exitCode, 0, `Compiler ${flag} failed`);
   assert.equal(result.stdout.toString().trim(), expected, flag);

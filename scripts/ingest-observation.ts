@@ -1,18 +1,3 @@
-/**
- * RECONSTRUCTED (P8-W1-C) — executable observation ingest CLI.
- *
- *   bun scripts/ingest-observation.ts --deployment obs.json
- *   bun scripts/ingest-observation.ts --chain chain.json --order-id order_1
- *   bun scripts/ingest-observation.ts --deployment obs.json --dry-run
- *
- * - deployment → `observationIngest:recordDeployment`
- * - chain      → `orders:recordObservation` via the handoff payload builder
- *
- * Executes via `spawn(process.execPath, [convexCli, "run", fn, json])` — a real
- * argv, not a shell string. `--dry-run` prints the plan and exits 0 so CI can
- * assert routing without a Convex deployment.
- */
-
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -54,55 +39,46 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-/**
- * Validate a deployment document before any invocation. Contradictory shapes
- * are rejected here so a bad file never reaches Convex.
- */
+function requireObject(value: unknown, label: string) {
+  if (!isPlainObject(value))
+    fail(`${label} ingest document must be a plain object`);
+  return value;
+}
+
 export function planDeploymentIngest(document: unknown): IngestPlan {
-  if (!isPlainObject(document)) {
-    fail("deployment ingest document must be a plain object");
-  }
-  const record = document as unknown as ObservedDeployment;
-  if (!validDeploymentObservation(record)) {
+  const record = requireObject(
+    document,
+    "deployment",
+  ) as unknown as ObservedDeployment;
+  if (!validDeploymentObservation(record))
     fail("contradictory deployment observation: record is malformed");
-  }
   return { kind: "deployment", fn: DEPLOYMENT_FN, args: record };
 }
 
-/**
- * Chain handoff payload builder. Refuses to invent an order id: the caller
- * must pass `--order-id` and the document must agree.
- */
 export function buildRecordObservationPayload(
   document: unknown,
   orderId: string,
 ): Record<string, unknown> {
-  if (!isPlainObject(document)) {
-    fail("chain ingest document must be a plain object");
-  }
-  if (typeof orderId !== "string" || orderId.length === 0) {
+  const source = requireObject(document, "chain");
+  if (typeof orderId !== "string" || orderId.length === 0)
     fail("chain ingest requires a non-empty order id");
-  }
-  const order = document.orderId;
-  if (order !== undefined && order !== orderId) {
+  const order = source.orderId;
+  if (order !== undefined && order !== orderId)
     fail("chain ingest document orderId does not match --order-id");
-  }
-  const phase = document.phase;
-  const revision = document.revision;
-  if (typeof phase !== "string" || phase.length === 0) {
+  const phase = source.phase;
+  const revision = source.revision;
+  if (typeof phase !== "string" || phase.length === 0)
     fail("chain ingest document requires a phase");
-  }
-  if (typeof revision !== "number" || !Number.isSafeInteger(revision)) {
+  if (typeof revision !== "number" || !Number.isSafeInteger(revision))
     fail("chain ingest document requires an integer revision");
-  }
   return {
     orderId,
-    address: document.address,
-    nonce: document.nonce,
-    artifactFingerprint: document.artifactFingerprint,
+    address: source.address,
+    nonce: source.nonce,
+    artifactFingerprint: source.artifactFingerprint,
     phase,
     revision,
-    deliveryManifest: document.deliveryManifest ?? null,
+    deliveryManifest: source.deliveryManifest ?? null,
   };
 }
 
@@ -114,10 +90,6 @@ export function planChainIngest(
   return { kind: "chain", fn: CHAIN_FN, args, orderId };
 }
 
-/**
- * Real spawn argv: convex CLI path + `run` + function + JSON-encoded args.
- * JSON encoding keeps special characters intact; this is never a shell string.
- */
 export function ingestArgv(plan: IngestPlan, convexCli: string): string[] {
   return [convexCli, "run", plan.fn, JSON.stringify(plan.args)];
 }
@@ -162,45 +134,45 @@ export function defaultRunner(): IngestRunner {
     });
 }
 
-function parseArgs(argv: string[]): {
+type Args = {
   deploymentPath?: string;
   chainPath?: string;
   orderId?: string;
   dryRun: boolean;
-} {
-  const out: {
-    deploymentPath?: string;
-    chainPath?: string;
-    orderId?: string;
-    dryRun: boolean;
-  } = { dryRun: false };
+};
+
+type ValueFlag = "deploymentPath" | "chainPath" | "orderId";
+
+const VALUE_FLAGS: Record<string, ValueFlag> = {
+  "--deployment": "deploymentPath",
+  "--chain": "chainPath",
+  "--order-id": "orderId",
+};
+
+function parseArgs(argv: string[]): Args {
+  const out: Args = { dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--deployment") out.deploymentPath = argv[++i];
-    else if (arg === "--chain") out.chainPath = argv[++i];
-    else if (arg === "--order-id") out.orderId = argv[++i];
-    else if (arg === "--dry-run") out.dryRun = true;
+    if (arg === "--dry-run") out.dryRun = true;
+    else if (arg in VALUE_FLAGS) out[VALUE_FLAGS[arg]] = argv[++i];
     else fail(`unknown argument: ${arg}`);
   }
   return out;
 }
 
+function readJson(path: string): unknown {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  if (args.deploymentPath && args.chainPath) {
+  if (args.deploymentPath && args.chainPath)
     fail("pass either --deployment or --chain, not both");
-  }
-  if (!args.deploymentPath && !args.chainPath) {
+  if (!args.deploymentPath && !args.chainPath)
     fail("pass --deployment <file> or --chain <file> --order-id <id>");
-  }
-  let plan: IngestPlan;
-  if (args.deploymentPath) {
-    const document = JSON.parse(readFileSync(args.deploymentPath, "utf8"));
-    plan = planDeploymentIngest(document);
-  } else {
-    const document = JSON.parse(readFileSync(args.chainPath as string, "utf8"));
-    plan = planChainIngest(document, args.orderId ?? "");
-  }
+  const plan = args.deploymentPath
+    ? planDeploymentIngest(readJson(args.deploymentPath))
+    : planChainIngest(readJson(args.chainPath ?? ""), args.orderId ?? "");
   if (args.dryRun) {
     process.stdout.write(
       `${JSON.stringify({ kind: plan.kind, fn: plan.fn, orderId: plan.orderId ?? null })}\n`,

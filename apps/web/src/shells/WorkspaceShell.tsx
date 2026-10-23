@@ -20,6 +20,16 @@ const avatarPhoto: Record<Role, string> = {
   operator: "/images/avatar-operator.webp",
 };
 
+const NAV = [
+  { to: "/orders/sample-001", label: "Sample workspace", Icon: ShieldIcon },
+  { to: "/orders", label: "Your orders", Icon: InboxIcon, end: true },
+  { to: "/quotes/sample-001", label: "The agreement", Icon: FileIcon },
+  { to: "/merchant/orders", label: "Studio queue", Icon: InboxIcon },
+  { to: "/merchant/quotes/new", label: "New quote", Icon: FileIcon },
+  { to: "/operator/cases", label: "Resolution desk", Icon: FlagIcon },
+  { to: "/connections", label: "Connections", Icon: PlugIcon },
+] as const;
+
 export function WorkspaceShell() {
   const isConnections =
     useLocation().pathname.replace(/\/+$/, "") === "/connections";
@@ -56,50 +66,14 @@ export function WorkspaceShell() {
           </button>
         </div>
         <nav aria-label="Workspace">
-          <NavLink to="/orders/sample-001" aria-label="Sample workspace">
-            <Icon>
-              <ShieldIcon />
-            </Icon>
-            <span className="nav-text">Sample workspace</span>
-          </NavLink>
-          <NavLink to="/orders" end aria-label="Your orders">
-            <Icon>
-              <InboxIcon />
-            </Icon>
-            <span className="nav-text">Your orders</span>
-          </NavLink>
-          <NavLink to="/quotes/sample-001" aria-label="The agreement">
-            <Icon>
-              <FileIcon />
-            </Icon>
-            <span className="nav-text">The agreement</span>
-          </NavLink>
-          <NavLink to="/merchant/orders" aria-label="Studio queue">
-            <Icon>
-              <InboxIcon />
-            </Icon>
-            <span className="nav-text">Studio queue</span>
-          </NavLink>
-          <NavLink to="/merchant/quotes/new" aria-label="New quote">
-            <Icon>
-              <FileIcon />
-            </Icon>
-            <span className="nav-text">New quote</span>
-          </NavLink>
-          <NavLink to="/operator/cases" aria-label="Resolution desk">
-            <Icon>
-              <FlagIcon />
-            </Icon>
-            <span className="nav-text">Resolution desk</span>
-          </NavLink>
-          <NavLink to="/connections" aria-label="Connections">
-            <Icon>
-              <PlugIcon />
-            </Icon>
-            <span className="nav-text">Connections</span>
-          </NavLink>
-          {/* The horizontal mobile nav keeps account/recovery reachable
-              (04 §9.3); the desktop sidebar-bottom shows the full entry. */}
+          {NAV.map(({ to, label, Icon: Glyph, ...rest }) => (
+            <NavLink key={to} to={to} aria-label={label} {...rest}>
+              <Icon>
+                <Glyph />
+              </Icon>
+              <span className="nav-text">{label}</span>
+            </NavLink>
+          ))}
           <NavLink
             to="/account"
             className="account-nav-link"
@@ -127,7 +101,6 @@ export function WorkspaceShell() {
       <div className="app-body">
         <header className="app-topbar">
           <div>
-            {/* Persistent sample label on every workspace surface (04 §4.4) */}
             <Badge tone="violet">
               {isConnections
                 ? "Connection diagnostics"

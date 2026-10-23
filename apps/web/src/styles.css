@@ -12,7 +12,6 @@
   --success: var(--c-success);
   --warning: var(--c-warning);
   --danger: var(--c-danger);
-  /* Design tokens (04-ui-design §2.1) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -34,7 +33,6 @@
   --text-title: clamp(28px, 2.8vw, 40px);
   --text-hero: clamp(40px, 4.1vw, 64px);
   --measure: 68ch;
-  /* Extended semantic tokens (drift audit E-9; 04 §2.1 named-variable mechanism) */
   --quiet: var(--c-surface-sunken);
   --quiet-hover: #e4dfd4;
   --quiet-line: var(--c-line);
@@ -69,9 +67,6 @@
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
-
-/* Dark mode for the literal-valued aliases only. Anything declared as
-   `var(--c-*)` in :root already flips with tokens.css; do not restate it. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --quiet-hover: #26221c;
@@ -112,9 +107,6 @@
   --shadow-soft: #00000059;
   --shadow-dialog: #000000b3;
 }
-
-/* Numeric alignment (04-ui-design §2.1): tabular figures keep digit columns
-   aligned and stop a changing value from reflowing. */
 .payment-total,
 .detail-grid dd,
 .confirmation-summary dd,
@@ -132,8 +124,6 @@ code,
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
-
-/* Public shell framing: short pages still fill the viewport (§4.1). */
 .public-shell {
   min-height: 100dvh;
   display: flex;
@@ -166,8 +156,6 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
-/* Disabled state uses tested muted colors, not a contrast-breaking fade
-   (04-ui-design §2.1: disabled-state checks remain mandatory). */
 .button:disabled {
   background: var(--muted);
   border-color: var(--muted);
@@ -332,7 +320,6 @@ h2 {
   font-size: 12px;
   text-decoration: none;
 }
-/* Public info pages rendered by the SPA PublicShell */
 .public-main {
   padding-block: var(--space-8) var(--space-9);
   min-height: 50vh;
@@ -442,8 +429,6 @@ h2 {
   color: var(--muted);
   margin-top: 4px;
 }
-/* One status-pill concept (04 §2.1; 01 §7.5): icon + text, filled tint per
-   documented tone. Shared by the Badge component and public surfaces. */
 .tag {
   display: inline-flex;
   gap: 6px;
@@ -517,7 +502,6 @@ h2 {
   font-size: 30px;
   margin: 15px 0 24px;
 }
-
 .process-card {
   border-left: 1px solid var(--line);
   padding-left: 26px;
@@ -576,7 +560,6 @@ h2 {
   gap: 20px;
   font-size: var(--text-micro);
 }
-
 @media (width >= 1600px) {
   .hero {
     gap: 80px;
@@ -634,8 +617,6 @@ h2 {
   .public-header .wordmark {
     font-size: 42px;
   }
-  /* Mobile navigation stays reachable (04-ui-design §4.1: a normal
-     accessible menu); links wrap instead of disappearing. */
   .public-header nav {
     gap: 14px;
     flex-wrap: wrap;
@@ -722,7 +703,6 @@ h2 {
     font-size: 12px;
   }
 }
-/* Product strip: a static, honest preview of the real workspace */
 .product-strip {
   padding-block: var(--space-8);
   border-top: 1px solid var(--line);
@@ -869,8 +849,6 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
-
-/* Landing: merchant value, FAQ, closing CTA (04-ui-design §4.1 blocks 7–9) */
 .value-section {
   padding-block: var(--space-8);
   border-top: 1px solid var(--line);
@@ -942,8 +920,6 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
-
-/* Public guided sample tour (04-ui-design §4.4) */
 .demo-window {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1089,7 +1065,6 @@ h2 {
 .demo-detail dd {
   margin: var(--space-1) 0 0;
 }
-/* Specificity 0,2,0 outranks .demo-window details (0,1,1). */
 .demo-window .demo-case {
   border-top: 0;
   padding-block: var(--space-2);
@@ -1132,7 +1107,6 @@ h2 {
   border-radius: var(--radius-control);
   padding: var(--space-4);
 }
-/* demo outcome chips use the shared .tag pill */
 .demo-toggle {
   display: flex;
   align-items: center;
@@ -1170,11 +1144,7 @@ h2 {
     padding-inline: var(--space-4);
   }
 }
-
-/* Motion grammar (04-ui-design §12.1): restrained reveal and seal response,
-   gated on no-preference; the static first frame is already complete. */
 @media (prefers-reduced-motion: no-preference) {
-  /* 04 §12.1: transform-only accent inside the 120–220ms budget (01 §7.4). */
   @keyframes hero-rise {
     from {
       transform: translateY(10px);
@@ -1214,22 +1184,23 @@ h2 {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    /* biome-ignore lint/complexity/noImportantStyles: the reduce guard must outrank every component transition (04-ui-design §12.1) */
-    animation: none !important;
-    /* biome-ignore lint/complexity/noImportantStyles: the reduce guard must outrank every component transition (04-ui-design §12.1) */
-    transition: none !important;
+  .button,
+  .scenario-link,
+  .front-card,
+  .back-card,
+  .order-seal,
+  .hero-copy > *,
+  .hero-art,
+  .image-wrap img,
+  .app-shell,
+  .dialog-overlay,
+  .dialog-content {
+    animation: none;
+    transition: none;
     scroll-behavior: auto;
   }
 }
-
-/* Print (04-ui-design §4.6): the record and nothing else — chrome and action
-   controls removed, elevation and page background dropped to save ink. */
 @media print {
-  /* `:root:root` (0,2,0) outranks the dark-mode token blocks (0,1,1) so a
-     dark-theme user still prints black-on-white. */
   :root:root {
     color-scheme: light;
     --c-bg: #ffffff;

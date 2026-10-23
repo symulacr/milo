@@ -29,18 +29,19 @@ import {
   writeKit,
 } from "./recovery-runtime";
 
-/**
- * Client-local recovery surface over the pure recovery-kit state machine.
- * Nothing here claims a reserve succeeded without a real signed transaction
- * and a matching observation.
- */
 const NETWORK = "preprod";
 
-/** The seven recovery-kit ops: UI-wired on this panel or justified in writing. */
 type RecoveryKitOpRow = {
   op: string;
   disposition: "ui-wired" | "justified";
   detail: string;
+};
+
+type Action = {
+  label: string;
+  run: () => void;
+  disabled: boolean;
+  className?: string;
 };
 
 export const RECOVERY_KIT_OPS: RecoveryKitOpRow[] = [
@@ -48,62 +49,57 @@ export const RECOVERY_KIT_OPS: RecoveryKitOpRow[] = [
     op: "beginOperation",
     disposition: "ui-wired",
     detail:
-      "UI-wired for the reserve operation via the in-flight tracker (Begin reserve operation), which records a real submission identity and leaves the kit unusable. deploy|submit|approve stay justified: only reserve is wired through midnight-client prepareReserveCall; deploy is the A1 ingest observation path (server-side); submit/approve are order.compact circuits with no browser call path.",
+      "UI-wired: Begin reserve operation records a real submission identity.",
   },
   {
     op: "resumeOperation",
     disposition: "justified",
     detail:
-      "Not wired in this browser UI. A pending operation is displayed for reconciliation, but resume is not offered because no browser order.compact call path can safely retry a submission. resumeOperation itself only re-reads the retained identity and never marks the order usable.",
+      "Not wired in this browser UI; no browser order.compact call path can safely retry.",
   },
   {
     op: "confirmOperation",
     disposition: "ui-wired",
     detail:
-      "UI-wired for reserve via Confirm from observation, which fails closed without a real chain observation and never invents a transition. deploy|submit|approve confirmation stay justified for the same missing call paths as beginOperation. A deploy confirmation alone never yields a usable order.",
+      "UI-wired: Confirm from observation fails closed without a real chain observation.",
   },
   {
     op: "abandonOperation",
     disposition: "justified",
     detail:
-      "Not wired in this browser UI. Abandon cannot cancel a possibly submitted transaction; the kit surfaces requiresReconciliation instead of a one-click abandon that might imply cancellation. Domain-tested: abandon never yields a usable order.",
+      "Not wired in this browser UI; abandon cannot cancel a possibly submitted transaction.",
   },
   {
     op: "loseCapability",
     disposition: "ui-wired",
-    detail:
-      "UI-wired as the Mark capability lost control. The resulting LOST kit is read-only; signing in again cannot recreate the capability, and the panel never claims an email reset is a substitute.",
+    detail: "UI-wired: Mark capability lost leaves a read-only LOST kit.",
   },
   {
     op: "restoreKit",
     disposition: "justified",
     detail:
-      "Not wired in this browser UI. No backup-import flow is wired (gated UX per blueprint recovery kit); a lost capability stays read-only until an explicit restore path exists. Domain-tested: restore never re-grants a usable order by itself.",
+      "Not wired in this browser UI; no backup-import flow is wired (gated UX).",
   },
   {
     op: "adoptBackup",
     disposition: "justified",
     detail:
-      "Not wired in this browser UI. Same-scope backup adoption is domain-tested only (gated UX); this panel never rolls kit state from an imported file. A stale backup that would roll back newer active state is refused in the domain layer.",
+      "Not wired in this browser UI; same-scope backup adoption is domain-tested only (gated UX).",
   },
 ];
 
-/** Lifecycle steps still without a browser path; each names the missing piece. */
-const unavailableSteps: { step: string; detail: string }[] = [
+const unavailableSteps = [
   {
     step: "Merchant accepts and submits the delivery",
-    detail:
-      "Requires a checkpointed recovery context and the immutable submit circuit. Blocked: no browser order.compact call path for accept/submit. Private delivery-file storage exists on the Convex surface (convex/files.ts) but is not wired through this browser panel.",
+    detail: "No browser order.compact call path for accept/submit.",
   },
   {
     step: "Buyer approves or opens a dispute",
-    detail:
-      "The chain-backed order record (phase + checkpoint address) is readable from the Convex projection on the authenticated surface. Still blocked: approve/dispute are order.compact circuits with no browser call path.",
+    detail: "No browser order.compact call path for approve/dispute.",
   },
   {
     step: "Capture or void the payment",
-    detail:
-      "Blocked: Stripe capture, void and webhook ingress are not browser-reachable. Only read-only observation of an existing Stripe test payment is available below.",
+    detail: "Stripe capture and void are not browser-reachable.",
   },
 ];
 
@@ -113,7 +109,6 @@ const scopeOf = (kit: RecoveryKit) => ({
   orderNonce: kit.orderNonce,
 });
 
-/** One-line state of the stored kit for the current scope. */
 function contextStatus(kit: RecoveryKit | null): string {
   if (!kit)
     return "No local recovery context is stored for this actor and order nonce.";
@@ -126,6 +121,31 @@ function contextStatus(kit: RecoveryKit | null): string {
   return "Local recovery context created on this device. Verify it before any payment hold.";
 }
 
+function TextField({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="field">
+      {label}
+      <input
+        type="text"
+        autoComplete="off"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+      />
+    </label>
+  );
+}
+
 export function RecoveryKitPanel({
   defaultOrderNonce,
 }: {
@@ -133,8 +153,7 @@ export function RecoveryKitPanel({
 } = {}) {
   const { data: session } = useMiloAuth().useSession();
   const authenticated = Boolean(session?.user);
-  const user = session?.user;
-  const actorId = user?.id;
+  const actorId = session?.user?.id;
   const [nonce, setNonce] = useState(defaultOrderNonce ?? "");
   const [kit, setKit] = useState<RecoveryKit | null>(null);
   const [notice, setNotice] = useState("");
@@ -148,7 +167,6 @@ export function RecoveryKitPanel({
     }
     setNotice("");
     setKit(readKit({ actorId, network: NETWORK, orderNonce }));
-    // Another panel or tab may write the same key; never show a stale stage.
     return subscribeKitChanges(() => {
       setKit(readKit({ actorId, network: NETWORK, orderNonce }));
     });
@@ -162,8 +180,6 @@ export function RecoveryKitPanel({
         ? "Recovery context saved in this browser’s local storage."
         : "This browser refused local storage. The context is shown but not persisted.",
     );
-    // Only on a real write: listeners re-read storage, so an unsaved kit
-    // would be replaced by the stale (or absent) stored one.
     if (saved) emitRecoveryKitChanged();
   }
   function prepare() {
@@ -204,12 +220,6 @@ export function RecoveryKitPanel({
   return (
     <>
       <h3>Order recovery context</h3>
-      <p>
-        The browser persists only this order’s non-secret recovery context —
-        actor, network, order nonce and status — in local storage, before any
-        submission. No capability, witness, seed or file is ever stored here,
-        and nothing on this device is treated as authorisation.
-      </p>
       {!authenticated ? (
         <p role="status">
           Sign in above to bind the order actor. The recovery context is scoped
@@ -220,54 +230,48 @@ export function RecoveryKitPanel({
           <p role="status">
             Actor {actorId}. Network {NETWORK.toUpperCase()}.
           </p>
-          <label className="field">
-            Order nonce
-            <input
-              type="text"
-              autoComplete="off"
-              value={nonce}
-              onChange={(event) => setNonce(event.target.value)}
-            />
-          </label>
+          <TextField label="Order nonce" value={nonce} onChange={setNonce} />
           <p role="status">{contextStatus(kit)}</p>
           {notice && <p role="status">{notice}</p>}
           <div className="connection-actions">
-            {[
-              {
-                label: "Prepare local context",
-                onClick: prepare,
-                disabled: !bound || kit !== null,
-                className: "button",
-              },
-              {
-                label: "Verify context",
-                onClick: verify,
-                disabled: kit?.stage !== "EXPORTED",
-                className: "button secondary",
-              },
-              {
-                label: "Mark capability lost",
-                onClick: lose,
-                disabled: !kit || kit.stage === "LOST",
-                className: "button secondary",
-              },
-              {
-                label: "Forget local context",
-                onClick: forget,
-                disabled: !kit,
-                className: "button secondary",
-              },
-            ].map(({ label, ...action }) => (
-              <button key={label} type="button" {...action}>
-                {label}
-              </button>
-            ))}
+            {(
+              [
+                {
+                  label: "Prepare local context",
+                  run: prepare,
+                  disabled: !bound || kit !== null,
+                  className: "button",
+                },
+                {
+                  label: "Verify context",
+                  run: verify,
+                  disabled: kit?.stage !== "EXPORTED",
+                },
+                {
+                  label: "Mark capability lost",
+                  run: lose,
+                  disabled: !kit || kit.stage === "LOST",
+                },
+                { label: "Forget local context", run: forget, disabled: !kit },
+              ] as Action[]
+            ).map(
+              ({ label, run, disabled, className = "button secondary" }) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={className}
+                  disabled={disabled}
+                  onClick={run}
+                >
+                  {label}
+                </button>
+              ),
+            )}
           </div>
           {kit?.requiresReconciliation && (
             <p role="alert">
               A prior operation was interrupted or a capability was lost.
-              Reconcile the retained identity before any retry; an abort cannot
-              cancel a possibly submitted transaction.
+              Reconcile the retained identity before any retry.
             </p>
           )}
           <CheckpointSection kit={kit} onCheckpoint={persist} />
@@ -275,12 +279,6 @@ export function RecoveryKitPanel({
         </>
       )}
       <h3>Order lifecycle</h3>
-      <p>
-        The buyer reserve path above is real scaffolding: it prepares a
-        fail-closed descriptor through the Midnight client and tracks operations
-        through the recovery kit. Remaining steps still have no browser path and
-        name what is missing rather than being simulated:
-      </p>
       <dl className="detail-grid">
         {unavailableSteps.map(({ step, detail }) => (
           <div key={step}>
@@ -290,11 +288,6 @@ export function RecoveryKitPanel({
         ))}
       </dl>
       <h4>Recovery-kit operations: wired or justified</h4>
-      <p>
-        Every recovery-kit operation in the pure state machine is either called
-        from this browser surface or listed here with a written justification.
-        Nothing is silently dead or simulated:
-      </p>
       <dl className="detail-grid">
         {RECOVERY_KIT_OPS.map(({ op, disposition, detail }) => (
           <div key={op}>
@@ -313,10 +306,6 @@ export function RecoveryKitPanel({
   );
 }
 
-/**
- * Checkpoint the canonical address from a confirmed deployment observation.
- * The address is supplied from a real observation; Milo never invents one.
- */
 export function CheckpointSection({
   kit,
   onCheckpoint,
@@ -335,21 +324,13 @@ export function CheckpointSection({
   return (
     <section aria-labelledby="checkpoint-title">
       <h4 id="checkpoint-title">Checkpoint canonical address</h4>
-      <p>
-        Bind the deployed contract address from a confirmed deployment
-        observation. The address is not created here — supply the one a real
-        observation produced. An order nonce is never accepted as an address.
-      </p>
-      <label className="field">
-        Observed canonical address
-        <input
-          type="text"
-          autoComplete="off"
-          value={observedAddress}
-          onChange={(event) => setObservedAddress(event.target.value)}
-          disabled={kit.stage !== "VERIFIED"}
-        />
-      </label>
+      <p>An order nonce is never accepted as an address.</p>
+      <TextField
+        label="Observed canonical address"
+        value={observedAddress}
+        onChange={setObservedAddress}
+        disabled={kit.stage !== "VERIFIED"}
+      />
       <p role="status">
         {assessment.ready
           ? "Ready to checkpoint the supplied observed address."
@@ -369,11 +350,6 @@ export function CheckpointSection({
   );
 }
 
-/**
- * Buyer reserve scaffolding: Lace wallet connection plus midnight-client
- * `prepareReserveCall`. Fail closed on every missing prerequisite; prepare
- * returns a descriptor only, never a signature or a completed reserve.
- */
 export function BuyerReserveSection({
   kit,
   onBegin,
@@ -390,8 +366,6 @@ export function BuyerReserveSection({
   const [candidates, setCandidates] = useState(() =>
     typeof window === "undefined" ? [] : discoverWallets(window.midnight),
   );
-  // Selection is keyed by CAIP-372 `rdns`, not list position: a wallet that
-  // arrives after mount must not silently steal or lose the user's choice.
   const [selectedRdns, setSelectedRdns] = useState(
     () => candidates[0]?.rdns ?? "",
   );
@@ -399,8 +373,6 @@ export function BuyerReserveSection({
     0,
     candidates.findIndex((w) => w.rdns === selectedRdns),
   );
-  // A wallet injected after mount (extension or SDK boot) is connectable
-  // without a reload: discovery re-runs on the registry ping and on focus.
   useEffect(() => {
     const refresh = () => setCandidates(discoverWallets(window.midnight));
     const events = ["milo:midnight-registry", "focus"] as const;
@@ -420,13 +392,10 @@ export function BuyerReserveSection({
   const [prepareNotice, setPrepareNotice] = useState("");
   const [operationIdentity, setOperationIdentity] = useState("");
   const [operationRevision, setOperationRevision] = useState("0");
-
-  // Providers are not assembled in this build; the gate names the missing slots.
   const providers = useMemo(() => ({}), []);
   const prepareInput: PrepareReserveInput = {
     kit,
     wallet,
-    // Secrets never enter form fields; the gate reports the missing state.
     privateState: null,
     providers,
     expectedRevision: 0n,
@@ -434,8 +403,6 @@ export function BuyerReserveSection({
   const prepareGate = assessPrepareReserve(prepareInput);
 
   function connect() {
-    // Re-discover at click time so a wallet injected after mount connects on
-    // the first click instead of requiring a page reload.
     const fresh = discoverWallets(window.midnight);
     setCandidates(fresh);
     void connector.connect(
@@ -449,8 +416,7 @@ export function BuyerReserveSection({
     );
   }
   function runPrepare() {
-    const result = prepareBuyerReserve(prepareInput);
-    setPrepareNotice(result.message);
+    setPrepareNotice(prepareBuyerReserve(prepareInput).message);
   }
   function runBegin() {
     if (!kit) return;
@@ -465,23 +431,13 @@ export function BuyerReserveSection({
   }
   function runConfirm() {
     if (!kit) return;
-    // No observation source is wired in this build: confirm fails closed.
-    const result = confirmObservedReserve(kit, null);
-    setPrepareNotice(result.message);
+    setPrepareNotice(confirmObservedReserve(kit, null).message);
   }
 
   return (
     <section aria-labelledby="buyer-reserve-title">
       <h4 id="buyer-reserve-title">Buyer reserve</h4>
-      <p>
-        Prepare the buyer `reserve` circuit call through the Midnight client.
-        Preparation validates wallet, network, checkpointed address and provider
-        slots and returns a descriptor only. No signature is requested here, and
-        no reserve is claimed complete without a real signed transaction and a
-        matching observation.
-      </p>
       <p className="micro muted">{reserveRunStatus()}</p>
-
       <h5>Midnight Lace wallet</h5>
       <p role="status">{walletNotice}</p>
       {wallet.status === "connected" ? (
@@ -523,11 +479,10 @@ export function BuyerReserveSection({
           </button>
         </div>
       )}
-
       <h5>Prepare reserve</h5>
       <p role="status">
         {prepareGate.ready
-          ? "Prerequisites present. Prepare will call the Midnight client and return a descriptor only."
+          ? "Prerequisites present. Prepare returns a descriptor only."
           : prepareGate.message}
       </p>
       <div className="connection-actions">
@@ -540,37 +495,20 @@ export function BuyerReserveSection({
           Prepare reserve call
         </button>
       </div>
-
       <h5>Track in-flight reserve</h5>
-      <p>
-        `beginOperation` records a real submission attempt and leaves the kit
-        unusable until a matching observation confirms it. Use it only with a
-        transaction identity from an actual submission; this panel never invents
-        one.
-      </p>
-      {[
-        {
-          label: "Operation identity (from a real submission)",
-          value: operationIdentity,
-          onChange: setOperationIdentity,
-        },
-        {
-          label: "Expected revision",
-          value: operationRevision,
-          onChange: setOperationRevision,
-        },
-      ].map(({ label, value, onChange }) => (
-        <label className="field" key={label}>
-          {label}
-          <input
-            type="text"
-            autoComplete="off"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            disabled={kit?.stage !== "CHECKPOINTED"}
-          />
-        </label>
-      ))}
+      <p>Use a real submission identity; this panel never invents one.</p>
+      <TextField
+        label="Operation identity (from a real submission)"
+        value={operationIdentity}
+        onChange={setOperationIdentity}
+        disabled={kit?.stage !== "CHECKPOINTED"}
+      />
+      <TextField
+        label="Expected revision"
+        value={operationRevision}
+        onChange={setOperationRevision}
+        disabled={kit?.stage !== "CHECKPOINTED"}
+      />
       <div className="connection-actions">
         <button
           className="button secondary"

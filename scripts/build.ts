@@ -11,44 +11,43 @@ const browserConfig = publicConfig(process.env);
 const outdir = "dist";
 const buildEntrypoints = ".tools/build-entrypoints";
 
-await Bun.$`rm -rf ${outdir}`;
-await Bun.$`rm -rf ${buildEntrypoints}`;
-await Bun.$`mkdir -p ${buildEntrypoints}`;
+const HTML_NAMES = ["index", "app", "public-app"] as const;
 
-const prepareHtmlEntrypoint = async (name: "index" | "app" | "public-app") => {
-  const source = await Bun.file(`apps/web/${name}.html`).text();
-  await Bun.write(
-    `${buildEntrypoints}/${name}.html`,
-    source
-      .replaceAll('href="./src/', 'href="../../apps/web/src/')
-      .replaceAll('src="./src/', 'src="../../apps/web/src/')
-      .replaceAll('href="./public/', 'href="../../apps/web/public/')
-      .replaceAll('src="./public/', 'src="../../apps/web/public/')
-      // Social-card and icon URLs live in `content=`, which the href/src
-      // rewrites never touched, so they shipped as `./public/...` and 404'd.
-      .replaceAll('content="./public/', 'content="../../apps/web/public/'),
-  );
+const STAGE_PAIRS = [
+  [/((?:href|src)=")\.\/src\//g, "$1../../apps/web/src/"],
+  [/((?:href|src|content)=")\.\/public\//g, "$1../../apps/web/public/"],
+] as const;
+
+const EMITTED_PATTERN = /\.\.\/\.\.\/apps\/web\/(?:public|src)\//g;
+
+const transform = async (
+  path: string,
+  pairs: readonly (readonly [RegExp, string])[],
+): Promise<string> => {
+  let text = await Bun.file(path).text();
+  for (const [pattern, replacement] of pairs)
+    text = text.replaceAll(pattern, replacement);
+  return text;
 };
 
-await Promise.all([
-  prepareHtmlEntrypoint("index"),
-  prepareHtmlEntrypoint("app"),
-  prepareHtmlEntrypoint("public-app"),
-]);
+const prepareHtmlEntrypoint = async (name: string): Promise<number> =>
+  Bun.write(
+    `${buildEntrypoints}/${name}.html`,
+    await transform(`apps/web/${name}.html`, STAGE_PAIRS),
+  );
+
+await Bun.$`rm -rf ${outdir} ${buildEntrypoints}`;
+await Bun.$`mkdir -p ${buildEntrypoints}`;
+
+await Promise.all(HTML_NAMES.map(prepareHtmlEntrypoint));
+
 const result = await Bun.build({
-  entrypoints: [
-    `${buildEntrypoints}/index.html`,
-    `${buildEntrypoints}/app.html`,
-    `${buildEntrypoints}/public-app.html`,
-  ],
+  entrypoints: HTML_NAMES.map((name) => `${buildEntrypoints}/${name}.html`),
   outdir,
   root: buildEntrypoints,
   publicPath: "/",
   minify: true,
   define: { "process.env.NODE_ENV": '"production"' },
-  // Emit lazy chunks. Without this, every module reachable from app.html - including the
-  // whole EVM wallet connector stack that @privy-io/react-auth pulls in statically - lands
-  // in one 5.4 MiB file the browser must fetch before the workspace renders.
   splitting: true,
   naming: {
     entry: "[dir]/[name].[ext]",
@@ -66,39 +65,22 @@ if (!result.success) {
   process.exit(1);
 }
 
-/**
- * The staging rewrite points asset references at `../../apps/web/public/...`
- * so the bundler can resolve them. Those paths must not survive into `dist`:
- * they escape the deploy root, so every social card and icon 404s. Rewrite the
- * emitted HTML back to root-relative URLs.
- */
-const rewriteEmittedHtml = async (path: string) => {
+for (const name of HTML_NAMES) {
+  const path = `${outdir}/${name}.html`;
   const html = await Bun.file(path).text();
-  await Bun.write(
-    path,
-    html
-      .replaceAll("../../apps/web/public/", "/")
-      .replaceAll("../../apps/web/src/", "/"),
-  );
-};
-for (const name of ["index", "app", "public-app"]) {
-  await rewriteEmittedHtml(`${outdir}/${name}.html`);
+  await Bun.write(path, html.replaceAll(EMITTED_PATTERN, "/"));
 }
 
-for (const route of publicAppRoutes) {
+const copyRoute = async (route: string, source: string): Promise<void> => {
   await Bun.$`mkdir -p ${outdir}${route}`;
   await Bun.write(
     `${outdir}${route}/index.html`,
-    Bun.file(`${outdir}/public-app.html`),
+    Bun.file(`${outdir}/${source}.html`),
   );
-}
-for (const route of workspaceAppRoutes) {
-  await Bun.$`mkdir -p ${outdir}${route}`;
-  await Bun.write(
-    `${outdir}${route}/index.html`,
-    Bun.file(`${outdir}/app.html`),
-  );
-}
+};
+
+for (const route of publicAppRoutes) await copyRoute(route, "public-app");
+for (const route of workspaceAppRoutes) await copyRoute(route, "app");
 
 await Bun.write(`${outdir}/api/public-config`, JSON.stringify(browserConfig));
 await Bun.write(
@@ -107,17 +89,13 @@ await Bun.write(
 );
 
 const publicDirectory = "apps/web/public";
-/**
- * The QA harness is development tooling, not product. It used to ship because
- * this copied every file under `public/`, and `qa-build/qa-reserve-ui.js`
- * alone was a third of the bundle.
- */
 const QA_ONLY = [/^qa-/, /^samples\/qa-/, /^qa-build\//];
+
 for (const path of new Bun.Glob("**/*").scanSync(publicDirectory)) {
   if (QA_ONLY.some((pattern) => pattern.test(path))) continue;
   await Bun.write(`${outdir}/${path}`, Bun.file(`${publicDirectory}/${path}`));
 }
-// Static-host route file is generated so a fresh clone cannot drift from the table.
+
 const redirects = [
   ...publicAppRoutes.map((route) => `${route} /public-app.html 200`),
   ...publicAppPrefixes.map((prefix) => `${prefix}/* /public-app.html 200`),
@@ -126,10 +104,8 @@ const redirects = [
 ].join("\n");
 await Bun.write(`${outdir}/_redirects`, `${redirects}\n`);
 
-// §7.4 bundle inventory: report emitted JS so lazy/public chunks stay visible.
 for (const output of result.outputs) {
-  if (output.path.endsWith(".js")) {
-    const bytes = new Uint8Array(await output.arrayBuffer()).length;
-    console.log(`bundle: ${output.path.split("/").pop()} ${bytes} bytes (raw)`);
-  }
+  if (!output.path.endsWith(".js")) continue;
+  const bytes = new Uint8Array(await output.arrayBuffer()).length;
+  console.log(`bundle: ${output.path.split("/").pop()} ${bytes} bytes (raw)`);
 }

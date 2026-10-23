@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import {
   type AtomicDeliveryRepository,
   authorizeDeliveryRead,
+  type DeliveryTransaction,
   deliveryCommitment,
   freezeDelivery,
   GRANT_GRACE_MS,
@@ -23,12 +24,6 @@ import { requireMembership } from "./auth/identity";
 
 export { GRANT_GRACE_MS, GRANT_TTL_MS };
 
-/**
- * Typed references to the sibling functions this module schedules or calls.
- * A bare string is not a registered function reference: it resolves to nothing
- * at runtime, so the scheduled work silently never runs. These names must stay
- * in step with the exports below.
- */
 const inspectGrantRef = makeFunctionReference<"action">(
   "files:inspectGrantAction",
 );
@@ -42,7 +37,6 @@ const resolveReadRef = makeFunctionReference<"mutation">(
   "files:resolveReadMutation",
 );
 
-/** Action contexts have no `db`; they reach storage and delegate writes here. */
 type ActionContext = {
   storage: {
     store: (bytes: Uint8Array) => Promise<string>;
@@ -53,23 +47,29 @@ type ActionContext = {
   runMutation: (ref: unknown, args: unknown) => Promise<unknown>;
 };
 
+type ContentType = "image/png" | "image/jpeg" | "image/webp";
+type Inspected = {
+  storageId: string;
+  sha256: string;
+  contentType: string;
+  byteLength: number;
+};
+type ProposedFile = {
+  grantId: string;
+  sha256: string;
+  contentType: string;
+  byteLength: number;
+};
 type FileGrantRow = {
   _id: string;
   orderId: string;
   uploaderId: string;
   expiresAt: number;
   consumed: boolean;
-  /** One-time ticket issued with the upload URL; consumed at attach. */
   uploadTicket?: string;
   storageId?: string;
-  inspected?: {
-    storageId: string;
-    sha256: string;
-    contentType: string;
-    byteLength: number;
-  };
+  inspected?: Inspected;
 };
-
 type OrderRow = {
   id: string;
   buyerId: string;
@@ -81,6 +81,32 @@ type OrderRow = {
   phase: "ACCEPTED" | "SUBMITTED" | "DISPUTED" | "TERMINAL";
   revision: number;
 };
+type DeliveryRow = {
+  orderId: string;
+  merchantId: string;
+  revision: number;
+  files: Array<ProposedFile & { storageId: string }>;
+};
+
+const grantRow = (ctx: AdmissionContext, id: string) =>
+  ctx.db.get(id as never) as Promise<FileGrantRow | null>;
+
+const grantsForOrder = (ctx: AdmissionContext, orderId: string) =>
+  ctx.db
+    .query("fileGrants")
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
+    .collect() as Promise<FileGrantRow[]>;
+
+const allGrants = (ctx: AdmissionContext) =>
+  ctx.db.query("fileGrants").fullTableScan().collect() as Promise<
+    FileGrantRow[]
+  >;
+
+const deliveryForOrder = (ctx: AdmissionContext, orderId: string) =>
+  ctx.db
+    .query("deliveries")
+    .withIndex("by_order", (q) => q.eq("orderId", orderId))
+    .unique() as Promise<DeliveryRow | null>;
 
 async function loadOrder(ctx: AdmissionContext, orderId: string) {
   const order = (await ctx.db
@@ -102,10 +128,56 @@ async function requireMerchantOrder(ctx: AdmissionContext, orderId: string) {
   return { order, membership };
 }
 
-/**
- * Public: issue a short-lived upload grant for an ACCEPTED merchant order.
- * The returned URL is write-only; storage identity is bound only at attachUpload.
- */
+const orderFor = (order: OrderRow) => ({
+  id: order.id,
+  buyerId: order.buyerId,
+  merchantId: order.merchantId,
+  disputeOperatorId: order.disputeOperatorId,
+  profile: order.profile,
+  outputCount: order.outputCount,
+  phase: order.phase,
+  revision: order.revision,
+});
+
+const deliveryFor = (row: DeliveryRow) => ({
+  orderId: row.orderId,
+  merchantId: row.merchantId,
+  revision: row.revision,
+  files: row.files.map((entry) => ({
+    ...entry,
+    contentType: entry.contentType as ContentType,
+  })),
+});
+
+function repositoryFor(
+  accountId: string,
+  order: OrderRow,
+  rest: Omit<
+    DeliveryTransaction,
+    "authenticatedAccount" | "getOrder" | "membershipActive"
+  >,
+): AtomicDeliveryRepository {
+  return {
+    transact: (operation) =>
+      operation({
+        authenticatedAccount: () => ({
+          id: accountId,
+          enabled: true,
+          invited: true,
+        }),
+        getOrder: (id) => (id === order.id ? orderFor(order) : undefined),
+        membershipActive: () => true,
+        ...rest,
+      }),
+  };
+}
+
+const liveGrant = (grant: FileGrantRow, now: number) =>
+  !grant.consumed &&
+  !grant.storageId &&
+  Number.isSafeInteger(grant.expiresAt) &&
+  now < grant.expiresAt;
+
 export async function requestUpload(
   ctx: AdmissionContext,
   input: { orderId: string },
@@ -115,17 +187,8 @@ export async function requestUpload(
   if (order.phase !== "ACCEPTED")
     throw new Error("merchant delivery is not permitted in this phase");
   const now = Date.now();
-  const outstanding = (
-    (await ctx.db
-      .query("fileGrants")
-      .withIndex("by_order", (q) => q.eq("orderId", order.id))
-      .collect()) as FileGrantRow[]
-  ).filter(
-    (grant) =>
-      !grant.consumed &&
-      !grant.storageId &&
-      Number.isSafeInteger(grant.expiresAt) &&
-      now < grant.expiresAt,
+  const outstanding = (await grantsForOrder(ctx, order.id)).filter((grant) =>
+    liveGrant(grant, now),
   );
   if (outstanding.length >= 3)
     throw new Error("per-user outstanding upload limit reached");
@@ -139,51 +202,43 @@ export async function requestUpload(
     inspected: undefined,
   });
   const uploadUrl = await ctx.storage.generateUploadUrl();
-  // One-time provenance ticket: only this grant may later bind a storageId
-  // from the URL path, and the ticket is destroyed on first attach.
   const uploadTicket = `ut_${String(grantId)}_${String(now)}_${String(Math.random()).slice(2, 10)}`;
   await ctx.db.patch(grantId as never, { uploadTicket } as never);
-  return {
-    grantId: String(grantId),
-    expiresAt,
-    uploadUrl,
-    uploadTicket,
-  };
+  return { grantId: String(grantId), expiresAt, uploadUrl, uploadTicket };
 }
 
-/**
- * Public: bind a client-supplied storageId to an issued grant.
- * Rejects foreign/missing blobs and storage already claimed by another active
- * grant. URL→storageId provenance is closed by the one-time uploadTicket minted
- * with the upload URL (consumed on bind) and by storeAndAttachUpload (R-04),
- * which produces the storageId on the authorized action path itself.
- */
-/**
- * The upload-grant authorization guard. Both upload entry points ran a byte-identical copy of
- * this 21-line check; a permission guard in two places is one that can drift, so it has one
- * definition and returns the grant the caller then consumes.
- */
 async function requireUploadGrant(ctx: AdmissionContext, grantId: string) {
   requireSessionSubject(await ctx.auth.getUserIdentity());
-  const grant = (await ctx.db.get(grantId as never)) as FileGrantRow | null;
+  const grant = await grantRow(ctx, grantId);
   if (!grant) throw new Error("upload grant is unavailable");
   const order = await loadOrder(ctx, grant.orderId);
   const membership = await requireMembership(ctx, order.scopeId);
-  if (
-    membership.role !== "merchant" ||
-    membership.accountId !== order.merchantId ||
-    membership.accountId !== grant.uploaderId
-  )
-    throw new Error("upload grant is unavailable");
-  const now = Date.now();
-  if (
-    grant.consumed ||
-    grant.storageId !== undefined ||
-    !Number.isSafeInteger(grant.expiresAt) ||
-    now >= grant.expiresAt
-  )
+  const owner =
+    membership.role === "merchant" &&
+    membership.accountId === order.merchantId &&
+    membership.accountId === grant.uploaderId;
+  if (!owner || !liveGrant(grant, Date.now()))
     throw new Error("upload grant is unavailable");
   return grant;
+}
+
+async function bindGrant(
+  ctx: AdmissionContext,
+  grant: FileGrantRow,
+  storageId: string,
+) {
+  await ctx.db.patch(
+    grant._id as never,
+    {
+      storageId,
+      uploadTicket: undefined,
+    } as never,
+  );
+  await ctx.scheduler.runAfter(0, inspectGrantRef, {
+    grantId: String(grant._id),
+    storageId,
+  });
+  return { grantId: String(grant._id), storageId };
 }
 
 export async function attachUpload(
@@ -191,9 +246,6 @@ export async function attachUpload(
   input: { grantId: string; storageId: string; uploadTicket: string },
 ) {
   const grant = await requireUploadGrant(ctx, input.grantId);
-  // URL->storageId provenance: only the one-time ticket minted with this
-  // grant's upload URL may bind a storageId. Foreign or missing tickets are
-  // refused before any storage lookup.
   if (
     typeof input.uploadTicket !== "string" ||
     input.uploadTicket.length === 0 ||
@@ -210,109 +262,48 @@ export async function attachUpload(
     if (other._id !== grant._id && !other.consumed)
       throw new Error("storage object is already claimed by another grant");
   }
-  // Consume the ticket on bind so the URL path is one-shot.
-  await ctx.db.patch(
-    grant._id as never,
-    {
-      storageId: input.storageId,
-      uploadTicket: undefined,
-    } as never,
-  );
-  await ctx.scheduler.runAfter(0, inspectGrantRef, {
-    grantId: String(grant._id),
-    storageId: input.storageId,
-  });
-  return { grantId: String(grant._id), storageId: input.storageId };
+  return bindGrant(ctx, grant, input.storageId);
 }
 
-/**
- * R-04 action-based upload: the action itself calls storage.store and binds
- * the resulting storageId to the grant in the same authorized path. There is
- * no client-supplied storageId, so upload-URL->storageId provenance is closed.
- */
 export async function storeAndAttachUpload(
   ctx: ActionContext,
   input: { grantId: string; bytes: Uint8Array },
 ) {
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0)
     throw new Error("upload bytes are required");
-  // Produce the storage identity on the authorized path only.
   const storageId = await ctx.storage.store(input.bytes);
-  // The grant guard, the patch and the inspect schedule are one mutation: an
-  // action has no db handle, and a partial bind would strand the upload.
-  await ctx.runMutation(bindUploadRef, {
-    grantId: input.grantId,
-    storageId,
-  });
+  await ctx.runMutation(bindUploadRef, { grantId: input.grantId, storageId });
   return { grantId: input.grantId, storageId };
 }
 
-/**
- * Internal: bind an action-produced storageId to its grant and schedule the
- * byte inspection. Runs as a mutation so the guard, the patch and the
- * scheduling commit together.
- */
 export async function bindUpload(
   ctx: AdmissionContext,
   input: { grantId: string; storageId: string },
 ) {
   const grant = await requireUploadGrant(ctx, input.grantId);
-  await ctx.db.patch(
-    grant._id as never,
-    {
-      storageId: input.storageId,
-      uploadTicket: undefined,
-    } as never,
-  );
-  await ctx.scheduler.runAfter(0, inspectGrantRef, {
-    grantId: String(grant._id),
-    storageId: input.storageId,
-  });
-  return { grantId: String(grant._id), storageId: input.storageId };
+  return bindGrant(ctx, grant, input.storageId);
 }
 
-/** Internal: stamp witnessed bytes onto an attached unconsumed grant. */
 export async function markInspected(
   ctx: AdmissionContext,
-  input: {
-    grantId: string;
-    inspected: {
-      storageId: string;
-      sha256: string;
-      contentType: string;
-      byteLength: number;
-    };
-  },
+  input: { grantId: string; inspected: Inspected },
 ) {
-  const grant = (await ctx.db.get(
-    input.grantId as never,
-  )) as FileGrantRow | null;
-  if (!grant) throw new Error("upload grant is unavailable");
-  if (grant.consumed) throw new Error("upload grant is unavailable");
+  const grant = await grantRow(ctx, input.grantId);
+  if (!grant || grant.consumed) throw new Error("upload grant is unavailable");
   if (grant.inspected) throw new Error("grant is already inspected");
   if (grant.storageId !== input.inspected.storageId)
     throw new Error("storageId that no longer matches the grant is refused");
-  await ctx.db.patch(grant._id as never, {
-    inspected: {
-      storageId: input.inspected.storageId,
-      sha256: input.inspected.sha256,
-      contentType: input.inspected.contentType,
-      byteLength: input.inspected.byteLength,
-    },
-  });
+  await ctx.db.patch(grant._id as never, { inspected: input.inspected });
   return String(grant._id);
 }
 
-/** Internal action: witness stored bytes and stamp the grant. */
 export async function inspectGrant(
   ctx: ActionContext,
   input: { grantId: string; storageId: string },
 ) {
   const blob = await ctx.storage.get(input.storageId);
   if (!blob) throw new Error("storage object is required");
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const inspected = inspectBytes(bytes);
-  // The grant guard and the stamp are a mutation; the action only witnesses bytes.
+  const inspected = inspectBytes(new Uint8Array(await blob.arrayBuffer()));
   await ctx.runMutation(markInspectedRef, {
     grantId: input.grantId,
     inspected: { storageId: input.storageId, ...inspected },
@@ -320,124 +311,47 @@ export async function inspectGrant(
   return inspected;
 }
 
-/**
- * Public freeze: pure freezeDelivery + digest-bound deliveryCommitment stored
- * on the immutable deliveries manifest. Never randomBytes.
- */
+const grantFor = (grant: FileGrantRow): UploadGrant => ({
+  id: String(grant._id),
+  orderId: grant.orderId,
+  uploaderId: grant.uploaderId,
+  expiresAt: grant.expiresAt,
+  consumed: grant.consumed,
+  storageId: grant.storageId ?? "",
+  inspected: grant.inspected as UploadGrant["inspected"],
+});
+
 export async function freeze(
   ctx: AdmissionContext,
-  input: {
-    orderId: string;
-    files: Array<{
-      grantId: string;
-      sha256: string;
-      contentType: string;
-      byteLength: number;
-    }>;
-  },
+  input: { orderId: string; files: ProposedFile[] },
 ) {
   requireSessionSubject(await ctx.auth.getUserIdentity());
   const { order, membership } = await requireMerchantOrder(ctx, input.orderId);
-  const accountId = membership.accountId;
   const now = Date.now();
-  const existing = (await ctx.db
-    .query("deliveries")
-    .withIndex("by_order", (q) => q.eq("orderId", order.id))
-    .unique()) as {
-    orderId: string;
-    merchantId: string;
-    revision: number;
-    files: Array<{
-      grantId: string;
-      storageId: string;
-      sha256: string;
-      contentType: string;
-      byteLength: number;
-    }>;
-  } | null;
+  const existing = await deliveryForOrder(ctx, order.id);
   const attached = new Set<string>();
-  for (const row of (await ctx.db
-    .query("fileGrants")
-    .fullTableScan()
-    .collect()) as FileGrantRow[]) {
+  for (const row of await allGrants(ctx)) {
     if (row.storageId && row.consumed) attached.add(row.storageId);
   }
   const grants = new Map(
-    (
-      (await ctx.db
-        .query("fileGrants")
-        .withIndex("by_order", (q) => q.eq("orderId", order.id))
-        .collect()) as FileGrantRow[]
-    ).map((grant) => [grant._id, grant]),
+    (await grantsForOrder(ctx, order.id)).map((grant) => [grant._id, grant]),
   );
-  const repository: AtomicDeliveryRepository = {
-    transact: (operation) =>
-      operation({
-        authenticatedAccount: () => ({
-          id: accountId,
-          enabled: true,
-          invited: true,
-        }),
-        serverNow: () => now,
-        getOrder: (id) =>
-          id === order.id
-            ? {
-                id: order.id,
-                buyerId: order.buyerId,
-                merchantId: order.merchantId,
-                disputeOperatorId: order.disputeOperatorId,
-                profile: order.profile,
-                outputCount: order.outputCount,
-                phase: order.phase,
-                revision: order.revision,
-              }
-            : undefined,
-        membershipActive: () => true,
-        getUploadGrant: (id): UploadGrant | undefined => {
-          const grant = grants.get(id);
-          if (!grant) return undefined;
-          return {
-            id: String(grant._id),
-            orderId: grant.orderId,
-            uploaderId: grant.uploaderId,
-            expiresAt: grant.expiresAt,
-            consumed: grant.consumed,
-            storageId: grant.storageId ?? "",
-            inspected: grant.inspected as UploadGrant["inspected"],
-          };
-        },
-        getFrozenDelivery: () =>
-          existing
-            ? {
-                orderId: existing.orderId,
-                merchantId: existing.merchantId,
-                revision: existing.revision,
-                files: existing.files.map((entry) => ({
-                  ...entry,
-                  contentType: entry.contentType as
-                    | "image/png"
-                    | "image/jpeg"
-                    | "image/webp",
-                })),
-              }
-            : undefined,
-        confirmedDeliveryMatches: () => true,
-        storageAttached: (storageId) => attached.has(storageId),
-        insertDeliveryAndConsumeGrants: () => {
-          // Writes are applied after the pure freeze returns.
-        },
-      }),
-  };
+  const repository = repositoryFor(membership.accountId, order, {
+    serverNow: () => now,
+    getUploadGrant: (id) => {
+      const grant = grants.get(id);
+      return grant ? grantFor(grant) : undefined;
+    },
+    getFrozenDelivery: () => (existing ? deliveryFor(existing) : undefined),
+    confirmedDeliveryMatches: () => true,
+    storageAttached: (storageId) => attached.has(storageId),
+    insertDeliveryAndConsumeGrants: () => {},
+  });
   const frozen = freezeDelivery(repository, {
     orderId: order.id,
     files: input.files.map((entry) => ({
-      grantId: entry.grantId,
-      sha256: entry.sha256,
-      contentType: entry.contentType as
-        | "image/png"
-        | "image/jpeg"
-        | "image/webp",
-      byteLength: entry.byteLength,
+      ...entry,
+      contentType: entry.contentType as ContentType,
     })),
   });
   const manifest = deliveryCommitment(frozen.files);
@@ -456,21 +370,12 @@ export async function freeze(
   return { deliveryId: String(deliveryId), manifest };
 }
 
-/**
- * Internal: authorize a read and return a byte-transport descriptor (never a URL).
- *
- * The account is the authenticated membership's, and the chain confirmation is
- * read from the order's own `chainOrders` row. Neither is a caller argument: a
- * caller-supplied account could name any participant, and a caller-supplied
- * confirmation flag would bypass the chain binding entirely.
- */
 export async function resolveRead(
   ctx: AdmissionContext,
   input: { orderId: string; fileIndex: number },
 ) {
   const order = await loadOrder(ctx, input.orderId);
   const membership = await requireMembership(ctx, order.scopeId);
-  const accountId = membership.accountId;
   const chain = await ctx.db
     .query("chainOrders")
     .withIndex("by_order", (q) => q.eq("orderId", order.id))
@@ -479,75 +384,23 @@ export async function resolveRead(
     chain?.deliveryManifest !== undefined &&
     chain.deliveryManifest !== null &&
     chain.deliveryManifest.length > 0;
-  const existing = (await ctx.db
-    .query("deliveries")
-    .withIndex("by_order", (q) => q.eq("orderId", order.id))
-    .unique()) as {
-    orderId: string;
-    merchantId: string;
-    revision: number;
-    files: Array<{
-      grantId: string;
-      storageId: string;
-      sha256: string;
-      contentType: "image/png" | "image/jpeg" | "image/webp";
-      byteLength: number;
-    }>;
-  } | null;
-  const repository: AtomicDeliveryRepository = {
-    transact: (operation) =>
-      operation({
-        authenticatedAccount: () => ({
-          id: accountId,
-          enabled: true,
-          invited: true,
-        }),
-        serverNow: () => Date.now(),
-        getOrder: (id) =>
-          id === order.id
-            ? {
-                id: order.id,
-                buyerId: order.buyerId,
-                merchantId: order.merchantId,
-                disputeOperatorId: order.disputeOperatorId,
-                profile: order.profile,
-                outputCount: order.outputCount,
-                phase: order.phase,
-                revision: order.revision,
-              }
-            : undefined,
-        membershipActive: () => true,
-        getUploadGrant: () => undefined,
-        getFrozenDelivery: () =>
-          existing
-            ? {
-                orderId: existing.orderId,
-                merchantId: existing.merchantId,
-                revision: existing.revision,
-                files: existing.files,
-              }
-            : undefined,
-        confirmedDeliveryMatches: () => confirmed,
-        storageAttached: () => true,
-        insertDeliveryAndConsumeGrants: () => {
-          throw new Error("read path is immutable");
-        },
-      }),
-  };
+  const existing = await deliveryForOrder(ctx, order.id);
+  const repository = repositoryFor(membership.accountId, order, {
+    serverNow: () => Date.now(),
+    getUploadGrant: () => undefined,
+    getFrozenDelivery: () => (existing ? deliveryFor(existing) : undefined),
+    confirmedDeliveryMatches: () => confirmed,
+    storageAttached: () => true,
+    insertDeliveryAndConsumeGrants: () => {
+      throw new Error("read path is immutable");
+    },
+  });
   return authorizeDeliveryRead(repository, {
     orderId: input.orderId,
     fileIndex: input.fileIndex,
   });
 }
 
-/**
- * Public: re-authorize the caller and stream one delivered file.
- *
- * Identity comes from the verified session, never from an argument: a caller
- * that could name its own account could read any order's delivery. The
- * mutation resolves the descriptor under that identity, and the action only
- * transports the bytes it names.
- */
 export async function serveFile(
   ctx: ActionContext & {
     auth: {
@@ -562,29 +415,21 @@ export async function serveFile(
   const descriptor = (await ctx.runMutation(resolveReadRef, {
     orderId: input.orderId,
     fileIndex: input.fileIndex,
-  })) as {
-    grantId: string;
-    storageId: string;
-    sha256: string;
-    contentType: "image/png" | "image/jpeg" | "image/webp";
-    byteLength: number;
-  };
+  })) as Inspected & { grantId: string };
   const blob = await ctx.storage.get(descriptor.storageId);
   if (!blob) throw new Error("delivery is unavailable");
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  verifyRetrievedBytes(descriptor, bytes);
+  verifyRetrievedBytes(
+    { ...descriptor, contentType: descriptor.contentType as ContentType },
+    bytes,
+  );
   return bytes;
 }
 
-/** Internal: drop expired unconsumed grants after TTL + grace. */
 export async function sweepGrants(ctx: AdmissionContext) {
   const cutoff = Date.now() - GRANT_TTL_MS - GRANT_GRACE_MS;
-  const expired = (await ctx.db
-    .query("fileGrants")
-    .fullTableScan()
-    .collect()) as FileGrantRow[];
   let removed = 0;
-  for (const grant of expired) {
+  for (const grant of await allGrants(ctx)) {
     if (
       !grant.consumed &&
       Number.isSafeInteger(grant.expiresAt) &&
@@ -596,6 +441,16 @@ export async function sweepGrants(ctx: AdmissionContext) {
   }
   return { removed };
 }
+
+const digestFields = {
+  sha256: v.string(),
+  contentType: v.string(),
+  byteLength: v.number(),
+};
+const inspectedV = v.object({ storageId: v.string(), ...digestFields });
+const proposedV = v.object({ grantId: v.string(), ...digestFields });
+const boundV = v.object({ grantId: v.string(), storageId: v.string() });
+const inspectedReturn = v.object(digestFields);
 
 export const requestUploadMutation = mutationGeneric({
   args: { orderId: v.string() },
@@ -614,82 +469,48 @@ export const attachUploadMutation = mutationGeneric({
     storageId: v.string(),
     uploadTicket: v.string(),
   },
-  returns: v.object({ grantId: v.string(), storageId: v.string() }),
+  returns: boundV,
   handler: attachUpload as never,
 });
 
 export const storeAndAttachUploadAction = internalActionGeneric({
   args: { grantId: v.string(), bytes: v.bytes() },
-  returns: v.object({ grantId: v.string(), storageId: v.string() }),
+  returns: boundV,
   handler: storeAndAttachUpload as never,
 });
 
 export const freezeMutation = mutationGeneric({
-  args: {
-    orderId: v.string(),
-    files: v.array(
-      v.object({
-        grantId: v.string(),
-        sha256: v.string(),
-        contentType: v.string(),
-        byteLength: v.number(),
-      }),
-    ),
-  },
+  args: { orderId: v.string(), files: v.array(proposedV) },
   returns: v.object({ deliveryId: v.string(), manifest: v.string() }),
   handler: freeze as never,
 });
 
 export const markInspectedMutation = internalMutationGeneric({
-  args: {
-    grantId: v.string(),
-    inspected: v.object({
-      storageId: v.string(),
-      sha256: v.string(),
-      contentType: v.string(),
-      byteLength: v.number(),
-    }),
-  },
+  args: { grantId: v.string(), inspected: inspectedV },
   returns: v.string(),
   handler: markInspected as never,
 });
 
 export const inspectGrantAction = internalActionGeneric({
   args: { grantId: v.string(), storageId: v.string() },
-  returns: v.object({
-    sha256: v.string(),
-    contentType: v.string(),
-    byteLength: v.number(),
-  }),
+  returns: inspectedReturn,
   handler: inspectGrant as never,
 });
 
 export const resolveReadMutation = internalMutationGeneric({
-  args: {
-    orderId: v.string(),
-    fileIndex: v.number(),
-  },
-  returns: v.object({
-    grantId: v.string(),
-    storageId: v.string(),
-    sha256: v.string(),
-    contentType: v.string(),
-    byteLength: v.number(),
-  }),
+  args: { orderId: v.string(), fileIndex: v.number() },
+  returns: v.object({ grantId: v.string(), ...digestFields }),
   handler: resolveRead as never,
 });
 
 export const bindUploadMutation = internalMutationGeneric({
   args: { grantId: v.string(), storageId: v.string() },
-  returns: v.object({ grantId: v.string(), storageId: v.string() }),
+  returns: boundV,
   handler: bindUpload as never,
 });
 
 export const serveFileAction = actionGeneric({
-  args: {
-    orderId: v.string(),
-    fileIndex: v.number(),
-  },
+  args: { orderId: v.string(), fileIndex: v.number() },
   returns: v.bytes(),
   handler: serveFile as never,
 });

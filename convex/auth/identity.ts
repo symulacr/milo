@@ -7,6 +7,11 @@ import type schema from "../schema";
 
 type Context = GenericQueryCtx<DataModelFromSchemaDefinition<typeof schema>>;
 
+type Membership = Pick<
+  DataModelFromSchemaDefinition<typeof schema>["memberships"]["document"],
+  "status" | "role" | "accountId"
+>;
+
 export async function requireMembership(ctx: Context, scopeId: string) {
   const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
   const membership = await ctx.db
@@ -21,19 +26,8 @@ export async function requireMembership(ctx: Context, scopeId: string) {
   return membership;
 }
 
-/**
- * One definition of "this membership row is an active buyer of this quote".
- * Call sites own their own rejection messages; this predicate owns the fact.
- */
 export function isQuoteBuyer(
-  membership:
-    | {
-        status: "active" | "revoked";
-        role: "buyer" | "merchant" | "operator";
-        accountId: string;
-      }
-    | null
-    | undefined,
+  membership: Membership | null | undefined,
   buyerAccountId: string,
 ): boolean {
   return (

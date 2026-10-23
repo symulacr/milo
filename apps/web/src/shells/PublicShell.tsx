@@ -2,10 +2,6 @@ import { Link, Outlet } from "react-router";
 import { ArrowUpRightIcon } from "../components/icons";
 import { WordmarkStar } from "../components/Wordmark";
 
-/**
- * Public marketing chrome, mirroring the static landing header/footer in
- * apps/web/index.html. Keep the two in sync when navigation changes.
- */
 export function PublicShell() {
   return (
     <div className="public-shell">

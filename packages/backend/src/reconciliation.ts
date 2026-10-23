@@ -54,7 +54,7 @@ const id = z
   .string()
   .min(1)
   .max(256)
-  .refine((value: string) => value.trim().length > 0);
+  .refine((v: string) => v.trim().length > 0);
 const identitySchema = z.strictObject({
   operationId: id,
   operation: z.enum(["authorize", "capture", "void"]),
@@ -67,6 +67,11 @@ const eventSchema = identitySchema.extend({
   occurredAt: z.number().int().nonnegative(),
   status: z.enum(["authorized", "captured", "voided", "failed"]),
 });
+const TERMINAL: ReadonlySet<PaymentStatus> = new Set([
+  "captured",
+  "voided",
+  "failed",
+]);
 
 export const emptyReconciliationState = (): ReconciliationState => ({
   attempts: Object.create(null),
@@ -136,17 +141,15 @@ export function receivePaymentEvent(
       throw new Error("provider event ID payload mismatch");
     return { state, result: "duplicate" };
   }
-  const inbox = put(state.inbox, event.providerEventId, {
-    event,
-    matched: false,
-  });
-  const staged = { ...state, inbox };
+  const staged = {
+    ...state,
+    inbox: put(state.inbox, event.providerEventId, { event, matched: false }),
+  };
   const attempt = get(staged.attempts, event.idempotencyKey);
-  if (!attempt || !matches(attempt, event))
-    return { state: staged, result: "unmatched" };
-  return apply(staged, attempt, event);
+  return !attempt || !sameIdentity(attempt, event)
+    ? { state: staged, result: "unmatched" }
+    : apply(staged, attempt, event);
 }
-/** Reconciliation always returns the original provider idempotency key; it never mints one. */
 export function reconciliationKey(
   state: ReconciliationState,
   idempotencyKey: string,
@@ -162,34 +165,32 @@ function reconcileInbox(
   identity: AttemptIdentity,
 ): ReconciliationState {
   let next = state;
-  for (const [, inbox] of Object.entries(state.inbox)) {
-    if (!inbox.matched && matches(identity, inbox.event)) {
-      const applied = apply(
+  for (const [, inbox] of Object.entries(state.inbox))
+    if (!inbox.matched && sameIdentity(identity, inbox.event))
+      next = apply(
         next,
         requiredAttempt(next, identity.idempotencyKey),
         inbox.event,
-      );
-      next = applied.state;
-    }
-  }
+      ).state;
   return next;
+}
+function stale(
+  attempt: PaymentAttempt,
+  event: PaymentEvent,
+  latest: number | undefined,
+): boolean {
+  return (
+    (latest !== undefined && event.occurredAt < latest) ||
+    (latest === event.occurredAt && attempt.status !== event.status) ||
+    (TERMINAL.has(attempt.status) && attempt.status !== event.status)
+  );
 }
 function apply(
   state: ReconciliationState,
   attempt: PaymentAttempt,
   event: PaymentEvent,
 ): { state: ReconciliationState; result: InboxResult } {
-  if (
-    attempt.latestProviderTime !== undefined &&
-    event.occurredAt < attempt.latestProviderTime
-  )
-    return { state, result: "out-of-order" };
-  if (
-    attempt.latestProviderTime === event.occurredAt &&
-    attempt.status !== event.status
-  )
-    return { state, result: "out-of-order" };
-  if (terminal(attempt.status) && attempt.status !== event.status)
+  if (stale(attempt, event, attempt.latestProviderTime))
     return { state, result: "out-of-order" };
   const updated = replaceAttempt(state, {
     ...attempt,
@@ -210,9 +211,6 @@ function apply(
     result: "accepted",
   };
 }
-function terminal(status: PaymentStatus): boolean {
-  return status === "captured" || status === "voided" || status === "failed";
-}
 function replaceAttempt(
   state: ReconciliationState,
   attempt: PaymentAttempt,
@@ -226,7 +224,8 @@ function requiredAttempt(
   state: ReconciliationState,
   key: string,
 ): PaymentAttempt {
-  requireId(key, "idempotency key");
+  if (!id.safeParse(key).success)
+    throw new Error("idempotency key is required");
   const attempt = get(state.attempts, key);
   if (!attempt) throw new Error("payment attempt is missing");
   return attempt;
@@ -240,13 +239,10 @@ function sameIdentity(a: AttemptIdentity, b: AttemptIdentity): boolean {
     a.idempotencyKey === b.idempotencyKey
   );
 }
-function matches(attempt: AttemptIdentity, event: PaymentEvent): boolean {
-  return sameIdentity(attempt, event);
-}
 function sameEvent(a: PaymentEvent, b: PaymentEvent): boolean {
   return (
     a.providerEventId === b.providerEventId &&
-    matches(a, b) &&
+    sameIdentity(a, b) &&
     a.occurredAt === b.occurredAt &&
     a.status === b.status
   );
@@ -263,9 +259,6 @@ function put<T>(
   value: T,
 ): Record<string, T> {
   return Object.assign(Object.create(null), record, { [key]: value });
-}
-function requireId(value: string, label: string): void {
-  if (!id.safeParse(value).success) throw new Error(`${label} is required`);
 }
 function orderVersion(identity: AttemptIdentity): string {
   return JSON.stringify([

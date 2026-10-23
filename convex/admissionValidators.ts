@@ -1,80 +1,82 @@
 import { v } from "convex/values";
 import { CONSTRUCTOR_ENCODING } from "../packages/backend/src/public-constructor.ts";
 
+const s = v.string();
+const n = v.number();
+
 export const publicConstructorFields = {
   constructorVersion: v.literal(1),
   constructorEncoding: v.literal(CONSTRUCTOR_ENCODING),
-  buyerCommitment: v.string(),
-  merchantCommitment: v.string(),
-  operatorCommitment: v.string(),
+  buyerCommitment: s,
+  merchantCommitment: s,
+  operatorCommitment: s,
 };
 
-const deadlines = {
-  acceptanceDeadlineSeconds: v.number(),
-  deliveryDeadlineSeconds: v.number(),
-  reviewDeadlineSeconds: v.number(),
-  resolutionDeadlineSeconds: v.number(),
+const sharedQuoteObservationFields = {
+  termsCommitment: s,
+  artifactFingerprint: s,
+  keySetFingerprint: s,
+  rolesFingerprint: s,
+  initialStateFingerprint: s,
+  genesisHash: s,
+  acceptanceDeadlineSeconds: n,
+  deliveryDeadlineSeconds: n,
+  reviewDeadlineSeconds: n,
+  resolutionDeadlineSeconds: n,
 };
-const fingerprints = {
-  termsCommitment: v.string(),
-  artifactFingerprint: v.string(),
-  keySetFingerprint: v.string(),
-  rolesFingerprint: v.string(),
-  initialStateFingerprint: v.string(),
-  genesisHash: v.string(),
-};
+
 export const frozenQuoteFields = {
   ...publicConstructorFields,
-  id: v.string(),
-  scopeId: v.string(),
+  id: s,
+  scopeId: s,
   network: v.literal("preprod"),
-  nonce: v.string(),
-  version: v.number(),
-  amountMinor: v.number(),
-  currency: v.string(),
-  buyerAccountId: v.string(),
-  ...fingerprints,
-  ...deadlines,
+  nonce: s,
+  version: n,
+  amountMinor: n,
+  currency: s,
+  buyerAccountId: s,
+  ...sharedQuoteObservationFields,
 };
-/** The image-pack policy shape, shared by the schema table and the trusted payload union. */
+
 export const imagePackPolicyFields = {
   serviceVersion: v.literal(1),
   packQuantity: v.literal(1),
   outputCount: v.literal(3),
-  unitPriceMinor: v.number(),
+  unitPriceMinor: n,
 };
+
 export const deploymentObservationFields = {
   ...publicConstructorFields,
-  id: v.string(),
-  quoteId: v.string(),
-  quoteVersion: v.number(),
+  id: s,
+  quoteId: s,
+  quoteVersion: n,
   observationVersion: v.literal(2),
   source: v.literal("chain-observer"),
   network: v.literal("preprod"),
-  nonce: v.string(),
-  address: v.string(),
+  nonce: s,
+  address: s,
   phase: v.literal("DEPLOYED"),
   revision: v.literal(0),
-  ...fingerprints,
-  ...deadlines,
-  entrypoints: v.array(v.string()),
+  ...sharedQuoteObservationFields,
+  entrypoints: v.array(s),
   maintenancePolicy: v.literal("locked"),
-  maintenanceReceiptFingerprint: v.string(),
-  blockHash: v.string(),
-  blockHeight: v.number(),
-  stateFingerprint: v.string(),
-  observedAt: v.number(),
+  maintenanceReceiptFingerprint: s,
+  blockHash: s,
+  blockHeight: n,
+  stateFingerprint: s,
+  observedAt: n,
 };
+
 export const paymentAuthorization = v.object({
-  id: v.string(),
-  quoteId: v.string(),
-  quoteVersion: v.number(),
-  buyerAccountId: v.string(),
-  amountMinor: v.number(),
-  currency: v.string(),
-  usableFrom: v.number(),
-  usableUntil: v.number(),
-  captureBeforeMs: v.number(),
+  id: s,
+  quoteId: s,
+  quoteVersion: n,
+  buyerAccountId: s,
+  amountMinor: n,
+  currency: s,
+  usableFrom: n,
+  usableUntil: n,
+  captureBeforeMs: n,
   source: v.literal("payment-observer"),
   status: v.union(
     v.literal("pending"),
@@ -83,29 +85,32 @@ export const paymentAuthorization = v.object({
     v.literal("voided"),
     v.literal("failed"),
   ),
-  providerReceiptFingerprint: v.string(),
+  providerReceiptFingerprint: s,
 });
+
 export const bindingFields = {
-  network: v.string(),
-  nonce: v.string(),
-  address: v.string(),
-  quoteId: v.string(),
-  observationId: v.string(),
-  authorizationId: v.string(),
-  boundAt: v.number(),
+  network: s,
+  nonce: s,
+  address: s,
+  quoteId: s,
+  observationId: s,
+  authorizationId: s,
+  boundAt: n,
 };
+
 export const admissionArgs = {
-  quoteId: v.string(),
-  expectedQuoteVersion: v.number(),
-  observationId: v.string(),
+  quoteId: s,
+  expectedQuoteVersion: n,
+  observationId: s,
   authorizationId: v.id("paymentIntents"),
-  address: v.string(),
+  address: s,
 };
+
 export const admissionResult = v.union(
   v.object({ kind: v.literal("bound"), binding: v.object(bindingFields) }),
   v.object({
     kind: v.literal("already-bound"),
     binding: v.object(bindingFields),
   }),
-  v.object({ kind: v.literal("rejected"), reason: v.string() }),
+  v.object({ kind: v.literal("rejected"), reason: s }),
 );

@@ -37,7 +37,6 @@
   box-shadow: var(--s1);
   font-weight: 600;
 }
-/* Active marker: a hairline on the leading edge, drawn not typed. */
 .sidebar nav > a.active::before {
   content: "";
   position: absolute;
@@ -102,20 +101,12 @@
   background: var(--quiet-hover);
   color: var(--ink);
 }
-@media (width <= 950px) {
-  .sidebar-toggle {
-    display: none;
-  }
-}
 @media (width > 950px) {
   .app-shell.sidebar-collapsed {
     grid-template-columns: 80px minmax(0, 1fr);
   }
   .sidebar-collapsed .sidebar {
     padding-inline: 14px;
-  }
-  .sidebar-collapsed .sidebar-top {
-    justify-content: center;
   }
   .sidebar-collapsed .sidebar-top > .wordmark,
   .sidebar-collapsed .nav-text,
@@ -126,6 +117,7 @@
     justify-content: center;
     padding-inline: 0;
   }
+  .sidebar-collapsed .sidebar-top,
   .sidebar-collapsed .account-link {
     justify-content: center;
   }
@@ -138,7 +130,6 @@
     transition: grid-template-columns 200ms ease;
   }
 }
-
 .account-nav-link {
   display: none;
 }
@@ -148,7 +139,6 @@
     align-items: center;
   }
 }
-
 .account-link {
   margin-top: 22px;
   display: flex;
@@ -201,13 +191,11 @@
   font-size: var(--text-micro);
   text-decoration: none;
 }
-/* Privacy tag is a fixed dark chip on both themes; label pinned to paper. */
 .app-topbar .tag.violet {
   background: var(--c-privacy);
   color: #f4f1ea;
   border-color: var(--c-privacy);
 }
-/* The single status-pill implementation is .tag in styles.css (04 §2.1). */
 .prototype-toolbar {
   background: var(--badge-bg);
   border-bottom: 1px solid var(--line);
@@ -313,7 +301,6 @@
 .dot-divider {
   margin-inline: 6px;
 }
-/* Circular-node stepper: the single definition of .progress-track. */
 .progress-track {
   list-style: none;
   padding: 0;
@@ -416,7 +403,7 @@
 .primary-action {
   grid-area: action;
   min-width: 0;
-} /* Desktop keeps the action rail in view while the work column scrolls. */
+}
 @media (width > 950px) {
   .primary-action {
     position: sticky;
@@ -517,7 +504,6 @@
   text-align: center;
   font-size: var(--text-small);
 }
-/* Drawn, not typed: a glyph here would join the card's accessible name. */
 .image-expand::before {
   content: "";
   display: block;
@@ -886,9 +872,6 @@ dd {
   font-size: 13px;
   color: var(--muted);
 }
-.order-list-card .tag {
-  margin-left: auto;
-}
 .list-arrow {
   font-size: 25px;
 }
@@ -968,7 +951,6 @@ dd {
   font-size: 13px;
   font-weight: 400;
 }
-/* Scoped to the owning panel; 0,2,0 outranks .reading-panel p (0,1,1). */
 .reading-panel .form-error {
   color: var(--danger);
   font-size: 13px;
@@ -1106,7 +1088,6 @@ dd {
 .lightbox-actions .text-link {
   font-size: var(--text-micro);
 }
-
 @media (width >= 1500px) {
   .workspace-grid {
     grid-template-columns: minmax(0, 1fr) 310px;
@@ -1171,18 +1152,9 @@ dd {
     margin: 0;
     font-size: 38px;
   }
+  .sidebar-toggle,
   .sidebar-bottom {
     display: none;
-  }
-  .sidebar nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 15px;
-  }
-  .sidebar nav > a {
-    padding: 11px 10px;
-    font-size: var(--text-micro);
   }
   .sidebar nav > a .icon {
     font-size: var(--text-small);
@@ -1214,15 +1186,10 @@ dd {
   .reset-button {
     min-height: 44px;
   }
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
-  /* Mobile order: work, then the action on it, then payment (§4.4). */
   .order-layout {
     grid-template-areas: "work" "action" "payment";
     grid-template-rows: auto;
   }
-  /* Action panel sits in flow below the work; safe-area clears the indicator. */
   .order-layout > .primary-action {
     position: static;
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -1257,16 +1224,10 @@ dd {
   .order-list-card .tag {
     margin-left: 0;
   }
-  .boundary-cards {
-    grid-template-columns: 1fr;
-  }
 }
 @media (width <= 480px) {
   .workspace {
     padding: 24px 16px 0;
-  }
-  .sidebar {
-    padding-inline: 16px;
   }
   .sidebar nav {
     gap: 0;
@@ -1275,6 +1236,7 @@ dd {
     font-size: 13px;
     padding-inline: 8px;
   }
+  .sidebar,
   .app-topbar,
   .prototype-toolbar {
     padding-inline: 16px;
@@ -1423,10 +1385,6 @@ dd {
   gap: 12px;
   margin-block: 20px;
 }
-
-/* New component classes (Wave 2 wires these). */
-
-/* Health stepper: verification stages; reports condition, not position. */
 .health-stepper {
   list-style: none;
   padding: 0;
@@ -1473,7 +1431,6 @@ dd {
   border-color: var(--danger-line);
   background: var(--danger-bg);
 }
-/* The dot mirrors the inherited state color: one pair covers all three. */
 .health-step[data-state="pass"]::before,
 .health-step[data-state="warn"]::before,
 .health-step[data-state="fail"]::before {
@@ -1494,7 +1451,6 @@ dd {
   color: var(--c-muted);
   margin-top: 2px;
 }
-/* Verify slots: the three delivered files and their byte-check state. */
 .verify-slots {
   list-style: none;
   padding: 0;
@@ -1533,8 +1489,6 @@ dd {
   border-color: var(--danger-line);
   background: var(--danger-bg);
 }
-/* `:where(.verify-slot)` keeps these at (0,1,0), equal to the base rule, so
-   source order decides and noDescendingSpecificity stays quiet. */
 :where(.verify-slot)[data-state="match"] :where(strong) {
   color: var(--c-success);
 }
@@ -1545,11 +1499,12 @@ dd {
   border-style: dashed;
 }
 @media (width <= 760px) {
+  .workspace-grid,
+  .boundary-cards,
   .verify-slots {
     grid-template-columns: 1fr;
   }
 }
-/* Guard note: a standing constraint shown beside an irreversible action. */
 .guard-note {
   display: flex;
   align-items: flex-start;
@@ -1587,7 +1542,6 @@ dd {
   background: var(--success-bg);
   color: var(--c-success);
 }
-/* Dispute reason card: one selectable reason with its consequence. */
 .dispute-reason-card {
   display: flex;
   align-items: flex-start;
@@ -1628,8 +1582,6 @@ dd {
   font-size: var(--text-micro);
   color: var(--c-muted);
 }
-
-/* Proximate disclosure: who can see what, beside the control (01 §7.5). */
 .proximate-disclosure {
   margin: var(--space-3) 0 0;
   padding: 10px 12px;
@@ -1646,8 +1598,6 @@ dd {
   color: var(--c-accent);
   text-underline-offset: 3px;
 }
-
-/* Persona banner: names whose view is on screen. */
 .persona-banner {
   display: flex;
   align-items: center;
@@ -1666,10 +1616,10 @@ dd {
   font-weight: 600;
   color: var(--c-ink);
 }
+.order-list-card .tag,
 .persona-banner .tag {
   margin-left: auto;
 }
-
 @media (width <= 950px) {
   .app-shell,
   .sidebar,
@@ -1677,6 +1627,9 @@ dd {
     min-width: 0;
   }
   .sidebar nav {
+    flex-direction: row;
+    gap: 6px;
+    margin-top: 15px;
     max-width: 100%;
     min-width: 0;
     flex-wrap: nowrap;
@@ -1687,6 +1640,8 @@ dd {
     -webkit-overflow-scrolling: touch;
   }
   .sidebar nav > a {
+    padding: 11px 10px;
+    font-size: var(--text-micro);
     flex: 0 0 auto;
     scroll-snap-align: start;
     white-space: nowrap;
@@ -1700,8 +1655,6 @@ dd {
     height: 2px;
   }
 }
-/* Reduced motion without !important: name every ungated transition so source
-   order and equal-or-higher specificity carry the override. */
 @media (prefers-reduced-motion: reduce) {
   .app-shell,
   .app-shell *,

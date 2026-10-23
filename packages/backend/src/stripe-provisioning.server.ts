@@ -1,21 +1,14 @@
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import type { FrozenQuote } from "./admission-policy";
 import { PROVIDER_RETRY_WINDOW_MS } from "./provisioning-policy";
 import {
+  isPositiveInt,
+  isTestStripeId,
   normalizeTestPayment,
-  STRIPE_API_VERSION,
+  testStripeClient,
 } from "./stripe-observer.server";
 
-export function testStripeClient() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || !/^(sk|rk)_test_[a-zA-Z0-9]+$/.test(key))
-    throw new Error("Server-only Stripe test key required");
-  return new Stripe(key, {
-    apiVersion: STRIPE_API_VERSION,
-    maxNetworkRetries: 1,
-    timeout: 10_000,
-  });
-}
+export { testStripeClient };
 
 export interface ProvisioningRequest {
   jobId: string;
@@ -25,22 +18,18 @@ export interface ProvisioningRequest {
   stripeCustomerId: string;
 }
 
-// Never confirm, attach a payment method, capture, or return client secrets here.
 export async function provisionTestIntent(
   request: ProvisioningRequest,
-  stripe = testStripeClient(),
+  stripe: Stripe = testStripeClient(),
 ): Promise<string> {
   const { quote } = request;
   if (
     quote.network !== "preprod" ||
-    !Number.isSafeInteger(quote.amountMinor) ||
-    quote.amountMinor <= 0 ||
-    !Number.isSafeInteger(quote.version) ||
-    quote.version < 1 ||
     quote.currency !== "USD" ||
+    !isPositiveInt(quote.amountMinor) ||
+    !isPositiveInt(quote.version) ||
     !request.jobId ||
-    !/^acct_[a-zA-Z0-9]+$/.test(request.stripeAccountId) ||
-    !/^cus_[a-zA-Z0-9]+$/.test(request.stripeCustomerId)
+    !isTestStripeId(request.stripeAccountId, request.stripeCustomerId)
   )
     throw new Error("Invalid trusted provisioning request");
   const account = await stripe.accounts.retrieveCurrent();
@@ -59,9 +48,13 @@ export async function provisionTestIntent(
     request.firstAttemptAt > now ||
     now - request.firstAttemptAt >= PROVIDER_RETRY_WINDOW_MS ||
     quote.acceptanceDeadlineSeconds * 1000 <= now
-  ) {
+  )
     throw new Error("Expired provisioning retry window or quote");
-  }
+  const metadata = {
+    provisioningJob: request.jobId,
+    quoteId: quote.id,
+    quoteVersion: String(quote.version),
+  };
   const intent = await stripe.paymentIntents.create(
     {
       amount: quote.amountMinor,
@@ -70,11 +63,7 @@ export async function provisionTestIntent(
       capture_method: "manual",
       allowed_payment_method_types: ["card"],
       confirm: false,
-      metadata: {
-        provisioningJob: request.jobId,
-        quoteId: quote.id,
-        quoteVersion: String(quote.version),
-      },
+      metadata,
     },
     { idempotencyKey: `milo-test-intent:${request.jobId}` },
   );
@@ -97,9 +86,9 @@ export async function provisionTestIntent(
   );
   if (
     normalized.kind !== "observed" ||
-    intent.metadata.provisioningJob !== request.jobId ||
-    intent.metadata.quoteId !== quote.id ||
-    intent.metadata.quoteVersion !== String(quote.version)
+    intent.metadata.provisioningJob !== metadata.provisioningJob ||
+    intent.metadata.quoteId !== metadata.quoteId ||
+    intent.metadata.quoteVersion !== metadata.quoteVersion
   )
     throw new Error("Provider intent binding mismatch");
   return intent.id;

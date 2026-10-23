@@ -16,6 +16,11 @@ type Payment = Omit<TestPaymentBinding, "id"> & {
   _id: GenericId<"paymentIntents">;
 };
 
+const beginRef = makeFunctionReference<"mutation", Fence, Payment | null>(
+  "paymentMonitoring:begin",
+);
+const finishRef = makeFunctionReference<"mutation">("paymentMonitoring:finish");
+
 export const run = internalActionGeneric({
   args: {
     monitorId: v.id("paymentMonitors"),
@@ -24,26 +29,18 @@ export const run = internalActionGeneric({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const payment = await ctx.runMutation(
-      makeFunctionReference<"mutation", Fence, Payment | null>(
-        "paymentMonitoring:begin",
-      ),
-      args,
-    );
+    const payment = await ctx.runMutation(beginRef, args);
     if (!payment) return null;
-    const finish = makeFunctionReference<"mutation">(
-      "paymentMonitoring:finish",
-    );
     try {
       const result = await observeTestPayment({ ...payment, id: payment._id });
-      await ctx.runMutation(finish, {
+      await ctx.runMutation(finishRef, {
         ...args,
         ...(result.kind === "observed"
           ? { authorization: result.authorization }
           : {}),
       });
     } catch {
-      await ctx.runMutation(finish, args);
+      await ctx.runMutation(finishRef, args);
     }
     return null;
   },

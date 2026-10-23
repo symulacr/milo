@@ -25,31 +25,41 @@ export type MonitorStatus = {
   canStop: boolean;
 };
 
+type Session = { state: string; consentAt: number; expiresAt: number };
+
+const lifetimeOf = (s: Session) =>
+  Number.isSafeInteger(s.consentAt) &&
+  s.consentAt >= 0 &&
+  Number.isSafeInteger(s.expiresAt) &&
+  s.expiresAt === s.consentAt + MONITOR_DURATION_MS;
+
+export function monitorLive(session: Session, now: number) {
+  return (
+    session.state !== "stopped" &&
+    lifetimeOf(session) &&
+    Number.isSafeInteger(now) &&
+    now >= session.consentAt &&
+    now < session.expiresAt
+  );
+}
+
 export function projectMonitorStatus(
-  session: {
-    state: "waiting" | "running" | "stopped";
-    consentAt: number;
-    expiresAt: number;
-  } | null,
+  session: (Session & { state: "waiting" | "running" | "stopped" }) | null,
   bindingCurrent: boolean,
   ownsConsent: boolean,
   now: number,
 ): Pick<MonitorStatus, "state" | "expiresAt" | "canStop"> {
   if (!session) return { state: "none", expiresAt: null, canStop: false };
-  const validLifetime =
-    Number.isSafeInteger(session.consentAt) &&
-    session.consentAt >= 0 &&
-    Number.isSafeInteger(session.expiresAt) &&
-    session.expiresAt === session.consentAt + MONITOR_DURATION_MS;
-  const expiresAt = validLifetime ? session.expiresAt : null;
+  const valid = lifetimeOf(session);
+  const expiresAt = valid ? session.expiresAt : null;
   const canStop = ownsConsent && session.state !== "stopped";
   if (session.state === "stopped")
     return { state: "stopped", expiresAt, canStop };
-  if (validLifetime && Number.isSafeInteger(now) && now >= session.expiresAt)
+  if (valid && Number.isSafeInteger(now) && now >= session.expiresAt)
     return { state: "expired", expiresAt, canStop };
   return {
     state:
-      bindingCurrent && validLifetime && monitorLive(session, now)
+      bindingCurrent && monitorLive(session, now)
         ? session.state
         : "unavailable",
     expiresAt,
@@ -57,60 +67,68 @@ export function projectMonitorStatus(
   };
 }
 
-export function monitorLive(
-  session: { state: string; consentAt: number; expiresAt: number },
-  now: number,
-) {
-  return (
-    session.state !== "stopped" &&
-    Number.isSafeInteger(now) &&
-    Number.isSafeInteger(session.consentAt) &&
-    session.consentAt >= 0 &&
-    now >= session.consentAt &&
-    session.expiresAt === session.consentAt + MONITOR_DURATION_MS &&
-    now < session.expiresAt
-  );
-}
-
-// Snapshot all authority, including trusted revocation versions, across external I/O.
-export async function monitorBinding(
-  ctx: MonitorQueryContext,
-  quoteId: string,
-  subject: string,
-) {
-  const quote = await ctx.db
+export const quoteById = (ctx: MonitorQueryContext, quoteId: string) =>
+  ctx.db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", quoteId))
     .unique();
-  if (!quote) return null;
-  const membership = await ctx.db
-    .query("memberships")
-    .withIndex("by_subject_scope", (q) =>
-      q.eq("privySubject", subject).eq("scopeId", quote.scopeId),
-    )
-    .unique();
-  const customer = await ctx.db
-    .query("stripeCustomers")
-    .withIndex("by_buyer", (q) => q.eq("buyerAccountId", quote.buyerAccountId))
-    .unique();
-  const payment = await ctx.db
+
+export const paymentForQuote = (ctx: MonitorQueryContext, quoteId: string) =>
+  ctx.db
     .query("paymentIntents")
     .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
     .unique();
-  const authorities = await Promise.all(
-    (
-      [
-        ["quote", quoteId],
-        ["customer", quote.buyerAccountId],
-        ["membership", JSON.stringify([subject, quote.scopeId])],
-      ] as const
-    ).map(([kind, key]) =>
+
+export const membershipFor = (
+  ctx: MonitorQueryContext,
+  subject: string,
+  scopeId: string,
+) =>
+  ctx.db
+    .query("memberships")
+    .withIndex("by_subject_scope", (q) =>
+      q.eq("privySubject", subject).eq("scopeId", scopeId),
+    )
+    .unique();
+
+export const authoritiesFor = (
+  ctx: MonitorQueryContext,
+  entries: readonly (readonly [
+    "quote" | "customer" | "membership" | "timing",
+    string,
+  ])[],
+) =>
+  Promise.all(
+    entries.map(([kind, key]) =>
       ctx.db
         .query("trustedProvisioning")
         .withIndex("by_kind_key", (q) => q.eq("kind", kind).eq("key", key))
         .unique(),
     ),
   );
+
+export async function monitorBinding(
+  ctx: MonitorQueryContext,
+  quoteId: string,
+  subject: string,
+) {
+  const quote = await quoteById(ctx, quoteId);
+  if (!quote) return null;
+  const [membership, customer, payment, authorities] = await Promise.all([
+    membershipFor(ctx, subject, quote.scopeId),
+    ctx.db
+      .query("stripeCustomers")
+      .withIndex("by_buyer", (q) =>
+        q.eq("buyerAccountId", quote.buyerAccountId),
+      )
+      .unique(),
+    paymentForQuote(ctx, quoteId),
+    authoritiesFor(ctx, [
+      ["quote", quoteId],
+      ["customer", quote.buyerAccountId],
+      ["membership", JSON.stringify([subject, quote.scopeId])],
+    ]),
+  ]);
   if (
     !isQuoteBuyer(membership, quote.buyerAccountId) ||
     authorities.some((a) => a?.status === "revoked") ||
@@ -158,9 +176,6 @@ export async function monitorReceiptUsable(
   return current?.binding === session.binding;
 }
 
-// One definition of "invalidate the current payment observation before
-// external I/O or consent loss". With a monitor fence, only that monitor's
-// own observation is removed.
 export async function invalidatePaymentObservation(
   ctx: Pick<AdmissionContext, "db">,
   paymentIntentId: GenericId<"paymentIntents">,

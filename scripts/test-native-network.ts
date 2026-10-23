@@ -1,12 +1,3 @@
-// Runs the REAL local Midnight lane: the pinned Node 26.11.1 runtime, the
-// integration package's own dependency set, the pinned native node/indexer/
-// prover services, then local.mjs with the documented staged flags. This is
-// the only automated path that exercises real proof generation and submission;
-// the integration test lane uses stub submits by design.
-//
-// Usage: sh scripts/with-bun.sh scripts/test-native-network.ts [lane flags]
-//   default flags: --with-services --transactions --staged-bootstrap
-//   receipts also use: --maintenance-audit --maintenance-controls
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -18,8 +9,6 @@ assert(
   existsSync(resolve(prefix, "package-lock.json")),
   "run from the repository root: packages/integration/package-lock.json not found",
 );
-
-// The lane's own runtime and dependency set (own lockfile, pinned Node).
 const npm = resolve(dirname(integrationNode), "npm");
 const ci = spawnSync(
   npm,
@@ -27,8 +16,6 @@ const ci = spawnSync(
   { stdio: "inherit" },
 );
 assert.equal(ci.status, 0, "npm ci failed for packages/integration");
-
-// Native services are provisioned once; the lane start verifies them.
 if (!existsSync(".tools/native-midnight")) {
   const node = spawnSync(
     "sh",
@@ -41,10 +28,6 @@ if (!existsSync(".tools/native-midnight")) {
   });
   assert.equal(services.status, 0, "native service provisioning failed");
 }
-
-// The supervisor (native-node-smoke) starts its own disposable node,
-// observes the genesis hash and supplies the loopback endpoints; the
-// dependency provisioning above is what it assumes exists.
 const flags = process.argv.slice(2);
 const lane = flags.length
   ? flags

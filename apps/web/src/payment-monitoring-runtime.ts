@@ -26,7 +26,6 @@ export function monitoringControls(
   };
 }
 
-// A synchronous lease also fences promises after the form is replaced.
 class MonitoringRequestGuard {
   private busy = false;
   private revision = 0;
@@ -95,36 +94,40 @@ export class MonitoringController {
   consent(value: boolean) {
     this.update({ consent: value });
   }
-  async refresh() {
+  private async attempt(
+    message: string,
+    work: () => Promise<Partial<MonitoringSnapshot>>,
+    onError: Partial<MonitoringSnapshot>,
+  ) {
     const ticket = this.guard.acquire();
     if (ticket === null) return;
-    this.update({
-      busy: true,
-      consent: false,
-      needsRefresh: true,
-      message: "Checking monitoring status with the server…",
-    });
+    this.update({ busy: true, consent: false, needsRefresh: true, message });
     try {
-      const status = await this.transport.status({ quoteId: this.quoteId });
-      if (this.guard.current(ticket))
-        this.update({
-          status,
-          needsRefresh: false,
-          message: "Monitoring status refreshed.",
-        });
+      const patch = await work();
+      if (this.guard.current(ticket)) this.update(patch);
     } catch {
-      if (this.guard.current(ticket))
-        this.update({
-          status: undefined,
-          message:
-            "Monitoring status could not be verified. Refresh status to try again.",
-        });
+      if (this.guard.current(ticket)) this.update(onError);
     } finally {
       if (this.guard.current(ticket)) {
         this.guard.release(ticket);
         this.update({ busy: false });
       }
     }
+  }
+  async refresh() {
+    await this.attempt(
+      "Checking monitoring status with the server…",
+      async () => ({
+        status: await this.transport.status({ quoteId: this.quoteId }),
+        needsRefresh: false,
+        message: "Monitoring status refreshed.",
+      }),
+      {
+        status: undefined,
+        message:
+          "Monitoring status could not be verified. Refresh status to try again.",
+      },
+    );
   }
   async mutate(action: "start" | "stop", now = Date.now()) {
     const { status, consent, needsRefresh } = this.snapshot;
@@ -135,38 +138,22 @@ export class MonitoringController {
       (action === "start" ? !consent || !controls.canStart : !controls.canStop)
     )
       return;
-    const ticket = this.guard.acquire();
-    if (ticket === null) return;
-    this.update({
-      busy: true,
-      consent: false,
-      needsRefresh: true,
-      message:
-        "Waiting for the monitoring request. No outcome is confirmed yet; do not repeat it.",
-    });
-    try {
-      if (action === "start" && status.quoteVersion !== null) {
-        await this.transport.start({
-          quoteId: this.quoteId,
-          expectedVersion: status.quoteVersion,
-          consent: "monitor-test-payment",
-        });
-      } else {
-        await this.transport.stop({ quoteId: this.quoteId });
-      }
-      if (this.guard.current(ticket))
-        this.update({
+    await this.attempt(
+      "Waiting for the monitoring request. No outcome is confirmed yet; do not repeat it.",
+      async () => {
+        if (action === "start" && status.quoteVersion !== null)
+          await this.transport.start({
+            quoteId: this.quoteId,
+            expectedVersion: status.quoteVersion,
+            consent: "monitor-test-payment",
+          });
+        else await this.transport.stop({ quoteId: this.quoteId });
+        return {
           message:
             "Monitoring request acknowledged. Refresh status to verify the current state.",
-        });
-    } catch {
-      if (this.guard.current(ticket))
-        this.update({ message: unknownMonitoringOutcome });
-    } finally {
-      if (this.guard.current(ticket)) {
-        this.guard.release(ticket);
-        this.update({ busy: false });
-      }
-    }
+        };
+      },
+      { message: unknownMonitoringOutcome },
+    );
   }
 }

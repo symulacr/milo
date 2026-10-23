@@ -1,11 +1,3 @@
-/**
- * RECONSTRUCTED — Phase 8 W1-A
- * settlementOps lifecycle: inbox dedup, capture/void policy gates,
- * generation/attempt claim fences, bounded sweep.
- *
- * Specs: FINDINGS-LEDGER F-05/F-21, W2-A2, IMPLEMENTATION-WB-stripe,
- * IMPLEMENTATION-WC-security-tests. F-21: by_intent uses .take(64), never .unique().
- */
 import { internalMutationGeneric, makeFunctionReference } from "convex/server";
 import { type GenericId, v } from "convex/values";
 import type { PaymentAuthorization } from "../packages/backend/src/admission-policy";
@@ -13,11 +5,8 @@ import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import type { AdmissionContext } from "./admissionContext";
 import { invalidatePaymentObservation } from "./paymentMonitor";
 
-/** Bounded reclaim/resume scan. */
 export const MAX_SWEEP = 16;
-/** Lease for a running provider attempt before reclaim. */
 export const SETTLEMENT_LEASE_MS = 60_000;
-/** Base backoff for a transient provider failure; scaled by attempt. */
 export const RETRY_BACKOFF_MS = 30_000;
 
 const settleActionRef = makeFunctionReference<"action">("stripeSettlement:run");
@@ -25,7 +14,6 @@ const settleActionRef = makeFunctionReference<"action">("stripeSettlement:run");
 export type SettleAction = "capture" | "void";
 export type OrderPhase = string;
 
-/** Capture only APPROVED; void only CANCELLED. Everything else refuses both. */
 export function settlementAuthorized(
   action: SettleAction,
   phase: OrderPhase,
@@ -35,10 +23,6 @@ export function settlementAuthorized(
   return false;
 }
 
-/**
- * Stable operation identity across attempts. Business uniqueness is
- * (orderId, action, contractRevision) — never a claimed unique-index feature.
- */
 export function settlementIdempotencyKey(
   orderId: string,
   action: SettleAction,
@@ -47,7 +31,6 @@ export function settlementIdempotencyKey(
   return `milo-${action}:${orderId}:${contractRevision}`;
 }
 
-/** Inbox business identity: one durable row per (provider, accountId, eventId). */
 export function inboxDedupeKey(
   provider: string,
   accountId: string,
@@ -68,30 +51,26 @@ type OpsDb = {
   };
 };
 
-/**
- * F-21: one payment intent may carry capture+void rows. A `.unique()` lookup
- * on by_intent throws; every consumer must bound-scan instead.
- */
+export type SettlementOpRow = {
+  _id: GenericId<"settlementOps">;
+  paymentIntentId: GenericId<"paymentIntents">;
+  action: SettleAction;
+  orderId: string;
+  contractRevision: number;
+  state: string;
+  generation: number;
+  attempt: number;
+};
+
 export async function opsForIntent(
   db: OpsDb | AdmissionContext["db"],
   paymentIntentId: GenericId<"paymentIntents">,
-): Promise<
-  {
-    _id: GenericId<"settlementOps">;
-    paymentIntentId: GenericId<"paymentIntents">;
-    action: SettleAction;
-    orderId: string;
-    contractRevision: number;
-    state: string;
-    generation: number;
-    attempt: number;
-  }[]
-> {
+): Promise<SettlementOpRow[]> {
   const rows = await (db as OpsDb)
     .query("settlementOps")
     .withIndex("by_intent", (q) => q.eq("paymentIntentId", paymentIntentId))
     .take(64);
-  return rows as never;
+  return rows as SettlementOpRow[];
 }
 
 function inboxExists(
@@ -111,10 +90,16 @@ function inboxExists(
     .unique();
 }
 
-/**
- * Durable inbox receipt. Dedup by (provider, accountId, eventId).
- * Duplicates acknowledge against the earlier acceptance (isNew: false).
- */
+const scheduleSettle = (
+  ctx: AdmissionContext,
+  op: { _id: GenericId<"settlementOps">; generation: number; attempt: number },
+) =>
+  ctx.scheduler.runAfter(0, settleActionRef, {
+    opId: op._id,
+    generation: op.generation,
+    attempt: op.attempt,
+  });
+
 export const recordEvent = internalMutationGeneric({
   args: {
     provider: v.literal("stripe"),
@@ -133,7 +118,6 @@ export const recordEvent = internalMutationGeneric({
       args.eventId,
     );
     if (existing) return { isNew: false, inboxId: existing._id };
-    const now = Date.now();
     const inboxId = await ctx.db.insert("paymentInbox", {
       provider: args.provider,
       accountId: args.accountId,
@@ -141,18 +125,13 @@ export const recordEvent = internalMutationGeneric({
       eventType: args.eventType,
       digest: args.digest,
       paymentIntentRef: args.paymentIntentRef,
-      receivedAt: now,
+      receivedAt: Date.now(),
       processedAt: undefined,
     });
     return { isNew: true, inboxId };
   },
 });
 
-/**
- * Mark the inbox row processed and nudge matching settlementOps in
- * `reconciliation` back to `pending`. Unmapped intents still close the inbox.
- * Event is evidence to re-fetch — never phase authority.
- */
 export const reconcile = internalMutationGeneric({
   args: {
     provider: v.literal("stripe"),
@@ -167,40 +146,44 @@ export const reconcile = internalMutationGeneric({
       args.accountId,
       args.eventId,
     );
-    if (!row) return null;
-    if (row.processedAt !== undefined) return null;
+    if (!row || row.processedAt !== undefined) return null;
     const now = Date.now();
     await ctx.db.patch(row._id, { processedAt: now });
-    const paymentIntentRef = row.paymentIntentRef;
-    if (!paymentIntentRef) return null;
+    const piRef = row.paymentIntentRef;
+    if (!piRef) return null;
     const payments = await ctx.db
       .query("paymentIntents")
       .withIndex("by_provider_intent", (q) =>
-        q.eq("stripePaymentIntentId", paymentIntentRef),
+        q.eq("stripePaymentIntentId", piRef),
       )
       .take(8);
     for (const payment of payments) {
-      // F-21: bound-scan, never .unique()
-      const ops = await opsForIntent(ctx.db, payment._id);
-      for (const op of ops) {
+      for (const op of await opsForIntent(ctx.db, payment._id)) {
         if (op.state !== "reconciliation") continue;
         await ctx.db.patch(op._id, { state: "pending", nextAt: now });
-        await ctx.scheduler.runAfter(0, settleActionRef, {
-          opId: op._id,
-          generation: op.generation,
-          attempt: op.attempt,
-        });
+        await scheduleSettle(ctx, op);
       }
     }
     return null;
   },
 });
 
-/**
- * Open one settlement operation per (orderId, action, contractRevision).
- * Capture requires a fresh usable bound hold; the observation is invalidated
- * BEFORE any provider I/O is scheduled.
- */
+type OpenArgs = {
+  orderId: string;
+  contractRevision: number;
+  phase: string;
+  paymentIntentId: GenericId<"paymentIntents">;
+  quoteId: string;
+  quoteVersion: number;
+  amountMinor: number;
+  currency: string;
+};
+
+const NO_ACTION = {
+  kind: "noop" as const,
+  reason: "phase does not open a settlement action",
+};
+
 export const request = internalMutationGeneric({
   args: {
     orderId: v.string(),
@@ -224,117 +207,92 @@ export const request = internalMutationGeneric({
   handler: async (ctx: AdmissionContext, args) => openSettlement(ctx, args),
 });
 
-/**
- * The one body behind every settlement entry point. `request` keeps its
- * explicit-argument surface; `openFromObservation` derives the same arguments
- * from the chain row so no caller can choose the phase.
- */
-async function openSettlement(
-  ctx: AdmissionContext,
-  args: {
-    orderId: string;
-    contractRevision: number;
-    phase: string;
-    paymentIntentId: GenericId<"paymentIntents">;
-    quoteId: string;
-    quoteVersion: number;
-    amountMinor: number;
-    currency: string;
-  },
-) {
-  {
-    let action: SettleAction | null = null;
-    if (args.phase === "APPROVED") action = "capture";
-    else if (args.phase === "CANCELLED") action = "void";
-    if (!action || !settlementAuthorized(action, args.phase))
-      return {
-        kind: "noop" as const,
-        reason: "phase does not open a settlement action",
-      };
+async function openSettlement(ctx: AdmissionContext, args: OpenArgs) {
+  const action: SettleAction | null =
+    args.phase === "APPROVED"
+      ? "capture"
+      : args.phase === "CANCELLED"
+        ? "void"
+        : null;
+  if (!action || !settlementAuthorized(action, args.phase)) return NO_ACTION;
 
-    const payment = await ctx.db.get(args.paymentIntentId);
-    if (!payment) throw new Error("Unbound payment refused");
-    if (
-      payment.quoteId !== args.quoteId ||
-      payment.quoteVersion !== args.quoteVersion ||
-      payment.amountMinor !== args.amountMinor ||
-      payment.currency !== args.currency
-    ) {
-      throw new Error("Payment/quote binding drift refused");
-    }
+  const payment = await ctx.db.get(args.paymentIntentId);
+  if (!payment) throw new Error("Unbound payment refused");
+  if (
+    payment.quoteId !== args.quoteId ||
+    payment.quoteVersion !== args.quoteVersion ||
+    payment.amountMinor !== args.amountMinor ||
+    payment.currency !== args.currency
+  )
+    throw new Error("Payment/quote binding drift refused");
 
-    if (action === "capture") {
-      const observation = await ctx.db
-        .query("paymentObservations")
-        .withIndex("by_payment_intent", (q) =>
-          q.eq("paymentIntentId", args.paymentIntentId),
-        )
-        .unique();
-      const now = Date.now();
-      const auth: PaymentAuthorization | undefined = observation?.authorization;
-      if (auth?.status !== "authorized") {
-        throw new Error("Capture requires a fresh usable bound hold");
-      }
-      if (!usableObservation(auth, now, auth.usableFrom)) {
-        throw new Error("Capture requires a fresh usable bound hold");
-      }
-    }
-
-    const idempotencyKey = settlementIdempotencyKey(
-      args.orderId,
-      action,
-      args.contractRevision,
-    );
-    const existing = await ctx.db
-      .query("settlementOps")
-      .withIndex("by_identity", (q) =>
-        q
-          .eq("orderId", args.orderId)
-          .eq("action", action)
-          .eq("contractRevision", args.contractRevision),
+  if (action === "capture") {
+    const observation = await ctx.db
+      .query("paymentObservations")
+      .withIndex("by_payment_intent", (q) =>
+        q.eq("paymentIntentId", args.paymentIntentId),
       )
       .unique();
-    if (existing) {
-      // Same (order, action, revision) is one operation — never a second charge.
-      return {
-        kind: "opened" as const,
-        opId: existing._id,
-        action: existing.action,
-        idempotencyKey: existing.idempotencyKey,
-      };
-    }
-
-    // Invalidate the payment observation BEFORE scheduling provider I/O.
-    await invalidatePaymentObservation(ctx, args.paymentIntentId);
-
     const now = Date.now();
-    const opId = await ctx.db.insert("settlementOps", {
-      orderId: args.orderId,
-      action,
-      contractRevision: args.contractRevision,
-      paymentIntentId: args.paymentIntentId,
-      quoteId: args.quoteId,
-      quoteVersion: args.quoteVersion,
-      amountMinor: args.amountMinor,
-      currency: args.currency,
-      idempotencyKey,
-      phase: args.phase,
-      generation: 1,
-      attempt: 0,
-      state: "pending",
-      nextAt: now,
-      startedAt: undefined,
-      finishedAt: undefined,
-      receipt: undefined,
-      lastReason: undefined,
-    });
-    await ctx.scheduler.runAfter(0, settleActionRef, {
-      opId,
-      generation: 1,
-      attempt: 0,
-    });
-    return { kind: "opened" as const, opId, action, idempotencyKey };
+    const auth: PaymentAuthorization | undefined = observation?.authorization;
+    if (
+      auth?.status !== "authorized" ||
+      !usableObservation(auth, now, auth.usableFrom)
+    )
+      throw new Error("Capture requires a fresh usable bound hold");
   }
+
+  const idempotencyKey = settlementIdempotencyKey(
+    args.orderId,
+    action,
+    args.contractRevision,
+  );
+  const existing = await ctx.db
+    .query("settlementOps")
+    .withIndex("by_identity", (q) =>
+      q
+        .eq("orderId", args.orderId)
+        .eq("action", action)
+        .eq("contractRevision", args.contractRevision),
+    )
+    .unique();
+  if (existing)
+    return {
+      kind: "opened" as const,
+      opId: existing._id,
+      action: existing.action,
+      idempotencyKey: existing.idempotencyKey,
+    };
+
+  await invalidatePaymentObservation(ctx, args.paymentIntentId);
+
+  const now = Date.now();
+  const opId = await ctx.db.insert("settlementOps", {
+    orderId: args.orderId,
+    action,
+    contractRevision: args.contractRevision,
+    paymentIntentId: args.paymentIntentId,
+    quoteId: args.quoteId,
+    quoteVersion: args.quoteVersion,
+    amountMinor: args.amountMinor,
+    currency: args.currency,
+    idempotencyKey,
+    phase: args.phase,
+    generation: 1,
+    attempt: 0,
+    state: "pending",
+    nextAt: now,
+    startedAt: undefined,
+    finishedAt: undefined,
+    receipt: undefined,
+    lastReason: undefined,
+  });
+  await ctx.scheduler.runAfter(0, settleActionRef, {
+    opId,
+    generation: 1,
+    attempt: 0,
+  });
+  return { kind: "opened" as const, opId, action, idempotencyKey };
 }
 
 export const fenceArgs = {
@@ -343,15 +301,6 @@ export const fenceArgs = {
   attempt: v.number(),
 };
 
-/**
- * Open the settlement action implied by an observed terminal chain phase.
- *
- * The phase is read from `chainOrders`, never from a caller: a caller-supplied
- * phase would let any internal caller authorize a capture the chain never
- * approved. Everything the provider call needs is taken from the bound quote
- * and its authorized payment, so this is the single entry point that makes
- * capture and void reachable at all.
- */
 export const openFromObservation = internalMutationGeneric({
   args: { orderId: v.string() },
   returns: v.union(
@@ -411,10 +360,25 @@ export const openFromObservation = internalMutationGeneric({
   },
 });
 
-/**
- * Claim fence. Matching pending claim → running + operation identity.
- * Generation/attempt mismatch, non-pending, phase drift, or binding drift refuse.
- */
+const bindingDrift = (
+  row: {
+    quoteId: string;
+    quoteVersion: number;
+    amountMinor: number;
+    currency: string;
+  },
+  payment: {
+    quoteId: string;
+    quoteVersion: number;
+    amountMinor: number;
+    currency: string;
+  },
+): boolean =>
+  payment.quoteId !== row.quoteId ||
+  payment.quoteVersion !== row.quoteVersion ||
+  payment.amountMinor !== row.amountMinor ||
+  payment.currency !== row.currency;
+
 export const begin = internalMutationGeneric({
   args: fenceArgs,
   returns: v.union(
@@ -435,22 +399,10 @@ export const begin = internalMutationGeneric({
     if (op.generation !== args.generation || op.attempt !== args.attempt)
       return null;
     if (op.state !== "pending") return null;
-    // Phase drift: the terminal order phase must still authorize this action.
     if (!settlementAuthorized(op.action, op.phase)) return null;
     const payment = await ctx.db.get(op.paymentIntentId);
-    if (
-      !payment ||
-      payment.quoteId !== op.quoteId ||
-      payment.quoteVersion !== op.quoteVersion ||
-      payment.amountMinor !== op.amountMinor ||
-      payment.currency !== op.currency
-    )
-      return null;
-    const now = Date.now();
-    await ctx.db.patch(op._id, {
-      state: "running",
-      startedAt: now,
-    });
+    if (!payment || bindingDrift(op, payment)) return null;
+    await ctx.db.patch(op._id, { state: "running", startedAt: Date.now() });
     return {
       action: op.action,
       idempotencyKey: op.idempotencyKey,
@@ -463,10 +415,13 @@ export const begin = internalMutationGeneric({
   },
 });
 
-/**
- * Completion fence. Ambiguous results go to `reconciliation`, never a silent
- * complete. Void is not completed by a captured status. Stale fences refuse.
- */
+const blockOp = (
+  ctx: AdmissionContext,
+  opId: GenericId<"settlementOps">,
+  now: number,
+  lastReason: string,
+) => ctx.db.patch(opId, { state: "blocked", finishedAt: now, lastReason });
+
 export const finish = internalMutationGeneric({
   args: {
     ...fenceArgs,
@@ -502,9 +457,6 @@ export const finish = internalMutationGeneric({
       return null;
     }
     if (args.outcome === "retry") {
-      // A transient provider failure (5xx, rate limit, transport) is not a
-      // verdict. Return the operation to pending with backoff so the sweep
-      // resumes it; only a definite non-effect is terminal.
       await ctx.db.patch(op._id, {
         state: "pending",
         attempt: op.attempt + 1,
@@ -515,27 +467,30 @@ export const finish = internalMutationGeneric({
       return null;
     }
     if (args.outcome === "failed") {
-      await ctx.db.patch(op._id, {
-        state: "blocked",
-        finishedAt: now,
-        lastReason: "provider reported a definite non-effect",
-      });
+      await blockOp(
+        ctx,
+        op._id,
+        now,
+        "provider reported a definite non-effect",
+      );
       return null;
     }
     if (op.action === "capture" && args.outcome !== "captured") {
-      await ctx.db.patch(op._id, {
-        state: "blocked",
-        finishedAt: now,
-        lastReason: "capture op is not completed by a non-captured status",
-      });
+      await blockOp(
+        ctx,
+        op._id,
+        now,
+        "capture op is not completed by a non-captured status",
+      );
       return null;
     }
     if (op.action === "void" && args.outcome !== "voided") {
-      await ctx.db.patch(op._id, {
-        state: "blocked",
-        finishedAt: now,
-        lastReason: "void op is not completed by a captured status",
-      });
+      await blockOp(
+        ctx,
+        op._id,
+        now,
+        "void op is not completed by a captured status",
+      );
       return null;
     }
     await ctx.db.patch(op._id, {
@@ -548,27 +503,19 @@ export const finish = internalMutationGeneric({
   },
 });
 
-/**
- * Bounded sweeper: resume due pending with generation preserved; reclaim
- * stale running (attempt+1); ignore not-due rows. MAX_SWEEP bound.
- */
 export const sweep = internalMutationGeneric({
   args: {},
   returns: v.number(),
   handler: async (ctx: AdmissionContext) => {
     const now = Date.now();
+    let scheduled = 0;
     const due = await ctx.db
       .query("settlementOps")
       .withIndex("by_due", (q) => q.eq("state", "pending"))
       .take(MAX_SWEEP);
-    let scheduled = 0;
     for (const op of due) {
       if (op.nextAt > now) continue;
-      await ctx.scheduler.runAfter(0, settleActionRef, {
-        opId: op._id,
-        generation: op.generation,
-        attempt: op.attempt,
-      });
+      await scheduleSettle(ctx, op);
       scheduled += 1;
       if (scheduled >= MAX_SWEEP) return scheduled;
     }
@@ -578,27 +525,16 @@ export const sweep = internalMutationGeneric({
       .take(MAX_SWEEP);
     for (const op of running) {
       if (scheduled >= MAX_SWEEP) break;
-      const startedAt = op.startedAt ?? 0;
-      if (now < startedAt + SETTLEMENT_LEASE_MS) continue;
-      // Stale running reclaimed: state pending, attempt+1, generation preserved.
+      if (now < (op.startedAt ?? 0) + SETTLEMENT_LEASE_MS) continue;
       const attempt = op.attempt + 1;
-      await ctx.db.patch(op._id, {
-        state: "pending",
-        attempt,
-        nextAt: now,
-      });
-      await ctx.scheduler.runAfter(0, settleActionRef, {
-        opId: op._id,
-        generation: op.generation,
-        attempt,
-      });
+      await ctx.db.patch(op._id, { state: "pending", attempt, nextAt: now });
+      await scheduleSettle(ctx, { ...op, attempt });
       scheduled += 1;
     }
     return scheduled;
   },
 });
 
-/** Diagnostic projection of ops for one intent (F-21 safe). */
 export const opsForPaymentIntent = internalMutationGeneric({
   args: { paymentIntentId: v.id("paymentIntents") },
   returns: v.array(
@@ -618,12 +554,6 @@ export const opsForPaymentIntent = internalMutationGeneric({
       state: op.state,
       generation: op.generation,
       attempt: op.attempt,
-    })) as {
-      id: GenericId<"settlementOps">;
-      action: SettleAction;
-      state: string;
-      generation: number;
-      attempt: number;
-    }[];
+    }));
   },
 });

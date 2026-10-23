@@ -9,15 +9,35 @@ import {
 
 export type { PublicConfig };
 
+const V4_API = /^4\./;
+const HINTED_METHODS = ["getConnectionStatus", "getConfiguration"] as const;
+
+const CONFIG_URL = "/api/public-config";
+const CONFIG_INIT = {
+  cache: "no-store",
+  credentials: "same-origin",
+} as const;
+
+const NO_WALLET =
+  "No compatible Midnight wallet (API v4) was found. Install or unlock the extension, then retry.";
+const CONNECTING =
+  "Approve the PREPROD connection in Midnight Lace. No signature is requested.";
+const CONNECTED =
+  "The selected wallet reports a connected PREPROD session. No transaction or account linkage has been performed.";
+const CONNECT_FAILED =
+  "Connection not established. Permission may have been declined, the wallet may be unavailable, or its network is not PREPROD. Mainnet is blocked.";
+const REFRESHED =
+  "Lace PREPROD status checked. No transaction or account linkage has been performed.";
+const REFRESH_FAILED =
+  "Lace is disconnected, unavailable, or no longer on PREPROD. Reconnect after checking the extension.";
+const DISCONNECTED =
+  "Connection forgotten in Milo. Revoke site permission in Lace to remove the extension’s authorization.";
+
 export async function loadPublicConfig(
   signal?: AbortSignal,
   request: (input: string, init?: RequestInit) => Promise<Response> = fetch,
 ): Promise<PublicConfig> {
-  const response = await request("/api/public-config", {
-    signal,
-    cache: "no-store",
-    credentials: "same-origin",
-  });
+  const response = await request(CONFIG_URL, { signal, ...CONFIG_INIT });
   if (!response.ok)
     throw new Error("Public connection configuration is unavailable.");
   const result = publicConfigSchema.safeParse(await response.json());
@@ -28,12 +48,6 @@ export async function loadPublicConfig(
   return result.data;
 }
 
-/**
- * Enumerate window.midnight entries per 01-blueprint §3.4.2: injection keys
- * are UUIDs, not a stable property. Filter to the supported API major and
- * fail closed; the caller handles zero, one or multiple wallets (user
- * selection required for multiples).
- */
 export function discoverLaceWallets(
   registry: Window["midnight"],
 ): InitialAPI[] {
@@ -42,7 +56,7 @@ export function discoverLaceWallets(
     (wallet): wallet is InitialAPI =>
       !!wallet &&
       typeof wallet.connect === "function" &&
-      /^4\./.test(wallet.apiVersion),
+      V4_API.test(wallet.apiVersion),
   );
 }
 
@@ -51,6 +65,18 @@ export type LaceState = {
   status: "disconnected" | "connecting" | "connected" | "error";
   message: string;
 };
+
+const PREPROD_REQUIRED = "PREPROD connection required";
+const PREPROD_CONFIG_REQUIRED = "PREPROD configuration required";
+
+async function verify(api: StatusAPI): Promise<void> {
+  const status = await api.getConnectionStatus();
+  if (status.status !== "connected" || status.networkId !== "preprod")
+    throw new Error(PREPROD_REQUIRED);
+  const configuration = await api.getConfiguration();
+  if (configuration.networkId !== "preprod")
+    throw new Error(PREPROD_CONFIG_REQUIRED);
+}
 
 export class LaceConnection {
   private api: StatusAPI | undefined;
@@ -61,91 +87,45 @@ export class LaceConnection {
     const revision = ++this.revision;
     this.api = undefined;
     if (!wallet) {
-      this.update({
-        status: "error",
-        message:
-          "No compatible Midnight wallet (API v4) was found. Install or unlock the extension, then retry.",
-      });
+      this.update({ status: "error", message: NO_WALLET });
       return;
     }
-    this.update({
-      status: "connecting",
-      message:
-        "Approve the PREPROD connection in Midnight Lace. No signature is requested.",
-    });
+    this.update({ status: "connecting", message: CONNECTING });
     try {
       const api = await wallet.connect("preprod");
       if (revision !== this.revision) return;
-      await this.verify(api);
+      await verify(api);
       if (revision !== this.revision) return;
-      // Advisory per the v4 spec: tell the wallet which connected-API methods
-      // this session uses. Older wallets may not implement it, and a declined
-      // hint must never fail an otherwise valid connection.
       try {
-        await api.hintUsage?.(["getConnectionStatus", "getConfiguration"]);
-      } catch {
-        // Hint-only failure: keep the verified connection.
-      }
-      // The hint can await the wallet; a disconnect during that window must
-      // win over the now-stale connect attempt.
+        await api.hintUsage?.([...HINTED_METHODS]);
+      } catch {}
       if (revision !== this.revision) return;
       this.api = api;
-      this.update({
-        status: "connected",
-        message:
-          "The selected wallet reports a connected PREPROD session. No transaction or account linkage has been performed.",
-      });
+      this.update({ status: "connected", message: CONNECTED });
     } catch {
       if (revision !== this.revision) return;
-      this.update({
-        status: "error",
-        message:
-          "Connection not established. Permission may have been declined, the wallet may be unavailable, or its network is not PREPROD. Mainnet is blocked.",
-      });
+      this.update({ status: "error", message: CONNECT_FAILED });
     }
-  }
-
-  private async verify(api: StatusAPI) {
-    const status = await api.getConnectionStatus();
-    if (status.status !== "connected" || status.networkId !== "preprod")
-      throw new Error("PREPROD connection required");
-    const configuration = await api.getConfiguration();
-    if (configuration.networkId !== "preprod")
-      throw new Error("PREPROD configuration required");
   }
 
   async refresh() {
     if (!this.api) return;
     const revision = this.revision;
     try {
-      await this.verify(this.api);
+      await verify(this.api);
       if (revision === this.revision)
-        this.update({
-          status: "connected",
-          message:
-            "Lace PREPROD status checked. No transaction or account linkage has been performed.",
-        });
+        this.update({ status: "connected", message: REFRESHED });
     } catch {
       if (revision !== this.revision) return;
       this.api = undefined;
       ++this.revision;
-      this.update({
-        status: "error",
-        message:
-          "Lace is disconnected, unavailable, or no longer on PREPROD. Reconnect after checking the extension.",
-      });
+      this.update({ status: "error", message: REFRESH_FAILED });
     }
   }
 
   disconnect(notify = true) {
     ++this.revision;
     this.api = undefined;
-    // Connector v4 has no revoke/disconnect method; forget the handle, not the extension permission.
-    if (notify)
-      this.update({
-        status: "disconnected",
-        message:
-          "Connection forgotten in Milo. Revoke site permission in Lace to remove the extension’s authorization.",
-      });
+    if (notify) this.update({ status: "disconnected", message: DISCONNECTED });
   }
 }

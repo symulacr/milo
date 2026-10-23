@@ -4,7 +4,7 @@ import {
   mutationGeneric,
   queryGeneric,
 } from "convex/server";
-import { v } from "convex/values";
+import { type GenericId, v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
@@ -12,6 +12,7 @@ import type { AdmissionContext } from "./admissionContext";
 import { paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer } from "./auth/identity";
 import {
+  authoritiesFor,
   invalidatePaymentObservation,
   MONITOR_DURATION_MS,
   MONITOR_INTERVAL_MS,
@@ -20,6 +21,7 @@ import {
   monitorBinding,
   monitorLive,
   projectMonitorStatus,
+  quoteById,
 } from "./paymentMonitor";
 
 const tickRef = makeFunctionReference<"mutation">("paymentMonitoring:tick");
@@ -30,8 +32,49 @@ const fenceArgs = {
   attempt: v.number(),
 };
 
+const monitorFor = (ctx: AdmissionContext, quoteId: string) =>
+  ctx.db
+    .query("paymentMonitors")
+    .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
+    .unique();
+
+const jobFor = (ctx: AdmissionContext, quoteId: string) =>
+  ctx.db
+    .query("paymentJobs")
+    .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
+    .unique();
+
+const jobBlocked = (job: { state: string } | null | undefined) =>
+  job?.state === "queued" || job?.state === "running";
+
+const clockOk = (now: number) =>
+  Number.isSafeInteger(now) &&
+  now >= 0 &&
+  Number.isSafeInteger(now + MONITOR_DURATION_MS);
+
+const rebind = (
+  ctx: AdmissionContext,
+  session: { quoteId: string; consentSubject: string },
+) => monitorBinding(ctx, session.quoteId, session.consentSubject);
+
+const stopSession = async (
+  ctx: AdmissionContext,
+  session: {
+    _id: GenericId<"paymentMonitors">;
+    paymentIntentId: GenericId<"paymentIntents">;
+    generation: number;
+  },
+) => {
+  await invalidatePaymentObservation(
+    ctx,
+    session.paymentIntentId,
+    session._id,
+    session.generation,
+  );
+  await ctx.db.patch(session._id, { state: "stopped" });
+};
+
 export const status = queryGeneric({
-  // A new token bypasses client query caching; it never affects authorization.
   args: { quoteId: v.string(), refreshToken: v.optional(v.string()) },
   returns: v.object({
     state: v.union(
@@ -56,11 +99,7 @@ export const status = queryGeneric({
     const ownsConsent = session?.consentSubject === subject;
     const current = await monitorBinding(ctx, args.quoteId, subject);
     if (!ownsConsent && !current) {
-      // A buyer can inspect an empty/unavailable session before a payment exists.
-      const quote = await ctx.db
-        .query("frozenQuotes")
-        .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
-        .unique();
+      const quote = await quoteById(ctx, args.quoteId);
       const membership =
         quote &&
         (await ctx.db
@@ -71,21 +110,10 @@ export const status = queryGeneric({
           .unique());
       const authorities =
         quote &&
-        (await Promise.all(
-          (
-            [
-              ["quote", args.quoteId],
-              ["membership", JSON.stringify([subject, quote.scopeId])],
-            ] as const
-          ).map(([kind, key]) =>
-            ctx.db
-              .query("trustedProvisioning")
-              .withIndex("by_kind_key", (q) =>
-                q.eq("kind", kind).eq("key", key),
-              )
-              .unique(),
-          ),
-        ));
+        (await authoritiesFor(ctx, [
+          ["quote", args.quoteId],
+          ["membership", JSON.stringify([subject, quote.scopeId])],
+        ]));
       if (
         !quote ||
         !isQuoteBuyer(membership, quote.buyerAccountId) ||
@@ -95,7 +123,6 @@ export const status = queryGeneric({
           "Authenticated quote buyer or monitoring consent owner required",
         );
     }
-    // Different subjects' membership snapshots cannot validate the owner's consent.
     const ownerCurrent =
       session && !ownsConsent
         ? await monitorBinding(ctx, args.quoteId, session.consentSubject)
@@ -117,14 +144,11 @@ export const status = queryGeneric({
       quoteVersion: current?.quote.version ?? null,
       canStart:
         !!current &&
-        Number.isSafeInteger(now) &&
-        now >= 0 &&
-        Number.isSafeInteger(now + MONITOR_DURATION_MS) &&
+        clockOk(now) &&
         (!session ||
           (Number.isSafeInteger(session.generation + 1) &&
             !monitorLive(session, now))) &&
-        job?.state !== "queued" &&
-        job?.state !== "running",
+        !jobBlocked(job),
     };
   },
 });
@@ -141,24 +165,11 @@ export const start = mutationGeneric({
     const current = await monitorBinding(ctx, args.quoteId, subject);
     if (!current || current.quote.version !== args.expectedVersion)
       throw new Error("Active immutable payment and quote buyer required");
-    const job = await ctx.db
-      .query("paymentJobs")
-      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-      .unique();
-    // A monitor never takes over even an expired creation/one-shot lease.
-    if (job && (job.state === "queued" || job.state === "running"))
+    if (jobBlocked(await jobFor(ctx, args.quoteId)))
       throw new Error("Payment job must finish before monitoring");
-    const old = await ctx.db
-      .query("paymentMonitors")
-      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-      .unique();
+    const old = await monitorFor(ctx, args.quoteId);
     const now = Date.now();
-    if (
-      !Number.isSafeInteger(now) ||
-      now < 0 ||
-      !Number.isSafeInteger(now + MONITOR_DURATION_MS) ||
-      (old && !Number.isSafeInteger(old.generation + 1))
-    )
+    if (!clockOk(now) || (old && !Number.isSafeInteger(old.generation + 1)))
       throw new Error("Invalid monitoring clock or generation");
     if (old && monitorLive(old, now))
       throw new Error("Stop existing monitoring before starting a new session");
@@ -192,13 +203,9 @@ export const stop = mutationGeneric({
   returns: v.null(),
   handler: async (ctx: AdmissionContext, args) => {
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
-    const session = await ctx.db
-      .query("paymentMonitors")
-      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
-      .unique();
+    const session = await monitorFor(ctx, args.quoteId);
     if (session && session.consentSubject !== subject)
       throw new Error("Monitoring consent owner required");
-    // Withdrawing consent remains possible after membership or quote revocation.
     if (session && session.state !== "stopped") {
       await invalidatePaymentObservation(
         ctx,
@@ -215,7 +222,6 @@ export const stop = mutationGeneric({
   },
 });
 
-// The watchdog uses the same attempt fence, recovering only this session's read lease.
 export const tick = internalMutationGeneric({
   args: fenceArgs,
   returns: v.null(),
@@ -229,19 +235,9 @@ export const tick = internalMutationGeneric({
     )
       return null;
     const now = Date.now();
-    const current = await monitorBinding(
-      ctx,
-      session.quoteId,
-      session.consentSubject,
-    );
+    const current = await rebind(ctx, session);
     if (!monitorLive(session, now) || current?.binding !== session.binding) {
-      await invalidatePaymentObservation(
-        ctx,
-        session.paymentIntentId,
-        session._id,
-        session.generation,
-      );
-      await ctx.db.patch(session._id, { state: "stopped" });
+      await stopSession(ctx, session);
       return null;
     }
     const due =
@@ -284,27 +280,18 @@ export const begin = internalMutationGeneric({
     if (
       session?.state !== "running" ||
       session.generation !== args.generation ||
-      session.attempt !== args.attempt
+      session.attempt !== args.attempt ||
+      session.claimed
     )
       return null;
-    if (session.claimed) return null;
-    const current = await monitorBinding(
-      ctx,
-      session.quoteId,
-      session.consentSubject,
-    );
+    const now = Date.now();
+    const current = await rebind(ctx, session);
     if (
-      !monitorLive(session, Date.now()) ||
-      Date.now() >= session.startedAt + MONITOR_LEASE_MS ||
+      !monitorLive(session, now) ||
+      now >= session.startedAt + MONITOR_LEASE_MS ||
       current?.binding !== session.binding
     ) {
-      await invalidatePaymentObservation(
-        ctx,
-        session.paymentIntentId,
-        session._id,
-        session.generation,
-      );
-      await ctx.db.patch(session._id, { state: "stopped" });
+      await stopSession(ctx, session);
       return null;
     }
     await ctx.db.patch(session._id, { claimed: true });
@@ -320,17 +307,12 @@ export const finish = internalMutationGeneric({
     if (
       session?.state !== "running" ||
       session.generation !== args.generation ||
-      session.attempt !== args.attempt
+      session.attempt !== args.attempt ||
+      !session.claimed
     )
       return null;
-    // An unclaimed attempt never passed begin's lease/binding re-check; refuse to complete it.
-    if (!session.claimed) return null;
     const now = Date.now();
-    const current = await monitorBinding(
-      ctx,
-      session.quoteId,
-      session.consentSubject,
-    );
+    const current = await rebind(ctx, session);
     await invalidatePaymentObservation(
       ctx,
       session.paymentIntentId,
@@ -350,9 +332,6 @@ export const finish = internalMutationGeneric({
     if (
       auth &&
       auth.id === payment._id &&
-      // monitorBinding has already kernel-bound current.payment to current.quote,
-      // so comparing the authorization against the quote equals comparing it
-      // against the payment row.
       paymentBindsQuote(auth, current.quote) &&
       usableObservation(auth, now, session.startedAt)
     ) {

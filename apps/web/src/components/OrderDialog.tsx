@@ -1,42 +1,135 @@
 import { AlertDialog, Dialog } from "radix-ui";
 import type { ReactNode } from "react";
+import type { Action } from "../../../../packages/domain/src/prototype";
 import { sampleFiles } from "../assets";
 import { REVIEW_DEADLINE } from "../reviewDeadline";
 import { useWorkspace } from "../workspace/model";
 
-/**
- * Copy for every string-keyed modal. An unknown key renders neutral copy
- * instead of falling through to the first sample image (D9/D12).
- */
-const dialogCopy: Record<string, { title: string; description: string }> = {
+type Row = { term: string; value: ReactNode };
+type Ctx = { quoteName: string; money: string; filesVerified: boolean };
+
+type Spec = {
+  title: string;
+  description: string;
+  rows?: (ctx: Ctx) => Row[];
+  note?: string;
+  consent?: string;
+  guard?: string;
+  action?: Action;
+  actionLabel?: string;
+  navigate?: string;
+};
+
+const SCOPE_ROWS = (ctx: Ctx): Row[] => [
+  { term: "Agreement", value: ctx.quoteName },
+  { term: "Scope", value: "Three final images · fixed version" },
+  { term: "Agreed amount", value: `${ctx.money} USD` },
+  { term: "Payment", value: "Hold authorized; not captured" },
+  { term: "Deadline", value: `${REVIEW_DEADLINE} · sample clock` },
+];
+
+const resolveRows =
+  (decision: string, payment: string) =>
+  (ctx: Ctx): Row[] => [
+    { term: "Agreement", value: ctx.quoteName },
+    {
+      term: "Authority",
+      value: "Pre-agreed operator · committed before purchase",
+    },
+    { term: "Decision", value: decision },
+    { term: "Payment", value: payment },
+  ];
+
+const RESOLVE_NOTE =
+  "Resolution is final in full — no partial approval, no reopened terms, no rewritten history.";
+const RESOLVE_DESC = "Your decision is final and applies in full.";
+
+const SPECS: Record<string, Spec> = {
   approve: {
     title: "Approve this delivery?",
     description: "Approve this exact delivery.",
-  },
-  dispute: {
-    title: "Open a dispute",
-    description: "A dispute pauses approval for the pre-agreed operator.",
+    rows: (ctx) => [
+      { term: "Agreement", value: ctx.quoteName },
+      { term: "Creative partner", value: "North Studio" },
+      { term: "Delivery", value: "Three final sample images · fixed version" },
+      { term: "Agreed amount", value: `${ctx.money} USD` },
+      {
+        term: "Byte check",
+        value: ctx.filesVerified ? "All sample files match" : "Not checked",
+      },
+      {
+        term: "What becomes shared",
+        value:
+          "The order phase and your approval record — illustrated only. Brief, files and price stay off the public ledger in this design.",
+      },
+    ],
+    note: "Approval requests payment capture as a separate result; capture can still fail and is never guaranteed by approval. This decision is final for this delivery.",
+    consent: "I reviewed all three images.",
+    guard: "Approval is blocked for this sample.",
+    action: "approve",
+    actionLabel: "Approve delivery and request payment capture",
   },
   submit: {
     title: "Submit this delivery?",
     description: "One fixed submission; no replacement or revision rounds.",
+    rows: (ctx) => [
+      { term: "Agreement", value: ctx.quoteName },
+      { term: "Delivery", value: "Three final sample images · fixed version" },
+      {
+        term: "Consequence",
+        value: "No replacement or revision rounds after submission",
+      },
+    ],
+    note: "The buyer reviews this exact version. A submitted delivery cannot be edited, swapped or withdrawn in this design.",
+    consent:
+      "I confirm these three files are the final submission for this order.",
+    guard: "Submission is blocked for this sample.",
+    action: "submit",
+    actionLabel: "Submit the delivery",
   },
   "resolve-approve": {
     title: "Resolve this dispute?",
-    description: "Your decision is final and applies in full.",
+    description: RESOLVE_DESC,
+    rows: resolveRows(
+      "Full approval of the submitted delivery",
+      "Capture may be reconciled separately; not guaranteed",
+    ),
+    note: RESOLVE_NOTE,
+    action: "resolve-approve",
+    actionLabel: "Resolve: approve delivery",
   },
   "resolve-cancel": {
     title: "Resolve this dispute?",
-    description: "Your decision is final and applies in full.",
+    description: RESOLVE_DESC,
+    rows: resolveRows(
+      "Full cancellation of the order",
+      "Any hold is released or refunded by the provider, reconciled separately",
+    ),
+    note: RESOLVE_NOTE,
+    action: "resolve-cancel",
+    actionLabel: "Resolve: cancel order",
   },
   reserve: {
     title: "Reserve these terms?",
     description: "Reservation binds the exact terms on the checked deployment.",
+    rows: SCOPE_ROWS,
+    note: "Reservation binds these exact terms on the checked deployment. Several confirmed steps follow one another; no single click completes the order.",
+    action: "reserve",
+    actionLabel: "Reserve the terms",
+    navigate: "/orders/sample-001",
   },
   accept: {
     title: "Accept this order?",
     description:
       "Acceptance commits you to deliver this exact pack by the deadline.",
+    rows: SCOPE_ROWS,
+    note: "Acceptance commits you to deliver this exact pack by the deadline. A missed delivery opens the dispute path.",
+    action: "accept",
+    actionLabel: "Accept the order",
+  },
+  dispute: {
+    title: "Open a dispute",
+    description: "A dispute pauses approval for the pre-agreed operator.",
   },
   decline: {
     title: "Decline this scope?",
@@ -52,36 +145,36 @@ const dialogCopy: Record<string, { title: string; description: string }> = {
   },
 };
 
-/** Neutral fallback: never the first sample file's title. */
-const fallbackTitle = "Sample dialog";
+type Confirm = { body: string; label: string; action: Action };
 
-type ConfirmationKey = "decline" | "cancel" | "deploy";
-
-const confirmationCopy: Record<
-  ConfirmationKey,
-  { body: string; action: string }
-> = {
+const CONFIRM: Record<string, Confirm> = {
   decline: {
     body: "Declining releases the reservation and returns the order to the quote. Nothing is captured.",
-    action: "Decline the scope",
+    label: "Decline the scope",
+    action: "decline",
   },
   cancel: {
     body: "Cancelling releases the sample hold and ends this reservation. Nothing is captured.",
-    action: "Cancel the reservation",
+    label: "Cancel the reservation",
+    action: "cancel",
   },
   deploy: {
     body: "Deployment publishes the bootstrap for this sample order. It is a separate confirmed step, never a side effect of another click.",
-    action: "Deploy the bootstrap",
+    label: "Deploy the bootstrap",
+    action: "deploy",
   },
 };
 
-/** One `<dt>/<dd>` row of the shared `.confirmation-summary` list. */
-function Row({ term, children }: { term: string; children: ReactNode }) {
+function Summary({ rows }: { rows: Row[] }) {
   return (
-    <div>
-      <dt>{term}</dt>
-      <dd>{children}</dd>
-    </div>
+    <dl className="confirmation-summary">
+      {rows.map(({ term, value }) => (
+        <div key={term}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -106,78 +199,85 @@ export function OrderDialog() {
   } = useWorkspace();
   const image = modal !== null && typeof modal === "object" ? modal : null;
   const key = typeof modal === "string" ? modal : null;
-  const copy = key ? dialogCopy[key] : undefined;
-  const title = copy
-    ? copy.title
+  const spec = key ? SPECS[key] : undefined;
+  const confirm = key ? CONFIRM[key] : undefined;
+  const title = spec
+    ? spec.title
     : image
       ? (sampleFiles[image.index]?.title ?? "Sample artwork")
-      : fallbackTitle;
-  const description = copy
-    ? copy.description
+      : "Sample dialog";
+  const description = spec
+    ? spec.description
     : image
       ? "Sample artwork at full size."
       : "This sample dialog has no further content.";
-  const confirmation: ConfirmationKey | null =
-    key === "decline" || key === "cancel" || key === "deploy" ? key : null;
-  /** D10: every close path clears the transient dialog inputs. */
+  const ctx: Ctx = {
+    quoteName: quote.name,
+    money,
+    filesVerified: state.filesVerified,
+  };
+
   function close() {
     setModal(null);
     setConsent(false);
     setReason("");
     setModalReturn(null);
   }
-  /** Shared "Back" control: closes and clears, never acts. */
+
+  const restoreFocus = (event: Event) => {
+    event.preventDefault();
+    if (modalOrigin.current?.isConnected) modalOrigin.current.focus();
+    else mainHeading.current?.focus();
+  };
+
   const back = (label = "Back") => (
     <button type="button" className="button secondary full" onClick={close}>
       {label}
     </button>
   );
-  return confirmation ? (
-    <AlertDialog.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-    >
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="dialog-overlay" />
-        <AlertDialog.Content
-          className="dialog-content"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (modalOrigin.current?.isConnected) modalOrigin.current.focus();
-            else mainHeading.current?.focus();
-          }}
-        >
-          <AlertDialog.Title>{title}</AlertDialog.Title>
-          <AlertDialog.Description>{description}</AlertDialog.Description>
-          <dl className="confirmation-summary">
-            <Row term="Agreement">{quote.name}</Row>
-            <Row term="Agreed amount">{money} USD</Row>
-            <Row term="Consequence">{confirmationCopy[confirmation].body}</Row>
-          </dl>
-          <div className="soft-note">
-            This confirmation is a sample only — no wallet prompt, payment or
-            transaction follows.
-          </div>
-          <AlertDialog.Action
-            className="button full"
-            disabled={!can(confirmation)}
-            onClick={(event) => {
-              // Close only on a real transition; a refused action keeps the
-              // dialog open so the notice explains why.
-              if (!act(confirmation)) event.preventDefault();
-            }}
+
+  if (confirm) {
+    return (
+      <AlertDialog.Root
+        open
+        onOpenChange={(open) => {
+          if (!open) close();
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="dialog-overlay" />
+          <AlertDialog.Content
+            className="dialog-content"
+            onCloseAutoFocus={restoreFocus}
           >
-            {confirmationCopy[confirmation].action}
-          </AlertDialog.Action>
-          <AlertDialog.Cancel className="button secondary full">
-            Back
-          </AlertDialog.Cancel>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
-  ) : (
+            <AlertDialog.Title>{title}</AlertDialog.Title>
+            <AlertDialog.Description>{description}</AlertDialog.Description>
+            <Summary
+              rows={[
+                { term: "Agreement", value: quote.name },
+                { term: "Agreed amount", value: `${money} USD` },
+                { term: "Consequence", value: confirm.body },
+              ]}
+            />
+            <AlertDialog.Action
+              className="button full"
+              disabled={!can(confirm.action)}
+              onClick={(event) => {
+                if (!act(confirm.action)) event.preventDefault();
+              }}
+            >
+              {confirm.label}
+            </AlertDialog.Action>
+            <AlertDialog.Cancel className="button secondary full">
+              Back
+            </AlertDialog.Cancel>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    );
+  }
+
+  return (
     <Dialog.Root
       open={modal !== null}
       onOpenChange={(open) => {
@@ -187,11 +287,7 @@ export function OrderDialog() {
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
         <Dialog.Content
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (modalOrigin.current?.isConnected) modalOrigin.current.focus();
-            else mainHeading.current?.focus();
-          }}
+          onCloseAutoFocus={restoreFocus}
           className={`dialog-content ${image ? "image-dialog" : ""}`}
         >
           <Dialog.Close className="dialog-close" aria-label="Close dialog">
@@ -239,66 +335,46 @@ export function OrderDialog() {
               </div>
             </>
           )}
-          {modal === "approve" && (
+          {spec?.rows && <Summary rows={spec.rows(ctx)} />}
+          {spec?.note && <div className="soft-note">{spec.note}</div>}
+          {spec?.consent && (
+            <label className="check-field">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+              />
+              {spec.consent}
+            </label>
+          )}
+          {spec?.guard && spec.action && !can(spec.action) && (
+            <p role="note" className="guard-note">
+              {spec.guard}{" "}
+              {state.filesVerified
+                ? "The buyer capability is not available in this perspective."
+                : "The three sample files have not matched the submitted manifest yet."}
+            </p>
+          )}
+          {spec?.action && spec.actionLabel && (
+            <button
+              type="button"
+              className="button full"
+              disabled={!can(spec.action) || (!!spec.consent && !consent)}
+              onClick={() => {
+                if (!spec.action) return;
+                if (act(spec.action) && spec.navigate) navigate(spec.navigate);
+              }}
+            >
+              {spec.actionLabel}
+            </button>
+          )}
+          {key === "approve" && (
             <>
-              <dl className="confirmation-summary">
-                <Row term="Agreement">{quote.name}</Row>
-                <Row term="Creative partner">North Studio</Row>
-                <Row term="Delivery">
-                  Three final sample images · fixed version
-                </Row>
-                <Row term="Agreed amount">{money} USD</Row>
-                <Row term="Byte check">
-                  {state.filesVerified
-                    ? "All sample files match"
-                    : "Not checked"}
-                </Row>
-                <Row term="What becomes shared">
-                  The order phase and your approval record — illustrated only.
-                  Brief, files and price stay off the public ledger in this
-                  design.
-                </Row>
-              </dl>
-              <div className="soft-note">
-                Approval requests payment capture as a separate result; capture
-                can still fail and is never guaranteed by approval. This
-                decision is final for this delivery.
-              </div>
-              <label className="check-field">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(event) => setConsent(event.target.checked)}
-                />
-                I reviewed all three images.
-              </label>
-              {/* D11: the blocked reason is stated inline, not only by a
-                  disabled button. */}
-              {!can("approve") && (
-                <p role="note" className="guard-note">
-                  Approval is blocked for this sample:{" "}
-                  {state.filesVerified
-                    ? "the buyer capability is not available in this perspective."
-                    : "the three sample files have not matched the submitted manifest yet."}
-                </p>
-              )}
-              <button
-                type="button"
-                className="button full"
-                disabled={!consent || !can("approve")}
-                onClick={() => act("approve")}
-              >
-                {/* Rank-1 label (01 §8.2 item 8); 04 §8.2's shorter wireframe
-                    label is superseded. */}
-                Approve delivery and request payment capture
-              </button>
               {back("Back to review")}
               <button
                 type="button"
                 className="quiet-button full"
                 onClick={() => {
-                  // D2: remember where we came from so the dispute dialog can
-                  // offer "Back to approval" instead of dropping the user out.
                   setModalReturn("approve");
                   setReason("");
                   setModal("dispute");
@@ -308,116 +384,7 @@ export function OrderDialog() {
               </button>
             </>
           )}
-          {modal === "submit" && (
-            <>
-              <dl className="confirmation-summary">
-                <Row term="Agreement">{quote.name}</Row>
-                <Row term="Delivery">
-                  Three final sample images · fixed version
-                </Row>
-                <Row term="Consequence">
-                  No replacement or revision rounds after submission
-                </Row>
-              </dl>
-              <div className="soft-note">
-                The buyer reviews this exact version. A submitted delivery
-                cannot be edited, swapped or withdrawn in this design.
-              </div>
-              {/* D4: the fixed submission is gated by an explicit consent
-                  checkbox, not just a click. */}
-              <label className="check-field">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(event) => setConsent(event.target.checked)}
-                />
-                I confirm these three files are the final submission for this
-                order.
-              </label>
-              {!can("submit") && (
-                <p role="note" className="guard-note">
-                  Submission is blocked for this sample: the merchant capability
-                  is not available in this perspective.
-                </p>
-              )}
-              <button
-                type="button"
-                className="button full"
-                disabled={!consent || !can("submit")}
-                onClick={() => act("submit")}
-              >
-                Submit the delivery
-              </button>
-              {back()}
-            </>
-          )}
-          {(modal === "resolve-approve" || modal === "resolve-cancel") && (
-            <>
-              <dl className="confirmation-summary">
-                <Row term="Agreement">{quote.name}</Row>
-                <Row term="Authority">
-                  Pre-agreed operator · committed before purchase
-                </Row>
-                <Row term="Decision">
-                  {modal === "resolve-approve"
-                    ? "Full approval of the submitted delivery"
-                    : "Full cancellation of the order"}
-                </Row>
-                <Row term="Payment">
-                  {modal === "resolve-approve"
-                    ? "Capture may be reconciled separately; not guaranteed"
-                    : "Any hold is released or refunded by the provider, reconciled separately"}
-                </Row>
-              </dl>
-              <div className="soft-note">
-                Resolution is final in full — no partial approval, no reopened
-                terms, no rewritten history.
-              </div>
-              <button
-                type="button"
-                className="button full"
-                disabled={!can(modal)}
-                onClick={() => act(modal)}
-              >
-                {modal === "resolve-approve"
-                  ? "Resolve: approve delivery"
-                  : "Resolve: cancel order"}
-              </button>
-              {back()}
-            </>
-          )}
-          {(modal === "reserve" || modal === "accept") && (
-            <>
-              <dl className="confirmation-summary">
-                <Row term="Agreement">{quote.name}</Row>
-                <Row term="Scope">Three final images · fixed version</Row>
-                <Row term="Agreed amount">{money} USD</Row>
-                <Row term="Payment">Hold authorized; not captured</Row>
-                <Row term="Deadline">{REVIEW_DEADLINE} · sample clock</Row>
-              </dl>
-              <div className="soft-note">
-                {modal === "reserve"
-                  ? "Reservation binds these exact terms on the checked deployment. Several confirmed steps follow one another; no single click completes the order."
-                  : "Acceptance commits you to deliver this exact pack by the deadline. A missed delivery opens the dispute path."}
-              </div>
-              <button
-                type="button"
-                className="button full"
-                disabled={!can(modal)}
-                onClick={() => {
-                  // D5: navigate only when the transition actually succeeded;
-                  // a blocked reserve must leave the user on this page.
-                  const applied = act(modal);
-                  if (applied && modal === "reserve")
-                    navigate("/orders/sample-001");
-                }}
-              >
-                {modal === "reserve" ? "Reserve the terms" : "Accept the order"}
-              </button>
-              {back()}
-            </>
-          )}
-          {modal === "dispute" && (
+          {key === "dispute" && (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -436,9 +403,6 @@ export function OrderDialog() {
                   placeholder="Describe a fictional scope mismatch. Do not enter private information."
                 />
               </label>
-              <p className="micro muted">
-                Not sent or saved. Min 10 characters.
-              </p>
               <button
                 type="submit"
                 className="button full"
@@ -446,7 +410,6 @@ export function OrderDialog() {
               >
                 Open the sample dispute
               </button>
-              {/* D1/D2: a dispute opened from approval can go straight back. */}
               <button
                 type="button"
                 className="button secondary full"
@@ -463,6 +426,7 @@ export function OrderDialog() {
               </button>
             </form>
           )}
+          {spec?.action && back()}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

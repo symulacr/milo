@@ -1,25 +1,3 @@
-/**
- * RECONSTRUCTED (P8-W1-C) — durable deployment-observation writer.
- *
- * `observationIngest:recordDeployment` writes `deploymentObservations` and
- * never invents a row. Verdicts mirror the shared bind/stale/contradictory/
- * address-claimed vocabulary:
- *
- * - recorded  — inserted
- * - replay    — exact content match on the same id (idempotent, no second row)
- * - stale     — older than the freshness window, or older than a record that
- *               already claims the same address
- * - contradictory — malformed, future-dated, same id with different content,
- *               or address claimed by another id
- *
- * Validation reuses `validDeploymentObservation` from admission-policy. The
- * chain bind-verdict kernel `decideObservationBinding` lives there too; this
- * module holds the DB-facing `applyChainObservation` body used by
- * `orders:recordObservation`.
- *
- * Labels: local Convex RUNTIME evidence is not a hosted-provider row.
- */
-
 import { internalMutationGeneric } from "convex/server";
 import { v } from "convex/values";
 import {
@@ -34,25 +12,54 @@ import { deploymentObservationFields } from "./admissionValidators";
 
 const recordDeploymentArgs = v.object(deploymentObservationFields);
 
+const MISMATCH = "observation does not match the admitted order";
+
+const RECORD_KEYS: readonly (keyof ObservedDeployment)[] = [
+  "id",
+  "quoteId",
+  "quoteVersion",
+  "constructorVersion",
+  "constructorEncoding",
+  "buyerCommitment",
+  "merchantCommitment",
+  "operatorCommitment",
+  "observationVersion",
+  "source",
+  "network",
+  "nonce",
+  "address",
+  "phase",
+  "revision",
+  "termsCommitment",
+  "artifactFingerprint",
+  "keySetFingerprint",
+  "rolesFingerprint",
+  "initialStateFingerprint",
+  "genesisHash",
+  "maintenancePolicy",
+  "maintenanceReceiptFingerprint",
+  "blockHash",
+  "blockHeight",
+  "stateFingerprint",
+  "observedAt",
+  "acceptanceDeadlineSeconds",
+  "deliveryDeadlineSeconds",
+  "reviewDeadlineSeconds",
+  "resolutionDeadlineSeconds",
+];
+
 export type RecordDeploymentResult =
   | { kind: "recorded"; observationId: string }
   | { kind: "replay"; observationId: string };
 
-/** Throws `stale deployment observation: …`. */
 function stale(reason: string): never {
   throw new Error(`stale deployment observation: ${reason}`);
 }
 
-/** Throws `contradictory deployment observation: …`. */
 function contradictory(reason: string): never {
   throw new Error(`contradictory deployment observation: ${reason}`);
 }
 
-/**
- * The persisted deployment observation. One definition per concept: this carries exactly
- * the same field set as the admission policy's ObservedDeployment (32 fields, verified
- * equal), so it is an alias rather than a restatement that can silently drift from it.
- */
 export type StoredDeploymentRecord = ObservedDeployment;
 
 export interface DeploymentObservationDb {
@@ -71,48 +78,11 @@ export interface DeploymentObservationDb {
   insert(record: StoredDeploymentRecord): unknown | Promise<unknown>;
 }
 
-/**
- * Field-by-field equality. `entrypoints` order is significant — a permutation
- * is not a replay. A single defaulted/changed field never masquerades as one.
- */
 export function sameDeploymentRecord(
   a: StoredDeploymentRecord,
   b: StoredDeploymentRecord,
 ): boolean {
-  const keys: (keyof StoredDeploymentRecord)[] = [
-    "id",
-    "quoteId",
-    "quoteVersion",
-    "constructorVersion",
-    "constructorEncoding",
-    "buyerCommitment",
-    "merchantCommitment",
-    "operatorCommitment",
-    "observationVersion",
-    "source",
-    "network",
-    "nonce",
-    "address",
-    "phase",
-    "revision",
-    "termsCommitment",
-    "artifactFingerprint",
-    "keySetFingerprint",
-    "rolesFingerprint",
-    "initialStateFingerprint",
-    "genesisHash",
-    "maintenancePolicy",
-    "maintenanceReceiptFingerprint",
-    "blockHash",
-    "blockHeight",
-    "stateFingerprint",
-    "observedAt",
-    "acceptanceDeadlineSeconds",
-    "deliveryDeadlineSeconds",
-    "reviewDeadlineSeconds",
-    "resolutionDeadlineSeconds",
-  ];
-  for (const key of keys) {
+  for (const key of RECORD_KEYS) {
     if (a[key] !== b[key]) return false;
   }
   if (a.entrypoints.length !== b.entrypoints.length) return false;
@@ -122,10 +92,6 @@ export function sameDeploymentRecord(
   return true;
 }
 
-/**
- * Durable writer body. Fixture-free: talks to the injected observation store.
- * Throws on stale / contradictory; never inserts on those paths.
- */
 export async function applyRecordDeployment(
   db: DeploymentObservationDb,
   record: ObservedDeployment,
@@ -158,18 +124,12 @@ export async function applyRecordDeployment(
     if (claimant.observedAt > record.observedAt) {
       stale("an equal or newer record already claims this address");
     }
-    // Equal observedAt is contradictory, not stale. An older claimant also
-    // rejects: the address is already spoken for by another observation id.
     contradictory("address is already claimed by another deployment record");
   }
   await db.insert(record as StoredDeploymentRecord);
   return { kind: "recorded", observationId: record.id };
 }
 
-/**
- * Chain observation body behind `orders:recordObservation`. Applies the
- * shared bind-verdict kernel and patches the order only on `kind === "bind"`.
- */
 export interface ChainOrderRow {
   orderId: string;
   address: string;
@@ -206,21 +166,24 @@ export type ChainObservationResult =
       { kind: "stale" | "contradictory" | "address-claimed" }
     >;
 
-/**
- * Fixture-free chain writer body. Unknown orders, nonce mismatches, terminal
- * orders, and phase/commitment mismatches fail closed before any write.
- */
+type ChainObservedInput = {
+  orderId: string;
+  address: string;
+  nonce: string;
+  artifactFingerprint: string;
+  phase: string;
+  revision: number;
+  deliveryManifest?: string | null;
+};
+
+const mismatch = (): ChainObservationResult => ({
+  kind: "contradictory",
+  reason: MISMATCH,
+});
+
 export async function applyChainObservation(
   db: ChainObservationDb,
-  observed: {
-    orderId: string;
-    address: string;
-    nonce: string;
-    artifactFingerprint: string;
-    phase: string;
-    revision: number;
-    deliveryManifest?: string | null;
-  },
+  observed: ChainObservedInput,
   now: number,
 ): Promise<ChainObservationResult> {
   if (
@@ -229,46 +192,27 @@ export async function applyChainObservation(
     typeof observed.orderId !== "string" ||
     observed.orderId.length === 0
   ) {
-    return {
-      kind: "contradictory",
-      reason: "observation does not match the admitted order",
-    };
+    return mismatch();
   }
   const order = await db.orderById(observed.orderId);
-  if (!order) {
-    return {
-      kind: "contradictory",
-      reason: "observation does not match the admitted order",
-    };
-  }
-  if (order.terminal) {
-    return {
-      kind: "contradictory",
-      reason: "a terminal order cannot advance",
-    };
-  }
-  if (order.nonce !== observed.nonce) {
-    return {
-      kind: "contradictory",
-      reason: "observation does not match the admitted order",
-    };
-  }
-  if (observed.phase === "ACCEPTED" && !order.merchantActive) {
+  if (!order) return mismatch();
+  if (order.terminal)
+    return { kind: "contradictory", reason: "a terminal order cannot advance" };
+  if (order.nonce !== observed.nonce) return mismatch();
+  if (observed.phase === "ACCEPTED" && !order.merchantActive)
     return {
       kind: "contradictory",
       reason: "ACCEPTED requires an active merchant membership",
     };
-  }
   if (
     observed.deliveryManifest !== undefined &&
     observed.deliveryManifest !== null &&
     observed.phase !== "SUBMITTED"
-  ) {
+  )
     return {
       kind: "contradictory",
       reason: "a delivery commitment must match the observed phase",
     };
-  }
   const addressOwner = await db.addressOwner(observed.address);
   const verdict = decideObservationBinding(
     {
@@ -306,10 +250,6 @@ export async function applyChainObservation(
   return { ...verdict, orderId: observed.orderId };
 }
 
-/**
- * Production handler. Args are exactly `deploymentObservationFields` — no
- * second field list. Internal: only operator/CLI ingest may call it.
- */
 export const recordDeployment = internalMutationGeneric({
   args: recordDeploymentArgs,
   returns: v.union(

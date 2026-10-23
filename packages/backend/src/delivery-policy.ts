@@ -2,14 +2,12 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { z } from "zod";
 import { bytesToHex, HEX64, hexToBytes } from "./encoding.ts";
 
+const MAX_BYTES = 5 * 1024 * 1024;
+const ENCODER = new TextEncoder();
 const id = z.string().trim().min(1).max(256);
 const digest = z.string().regex(HEX64);
 const mime = z.enum(["image/png", "image/jpeg", "image/webp"]);
-const size = z
-  .number()
-  .int()
-  .positive()
-  .max(5 * 1024 * 1024);
+const size = z.number().int().positive().max(MAX_BYTES);
 const file = z.strictObject({
   grantId: id,
   sha256: digest,
@@ -24,6 +22,7 @@ const readRequest = z.strictObject({
   orderId: id,
   fileIndex: z.number().int().min(0).max(2),
 });
+type Claimed = z.infer<typeof file>;
 
 export interface DeliveryAccount {
   id: string;
@@ -37,8 +36,8 @@ export interface DeliveryOrder {
   disputeOperatorId?: string;
   profile: "image-pack-v1";
   outputCount: 3;
-  phase: "ACCEPTED" | "SUBMITTED" | "DISPUTED" | "TERMINAL";
   revision: number;
+  phase: "ACCEPTED" | "SUBMITTED" | "DISPUTED" | "TERMINAL";
 }
 export interface UploadGrant {
   id: string;
@@ -47,7 +46,6 @@ export interface UploadGrant {
   expiresAt: number;
   consumed: boolean;
   storageId: string;
-  // Written only by the internal action that inspects actual stored bytes.
   inspected: {
     storageId: string;
     sha256: string;
@@ -55,12 +53,8 @@ export interface UploadGrant {
     byteLength: number;
   };
 }
-export interface FrozenDeliveryFile {
-  grantId: string;
+export interface FrozenDeliveryFile extends Claimed {
   storageId: string;
-  sha256: string;
-  contentType: "image/png" | "image/jpeg" | "image/webp";
-  byteLength: number;
 }
 export interface FrozenDelivery {
   orderId: string;
@@ -72,16 +66,37 @@ export interface DeliveryTransaction {
   authenticatedAccount(): DeliveryAccount | undefined;
   serverNow(): number;
   getOrder(id: string): DeliveryOrder | undefined;
-  membershipActive(accountId: string, orderId: string): boolean;
   getUploadGrant(id: string): UploadGrant | undefined;
   getFrozenDelivery(orderId: string): FrozenDelivery | undefined;
-  confirmedDeliveryMatches(delivery: FrozenDelivery): boolean;
   storageAttached(storageId: string): boolean;
+  membershipActive(accountId: string, orderId: string): boolean;
+  confirmedDeliveryMatches(delivery: FrozenDelivery): boolean;
   insertDeliveryAndConsumeGrants(delivery: FrozenDelivery): void;
 }
-/** All reads and grant consumption must share one Convex mutation. */
 export interface AtomicDeliveryRepository {
   transact<T>(operation: (tx: DeliveryTransaction) => T): T;
+}
+
+const validId = (v: unknown) => id.safeParse(v).success;
+const int = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 0;
+
+function authorized(tx: DeliveryTransaction, orderId: string) {
+  const account = tx.authenticatedAccount();
+  const order = tx.getOrder(orderId);
+  if (
+    !account ||
+    !validId(account.id) ||
+    account.enabled !== true ||
+    account.invited !== true ||
+    !order ||
+    order.id !== orderId ||
+    !tx.membershipActive(account.id, orderId) ||
+    order.profile !== "image-pack-v1" ||
+    order.outputCount !== 3 ||
+    !int(order.revision)
+  )
+    throw new Error("authorized order membership is required");
+  return { account, order };
 }
 
 export function freezeDelivery(
@@ -96,40 +111,35 @@ export function freezeDelivery(
     if (tx.getFrozenDelivery(order.id))
       throw new Error("delivery is immutable once frozen");
     const now = tx.serverNow();
-    if (!Number.isSafeInteger(now) || now < 0)
-      throw new Error("invalid server clock");
-    const files = request.files.map(
-      (claimed: z.infer<typeof file>): FrozenDeliveryFile => {
-        const grant = tx.getUploadGrant(claimed.grantId);
-        if (
-          !grant ||
-          grant.id !== claimed.grantId ||
-          grant.orderId !== order.id ||
-          grant.uploaderId !== account.id ||
-          grant.consumed ||
-          !Number.isSafeInteger(grant.expiresAt) ||
-          now >= grant.expiresAt ||
-          !id.safeParse(grant.storageId).success ||
-          tx.storageAttached(grant.storageId)
-        )
-          throw new Error("upload grant is unavailable");
-        const actual = grant.inspected;
-        if (
-          !actual ||
-          actual.storageId !== grant.storageId ||
-          actual.sha256 !== claimed.sha256 ||
-          actual.contentType !== claimed.contentType ||
-          actual.byteLength !== claimed.byteLength
-        )
-          throw new Error("stored bytes do not match the proposed manifest");
-        return { ...claimed, storageId: grant.storageId };
-      },
-    );
+    if (!int(now)) throw new Error("invalid server clock");
+    const files = request.files.map((claimed): FrozenDeliveryFile => {
+      const grant = tx.getUploadGrant(claimed.grantId);
+      if (
+        !grant ||
+        grant.id !== claimed.grantId ||
+        grant.orderId !== order.id ||
+        grant.uploaderId !== account.id ||
+        grant.consumed ||
+        !Number.isSafeInteger(grant.expiresAt) ||
+        now >= grant.expiresAt ||
+        !validId(grant.storageId) ||
+        tx.storageAttached(grant.storageId)
+      )
+        throw new Error("upload grant is unavailable");
+      const seen = grant.inspected;
+      if (
+        !seen ||
+        seen.storageId !== grant.storageId ||
+        seen.sha256 !== claimed.sha256 ||
+        seen.contentType !== claimed.contentType ||
+        seen.byteLength !== claimed.byteLength
+      )
+        throw new Error("stored bytes do not match the proposed manifest");
+      return { ...claimed, storageId: grant.storageId };
+    });
     if (
-      new Set(files.map((entry: FrozenDeliveryFile) => entry.grantId)).size !==
-        3 ||
-      new Set(files.map((entry: FrozenDeliveryFile) => entry.storageId))
-        .size !== 3
+      new Set(files.map((e) => e.grantId)).size !== 3 ||
+      new Set(files.map((e) => e.storageId)).size !== 3
     )
       throw new Error(
         "delivery files require distinct grants and storage objects",
@@ -145,7 +155,6 @@ export function freezeDelivery(
   });
 }
 
-/** Internal byte-transport descriptor, never a browser response or bearer URL. */
 export function authorizeDeliveryRead(
   repository: AtomicDeliveryRepository,
   input: unknown,
@@ -164,8 +173,7 @@ export function authorizeDeliveryRead(
       !delivery ||
       delivery.orderId !== order.id ||
       delivery.merchantId !== order.merchantId ||
-      !Number.isSafeInteger(delivery.revision) ||
-      delivery.revision < 0 ||
+      !int(delivery.revision) ||
       delivery.revision > order.revision ||
       delivery.files.length !== 3
     )
@@ -178,38 +186,14 @@ export function authorizeDeliveryRead(
         "delivery is not bound to the confirmed chain submission",
       );
     const selected = delivery.files[request.fileIndex];
-    file.parse({
-      grantId: selected.grantId,
-      sha256: selected.sha256,
-      contentType: selected.contentType,
-      byteLength: selected.byteLength,
-    });
-    id.parse(selected.storageId);
+    if (!selected) throw new Error("delivery is unavailable");
+    const { storageId, ...claimed } = selected;
+    file.parse(claimed);
+    id.parse(storageId);
     return { ...selected };
   });
 }
 
-function authorized(tx: DeliveryTransaction, orderId: string) {
-  const account = tx.authenticatedAccount();
-  const order = tx.getOrder(orderId);
-  if (
-    !account ||
-    !id.safeParse(account.id).success ||
-    account.enabled !== true ||
-    account.invited !== true ||
-    !order ||
-    order.id !== orderId ||
-    !tx.membershipActive(account.id, orderId) ||
-    order.profile !== "image-pack-v1" ||
-    order.outputCount !== 3 ||
-    !Number.isSafeInteger(order.revision) ||
-    order.revision < 0
-  )
-    throw new Error("authorized order membership is required");
-  return { account, order };
-}
-
-/** Short-lived upload grant window; grace covers orphaned-blob cleanup only. */
 export const GRANT_TTL_MS = 5 * 60 * 1000;
 export const GRANT_GRACE_MS = 60 * 60 * 1000;
 
@@ -231,25 +215,24 @@ function startsWith(bytes: Uint8Array, magic: Uint8Array): boolean {
   return magic.every((byte, index) => bytes[index] === byte);
 }
 
-/**
- * Witnessed-byte inspection: magic-byte PNG/JPEG/WebP, ≤5 MiB, SHA-256 of raw
- * bytes. Never trusts a client-declared MIME or digest.
- */
+const MAGIC: [Uint8Array, InspectedBytes["contentType"]][] = [
+  [PNG_MAGIC, "image/png"],
+  [JPEG_MAGIC, "image/jpeg"],
+];
+
 export function inspectBytes(bytes: Uint8Array): InspectedBytes {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0)
     throw new Error("empty file bytes");
-  if (bytes.byteLength > 5 * 1024 * 1024)
+  if (bytes.byteLength > MAX_BYTES)
     throw new Error("file exceeds the 5 MiB delivery ceiling");
-  let contentType: InspectedBytes["contentType"];
-  if (startsWith(bytes, PNG_MAGIC)) contentType = "image/png";
-  else if (startsWith(bytes, JPEG_MAGIC)) contentType = "image/jpeg";
-  else if (
+  const webp =
     startsWith(bytes, RIFF_MAGIC) &&
     bytes.length >= 12 &&
-    startsWith(bytes.subarray(8, 12), WEBP_MAGIC)
-  )
-    contentType = "image/webp";
-  else throw new Error("unsupported file signature");
+    startsWith(bytes.subarray(8, 12), WEBP_MAGIC);
+  const contentType =
+    MAGIC.find(([magic]) => startsWith(bytes, magic))?.[1] ??
+    (webp ? "image/webp" : undefined);
+  if (!contentType) throw new Error("unsupported file signature");
   return {
     sha256: bytesToHex(sha256(bytes)),
     contentType,
@@ -257,19 +240,6 @@ export function inspectBytes(bytes: Uint8Array): InspectedBytes {
   };
 }
 
-/**
- * Digest-bound delivery commitment.
- *
- * deliveryCommitment(files) = SHA-256( hex(f0.sha256) || hex(f1.sha256) || hex(f2.sha256) )
- *
- * Each `f.sha256` is the lowercase 64-hex SHA-256 of that file's raw bytes (as
- * produced by inspectBytes). The join is plain string concatenation of the three
- * hex digests (192 ASCII chars), then one SHA-256 over those bytes. Flat
- * merkle-style commitment: order-sensitive, exactly 3 leaves, reproducible from
- * the frozen manifest alone. Output is 64-char lowercase hex.
- *
- * Never use randomBytes for a delivery commitment.
- */
 export function deliveryCommitment(
   files: readonly { sha256: string }[],
 ): string {
@@ -282,25 +252,14 @@ export function deliveryCommitment(
       return parsed.data;
     })
     .join("");
-  return bytesToHex(sha256(new TextEncoder().encode(joined)));
+  return bytesToHex(sha256(ENCODER.encode(joined)));
 }
 
-/**
- * Hex64 deliveryCommitment digest to the on-chain Bytes<32> shape used as the
- * `commitment` argument of submitDelivery(expectedRevision, commitment).
- * The bytes are the raw SHA-256 digest, not a re-hash.
- */
 export function deliveryCommitmentBytes32(manifest: string): Uint8Array {
   if (typeof manifest !== "string" || !HEX64.test(manifest))
     throw new Error("delivery commitment must be 64-char lowercase hex");
   return hexToBytes(manifest);
 }
-
-/**
- * The exact argument pair of on-chain
- * submitDelivery(expectedRevision: Uint<64>, commitment: Bytes<32>).
- * deliveryCommitment(files) equals the hex form of `commitment`.
- */
 export function submitDeliveryArgs(
   expectedRevision: bigint | number,
   files: readonly { sha256: string }[],
@@ -308,13 +267,10 @@ export function submitDeliveryArgs(
   const revision = BigInt(expectedRevision);
   if (revision < 0n)
     throw new Error("submitDelivery revision must be a non-negative Uint<64>");
-  return {
-    expectedRevision: revision,
-    commitment: deliveryCommitmentBytes32(deliveryCommitment(files)),
-  };
+  const commitment = deliveryCommitmentBytes32(deliveryCommitment(files));
+  return { expectedRevision: revision, commitment };
 }
 
-/** Per-serve re-check of retrieved bytes against the frozen inspected descriptor. */
 export function verifyRetrievedBytes(
   descriptor: {
     sha256: string;
@@ -324,11 +280,11 @@ export function verifyRetrievedBytes(
   bytes: Uint8Array,
 ): typeof descriptor {
   const actual = inspectBytes(bytes);
-  if (
-    actual.sha256 !== descriptor.sha256 ||
-    actual.contentType !== descriptor.contentType ||
-    actual.byteLength !== descriptor.byteLength
-  )
+  const same =
+    actual.sha256 === descriptor.sha256 &&
+    actual.contentType === descriptor.contentType &&
+    actual.byteLength === descriptor.byteLength;
+  if (!same)
     throw new Error("retrieved bytes do not match the frozen descriptor");
   return { ...descriptor };
 }

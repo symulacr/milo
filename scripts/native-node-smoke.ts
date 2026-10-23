@@ -1,64 +1,83 @@
 import assert from "node:assert/strict";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
 import { resolve } from "node:path";
 import {
   installNativeSignalCleanup,
   ownNativeProcess,
   stopNativeProcess,
 } from "./native-processes";
-import { verifyNativeServices } from "./native-services-health";
+import {
+  poll,
+  unusedPort,
+  verifyNativeServices,
+} from "./native-services-health";
 
 const options = process.argv.slice(2);
+const FLAGS = [
+  "--with-services",
+  "--transactions",
+  "--staged-bootstrap",
+  "--maintenance-audit",
+  "--maintenance-controls",
+  "--recovery-audit",
+  "--circuit-sweep",
+];
+const has = (flag: string) => options.includes(flag);
+const requires = (flag: string, ...deps: string[]) =>
+  !has(flag) || deps.every(has);
+
 assert(
-  options.every((option) =>
-    [
-      "--with-services",
-      "--transactions",
-      "--staged-bootstrap",
-      "--maintenance-audit",
-      "--maintenance-controls",
-      "--recovery-audit",
-      "--circuit-sweep",
-    ].includes(option),
-  ),
+  options.every((option) => FLAGS.includes(option)),
   "Unsupported native diagnostic option",
 );
 assert(
-  !options.includes("--transactions") || options.includes("--with-services"),
+  requires("--transactions", "--with-services"),
   "--transactions requires --with-services",
 );
 assert(
-  !options.includes("--staged-bootstrap") || options.includes("--transactions"),
+  requires("--staged-bootstrap", "--transactions"),
   "--staged-bootstrap requires --transactions",
 );
 const removeSignalHandlers = installNativeSignalCleanup();
 assert(
-  !options.includes("--recovery-audit") ||
-    (options.includes("--staged-bootstrap") &&
-      !options.includes("--maintenance-audit")),
+  !has("--recovery-audit") ||
+    (has("--staged-bootstrap") && !has("--maintenance-audit")),
   "--recovery-audit requires a separate --staged-bootstrap run",
 );
 assert(
-  !options.includes("--maintenance-controls") ||
-    options.includes("--maintenance-audit"),
+  requires("--maintenance-controls", "--maintenance-audit"),
   "--maintenance-controls requires --maintenance-audit",
 );
 assert(
-  !options.includes("--maintenance-audit") ||
-    options.includes("--staged-bootstrap"),
+  requires("--maintenance-audit", "--staged-bootstrap"),
   "--maintenance-audit requires --staged-bootstrap",
 );
 assert(
-  !options.includes("--circuit-sweep") ||
-    (options.includes("--transactions") &&
-      !options.includes("--staged-bootstrap") &&
-      !options.includes("--maintenance-audit") &&
-      !options.includes("--maintenance-controls") &&
-      !options.includes("--recovery-audit")),
+  !has("--circuit-sweep") ||
+    (has("--transactions") &&
+      !has("--staged-bootstrap") &&
+      !has("--maintenance-audit") &&
+      !has("--maintenance-controls") &&
+      !has("--recovery-audit")),
   "--circuit-sweep runs its own scenarios and needs only --transactions",
 );
 await import("./setup-native-node");
+
+const rpc = async (
+  port: number,
+  method: string,
+  params: unknown[],
+  timeout: number,
+) => {
+  const response = await fetch(`http://127.0.0.1:${port}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(timeout),
+  });
+  assert(response.ok);
+  return (await response.json()).result;
+};
 
 await mkdir(".hoplite/artifacts/native-node", { recursive: true });
 const directory = await mkdtemp(".hoplite/artifacts/native-node/run-");
@@ -69,19 +88,8 @@ const presetPath = `${directory}/res/cfg/dev.toml`;
 const preset = await Bun.file(presetPath).text();
 const argumentBlock = /^args\s*=\s*\[[\s\S]*?\]/gm;
 assert.equal([...preset.matchAll(argumentBlock)].length, 1);
-// Upstream's container preset exposes RPC and uses a public development peer key.
 await Bun.write(presetPath, preset.replace(argumentBlock, "args = []"));
-const reservation = createServer();
-await new Promise<void>((resolve, reject) => {
-  reservation.once("error", reject);
-  reservation.listen(0, "127.0.0.1", resolve);
-});
-const address = reservation.address();
-assert(address && typeof address !== "string");
-const port = address.port;
-await new Promise<void>((resolve, reject) =>
-  reservation.close((error) => (error ? reject(error) : resolve())),
-);
+const port = await unusedPort();
 const node = ownNativeProcess(
   Bun.spawn(
     [
@@ -114,60 +122,34 @@ const node = ownNativeProcess(
 );
 
 try {
-  const deadline = Date.now() + 120_000;
-  let hash: unknown;
-  while (Date.now() < deadline && node.exitCode === null) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "chain_getBlockHash",
-          params: [1],
-        }),
-        signal: AbortSignal.timeout(2000),
-      });
-      const body = await response.json();
-      hash = body.result;
-      if (typeof hash === "string" && /^0x[0-9a-f]{64}$/.test(hash)) break;
-    } catch {
-      /* Startup may not yet expose RPC. */
-    }
-    await Bun.sleep(1000);
-  }
-  assert.equal(
-    typeof hash,
-    "string",
+  const hash = await poll(
+    120_000,
+    async () => {
+      const result = await rpc(port, "chain_getBlockHash", [1], 2000);
+      return typeof result === "string" && /^0x[0-9a-f]{64}$/.test(result)
+        ? result
+        : null;
+    },
+    () => node.exitCode === null,
+    true,
+  );
+  assert(
+    typeof hash === "string",
     `No block 1; inspect private logs under ${directory}`,
   );
-  assert.match(hash as string, /^0x[0-9a-f]{64}$/);
   assert.equal(
     node.exitCode,
     null,
     "The launched node exited during observation",
   );
-  const services = process.argv.includes("--with-services")
+  const services = has("--with-services")
     ? await verifyNativeServices(
         directory,
         port,
-        hash as string,
-        process.argv.includes("--transactions")
+        hash,
+        has("--transactions")
           ? async (endpoints) => {
-              const genesisResponse = await fetch(`http://127.0.0.1:${port}`, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  jsonrpc: "2.0",
-                  id: 1,
-                  method: "chain_getBlockHash",
-                  params: [0],
-                }),
-                signal: AbortSignal.timeout(5000),
-              });
-              assert(genesisResponse.ok);
-              const genesis = (await genesisResponse.json()).result;
+              const genesis = await rpc(port, "chain_getBlockHash", [0], 5000);
               assert.match(genesis, /^0x[0-9a-f]{64}$/);
               const { integrationNode } = await import(
                 "./setup-integration-runtime"
@@ -176,7 +158,7 @@ try {
                 Bun.spawn(
                   [
                     integrationNode,
-                    options.includes("--circuit-sweep")
+                    has("--circuit-sweep")
                       ? "packages/integration/src/local-circuit-sweep.mjs"
                       : "packages/integration/src/local.mjs",
                   ],
@@ -191,15 +173,10 @@ try {
                       MILO_SWEEP_TRAIL: resolve(
                         `${directory}/sweep-trail.jsonl`,
                       ),
-                      // The driver gets an explicit env allowlist, so a scenario filter
-                      // passed to this supervisor must be forwarded or it is silently
-                      // dropped and the full sweep runs instead.
                       ...(process.env.MILO_SWEEP_ONLY
                         ? { MILO_SWEEP_ONLY: process.env.MILO_SWEEP_ONLY }
                         : {}),
-                      MILO_LOCAL_RECOVERY_AUDIT: options.includes(
-                        "--recovery-audit",
-                      )
+                      MILO_LOCAL_RECOVERY_AUDIT: has("--recovery-audit")
                         ? "process-restart"
                         : "off",
                       MILO_LOCAL_NODE_HTTP: `http://127.0.0.1:${port}`,
@@ -207,22 +184,17 @@ try {
                       MILO_LOCAL_INDEXER_HTTP: endpoints.MILO_INDEXER_HTTP_URL,
                       MILO_LOCAL_INDEXER_WS: endpoints.MILO_INDEXER_WS_URL,
                       MILO_LOCAL_PROOF_HTTP: endpoints.MILO_PROOF_URL,
-                      // The sweep deploys a fresh 7+7 instance per scenario and
-                      // proves every circuit, so it needs the lane's maximum:
-                      // the config caps this value at 30 minutes.
-                      MILO_LOCAL_TIMEOUT_MS: options.includes("--circuit-sweep")
+                      MILO_LOCAL_TIMEOUT_MS: has("--circuit-sweep")
                         ? "1800000"
                         : "600000",
-                      MILO_LOCAL_MAINTENANCE_AUDIT: options.includes(
+                      MILO_LOCAL_MAINTENANCE_AUDIT: has(
                         "--maintenance-controls",
                       )
                         ? "controls"
-                        : options.includes("--maintenance-audit")
+                        : has("--maintenance-audit")
                           ? "retained-key"
                           : "off",
-                      MILO_LOCAL_BOOTSTRAP_MODE: options.includes(
-                        "--staged-bootstrap",
-                      )
+                      MILO_LOCAL_BOOTSTRAP_MODE: has("--staged-bootstrap")
                         ? "staged"
                         : "full",
                     },
@@ -256,13 +228,11 @@ try {
         blockOneHash: hash,
         rpcLoopback: true,
         services,
-        transactionDiagnostic: options.includes("--transactions")
+        transactionDiagnostic: has("--transactions")
           ? {
-              bootstrapMode: options.includes("--staged-bootstrap")
-                ? "staged"
-                : "full",
+              bootstrapMode: has("--staged-bootstrap") ? "staged" : "full",
               driverExitCode: 0,
-              maintenanceAudit: options.includes("--maintenance-audit"),
+              maintenanceAudit: has("--maintenance-audit"),
               evidence: "transactions.jsonl",
               immutableOrderAdmission: false,
               r1Complete: false,
@@ -275,7 +245,7 @@ try {
   );
   console.log(
     services
-      ? options.includes("--transactions")
+      ? has("--transactions")
         ? "Native services and requested transaction diagnostic completed; inspect scoped receipts, no admission or R1 claim."
         : "Native node/indexer block identity and prover queue readiness verified; no transaction or R1 claim."
       : "Native node produced block 1. No indexer, proof, submission or R1 claim.",

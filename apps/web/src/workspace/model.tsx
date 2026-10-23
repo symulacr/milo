@@ -26,14 +26,16 @@ import { workspaceRoutes } from "../route-table";
 const originalQuote = {
   name: "Still — a quieter kind of care",
   brief:
-    "A considered three-image product pack for Still Studio. Warm natural tones, sculptural composition and a clear focus on the ceramic vessel. One hero, one detail and one collection image.",
+    "A considered three-image product pack for Still Studio. Warm natural tones, sculptural composition, one hero, one detail and one collection image.",
   amount: 360,
 };
+
 export const quoteSchema = z.object({
   name: z.string().trim().min(5).max(80),
   brief: z.string().trim().min(20).max(500),
   amount: z.coerce.number().int().min(1).max(5000),
 });
+
 export const scenarios: { value: Scenario; label: string }[] = [
   { value: "review", label: "Delivery ready to review" },
   { value: "fresh", label: "Start with the quote" },
@@ -42,12 +44,13 @@ export const scenarios: { value: Scenario; label: string }[] = [
   { value: "pending", label: "Outcome unknown" },
   { value: "lost-capability", label: "Capability unavailable" },
 ];
+
 export const roleNames: Record<Role, string> = {
   buyer: "Alex · Still Studio",
   merchant: "North Studio",
   operator: "Resolution operator",
 };
-/** UI action labels — total map so a missing label fails typecheck. */
+
 export const actionLabels: Record<Action, string> = {
   ready: "Prepare this device",
   "verify-recovery": "Verify the recovery kit",
@@ -87,36 +90,46 @@ type WorkspaceModal =
   | { kind: "image"; index: number }
   | null;
 
-/** Which dialog opened the current one, so a nested dialog can offer Back. */
 export type ModalReturn = "approve" | null;
 
-/** Per-file SHA-256 check results for the 3-slot verification strip. */
 export type FileResults = Record<string, "ok" | "fail" | "pending">;
 
-/** The three setup checks that survive a perspective switch. */
 type RoleFlags = {
   ready: boolean;
   recoveryVerified: boolean;
   filesVerified: boolean;
 };
 
-/** Per-route document titles; matched most-specific first. */
+const FILE_SLOTS = ["01", "02", "03"] as const;
+
+const allSlots = (state: "ok" | "fail" | "pending"): FileResults =>
+  Object.fromEntries(FILE_SLOTS.map((slot) => [slot, state]));
+
+const TITLED: Record<string, string> = Object.fromEntries(
+  workspaceRoutes.map((route) => [route.path, route.title]),
+);
+
+const SAMPLE_TITLES: readonly (readonly [RegExp, string])[] = [
+  [/^\/orders\/sample-001\/receipt$/, "Milo — Sample receipt"],
+  [/^\/orders\/sample-001$/, "Milo — Sample order"],
+  [/^\/quotes\/sample-001$/, "Milo — Sample agreement"],
+  [/^\/operator\/cases\/sample-001$/, "Milo — Sample resolution case"],
+];
+
 export function routeTitle(pathname: string): string {
   const path = pathname.replace(/\/+$/, "") || "/";
-  const exact: Record<string, string> = Object.fromEntries(
-    workspaceRoutes.map((route) => [route.path, route.title]),
-  );
-  if (exact[path]) return `Milo — ${exact[path]}`;
-  if (/^\/orders\/sample-001\/receipt$/.test(path))
-    return "Milo — Sample receipt";
-  if (/^\/orders\/sample-001$/.test(path)) return "Milo — Sample order";
-  if (/^\/quotes\/sample-001$/.test(path)) return "Milo — Sample agreement";
-  if (/^\/operator\/cases\/sample-001$/.test(path))
-    return "Milo — Sample resolution case";
+  const titled = TITLED[path];
+  if (titled) return `Milo — ${titled}`;
+  for (const [pattern, title] of SAMPLE_TITLES) {
+    if (pattern.test(path)) return title;
+  }
   return "Milo — Page not found";
 }
 
-const roles: Role[] = ["buyer", "merchant", "operator"];
+const ROLES: readonly Role[] = ["buyer", "merchant", "operator"];
+const SCENARIO_VALUES: ReadonlySet<string> = new Set(
+  scenarios.map((s) => s.value),
+);
 
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -124,7 +137,9 @@ const usd = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
-/** Deep links: ?scenario=review&role=buyer restore a sample state on refresh. */
+const DEFAULT_DISPUTE_REASON =
+  "Second image colorway does not match agreed brief.";
+
 function parseDeepLink(params: URLSearchParams): {
   scenario: Scenario;
   role: Role | null;
@@ -132,10 +147,10 @@ function parseDeepLink(params: URLSearchParams): {
   const scenarioParam = params.get("scenario") ?? "";
   const roleParam = params.get("role") ?? "";
   return {
-    scenario: scenarios.some((s) => s.value === scenarioParam)
+    scenario: SCENARIO_VALUES.has(scenarioParam)
       ? (scenarioParam as Scenario)
       : "review",
-    role: roles.includes(roleParam as Role) ? (roleParam as Role) : null,
+    role: ROLES.includes(roleParam as Role) ? (roleParam as Role) : null,
   };
 }
 
@@ -146,8 +161,6 @@ export function useModel() {
     const base = createScenario(initial.scenario);
     return initial.role ? changeRole(base, initial.role) : base;
   });
-  // Latest committed state, read by async closures as a staleness guard;
-  // written only inside commit() so the mirror cannot diverge.
   const latestState = useRef(state);
   const [quote, setQuote] = useState(originalQuote);
   const [scenario, setScenario] = useState<Scenario>(initial.scenario);
@@ -157,32 +170,23 @@ export function useModel() {
   const [modal, updateModal] = useState<WorkspaceModal>(null);
   const [consent, setConsent] = useState(false);
   const [reason, setReasonState] = useState("");
-  // Mirrors `reason` so `act` stays referentially stable while typing.
   const reasonRef = useRef("");
   const setReason = useCallback((value: string) => {
     reasonRef.current = value;
     setReasonState(value);
   }, []);
-  const [disputeReason, setDisputeReason] = useState(
-    "Second image colorway does not match agreed brief.",
-  );
+  const [disputeReason, setDisputeReason] = useState(DEFAULT_DISPUTE_REASON);
   const [fileResults, setFileResults] = useState<FileResults>({});
   const [modalReturn, setModalReturn] = useState<ModalReturn>(null);
   const [tab, setTab] = useState("delivery");
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
-  // Setup checks are per-role, so a perspective switch parks them here and
-  // restores them when the user comes back (see chooseRole).
   const roleFlags = useRef<Partial<Record<Role, RoleFlags>>>({});
   const navigate = useNavigate();
   const location = useLocation();
   const mainHeading = useRef<HTMLHeadingElement>(null);
-  // Distinguishes the first mount from a later route change, so the heading is focused
-  // only when the user navigated (see the title effect below).
   const headingMounted = useRef(false);
   const modalOrigin = useRef<HTMLElement | null>(null);
-  // Mirrors `modal` so setModal can stay referentially stable; only setModal
-  // writes the modal, so the mirror cannot diverge.
   const modalRef = useRef<WorkspaceModal>(null);
   const setModal = useCallback((value: WorkspaceModal) => {
     if (
@@ -215,8 +219,6 @@ export function useModel() {
     setConsent(false);
     setNotice("");
   }, [cancelFileCheck, setModal]);
-  // Query string last applied or written by the model, so our own URL writes
-  // do not re-trigger the deep-link effect.
   const appliedLink = useRef(searchParams.toString());
   const syncDeepLink = useCallback(
     (nextScenario: Scenario, nextRole: Role) => {
@@ -236,7 +238,7 @@ export function useModel() {
       setScenario(value);
       setQuote(nextQuote);
       setTab("delivery");
-      setDisputeReason("Second image colorway does not match agreed brief.");
+      setDisputeReason(DEFAULT_DISPUTE_REASON);
       setFileResults({});
       setModalReturn(null);
       setReason("");
@@ -251,8 +253,6 @@ export function useModel() {
     (role: Role) => {
       invalidate();
       const current = latestState.current;
-      // Park the outgoing role's setup checks so switching perspectives is
-      // never a silent loss of progress, then restore the target role's.
       roleFlags.current[current.role] = {
         ready: current.ready,
         recoveryVerified: current.recoveryVerified,
@@ -260,29 +260,16 @@ export function useModel() {
       };
       const switched = changeRole(current, role);
       const saved = roleFlags.current[role];
-      commit(
-        saved
-          ? {
-              ...switched,
-              ready: saved.ready,
-              recoveryVerified: saved.recoveryVerified,
-              filesVerified: saved.filesVerified,
-            }
-          : switched,
-      );
+      commit(saved ? { ...switched, ...saved } : switched);
       syncDeepLink(scenario, role);
     },
     [commit, invalidate, scenario, syncDeepLink],
   );
   const act = useCallback(
     (action: Action): boolean => {
-      // A state change makes any in-flight check stale; let it finish silently
-      // instead of reporting a spurious failure.
       if (request.current) cancelFileCheck();
       try {
         commit(transition(latestState.current, action));
-        // Keep the submitted dispute reason so the operator desk and the order
-        // view can show what the buyer actually wrote.
         const submitted = reasonRef.current.trim();
         if (action === "dispute" && submitted.length >= 10)
           setDisputeReason(submitted);
@@ -313,7 +300,7 @@ export function useModel() {
     request.current = controller;
     setChecking(true);
     setNotice("Checking file…");
-    setFileResults({ "01": "pending", "02": "pending", "03": "pending" });
+    setFileResults(allSlots("pending"));
     try {
       const ids = await verifySampleFiles(controller.signal);
       if (generation.current !== current) return;
@@ -322,19 +309,17 @@ export function useModel() {
       );
       setFileCheckError("");
       setNotice("All three files match the submitted manifest.");
-      // Three-slot strip: every pinned digest matched, so every slot is ok.
-      setFileResults({ "01": "ok", "02": "ok", "03": "ok" });
+      setFileResults(allSlots("ok"));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       if (generation.current === current) {
-        // Persistent state, not a transient toast (04 §8.1/§10).
         const message =
           error instanceof Error
             ? error.message
             : "Could not check these files.";
         setFileCheckError(message);
         setNotice(message);
-        setFileResults({ "01": "fail", "02": "fail", "03": "fail" });
+        setFileResults(allSlots("fail"));
       }
     } finally {
       if (generation.current === current) {
@@ -345,21 +330,15 @@ export function useModel() {
   }, [commit]);
   useEffect(() => () => request.current?.abort(), []);
   const linkKey = searchParams.toString();
-  // In-app links such as ?scenario=lost-capability from Account arrive after mount;
-  // apply them when they differ from what the model last applied or wrote.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the query string only
   useEffect(() => {
-    if (!searchParams.has("scenario") || linkKey === appliedLink.current)
-      return;
+    const params = new URLSearchParams(linkKey);
+    if (!params.has("scenario") || linkKey === appliedLink.current) return;
     appliedLink.current = linkKey;
-    const link = parseDeepLink(searchParams);
+    const link = parseDeepLink(params);
     reset(link.scenario, originalQuote, link.role ?? undefined);
-  }, [linkKey]);
+  }, [linkKey, reset]);
   useEffect(() => {
     document.title = routeTitle(location.pathname);
-    // Focus the heading on NAVIGATION, not on first load: focusing it on mount moved
-    // the sequential-focus start past the skip link that WorkspaceShell renders first
-    // in the DOM, so the link was no longer the first tab stop (WCAG 2.2 SC 2.4.1).
     if (!headingMounted.current) {
       headingMounted.current = true;
       return;
@@ -391,13 +370,9 @@ export function useModel() {
     anchor.href = url;
     anchor.download = "milo-sample-receipt.json";
     anchor.click();
-    // Deferred past download initiation; the URL is per-export and the page
-    // is short-lived, so a single deferred revoke is sufficient.
     setTimeout(() => URL.revokeObjectURL(url), 0);
     setNotice("Receipt downloaded — not blockchain or payment evidence.");
   }, [quote, state.phase, state.payment, state.filesVerified, state.revision]);
-  // Memoized so a keystroke in `reason` only re-renders consumers that read
-  // `reason` — the stable callbacks above keep the dependency list honest.
   const value = useMemo(
     () => ({
       state,
@@ -458,7 +433,6 @@ export function useModel() {
   );
   return value;
 }
-
 type WorkspaceModel = ReturnType<typeof useModel>;
 
 export const WorkspaceContext = createContext<WorkspaceModel | null>(null);

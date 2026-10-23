@@ -20,9 +20,8 @@ export function RoleRequired({
       mainHeading.current?.focus();
     }
   }, [state.role, role, mainHeading]);
-  return state.role === role ? (
-    children
-  ) : (
+  if (state.role === role) return children;
+  return (
     <Panel className="reading-panel">
       <h1 tabIndex={-1} ref={mainHeading}>
         This is the {role} view.
@@ -30,11 +29,6 @@ export function RoleRequired({
       <p>
         Switch the sample role to continue. Real access requires membership and
         capabilities.
-      </p>
-      <p className="persona-banner">
-        Switching perspectives preserves your setup checks (device readiness,
-        recovery kit, and file verification) so you can return to the{" "}
-        {state.role} view without losing progress.
       </p>
       <button
         type="button"

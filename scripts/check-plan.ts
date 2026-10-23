@@ -43,8 +43,12 @@ const writtenId = /^(?:MID-P|MID-T|B-|M-|R)(\d{1,3})$/;
 const explicitRe = /\b(?:MID-P|MID-T|B-|M-|R)\d{1,3}\b/g;
 const rangeRe =
   /\b((?:MID-P|MID-T|B-|M-|R))(\d{1,3})\s*(?:–|—|--|\.\.)\s*((?:MID-P|MID-T|B-|M-|R-|B|M|R|P|T)?)(\d{1,3})\b/g;
+const fenceRe = /^ {0,3}(`{3,}|~{3,})/;
+const linkRe = /\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g;
+const EXTERNAL = /^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i;
 
 const MAX_RANGE_SPAN = 64;
+const UNPADDED: ReadonlySet<Prefix> = new Set<Prefix>(["MID-P", "R"]);
 
 export function parseId(text: string): GateId | undefined {
   const digits = writtenId.exec(text)?.[1];
@@ -74,8 +78,7 @@ export function parseRange(
 }
 
 export function formatId({ prefix, num }: GateId): string {
-  const unpadded: Prefix[] = ["MID-P", "R"];
-  const digits = unpadded.includes(prefix)
+  const digits = UNPADDED.has(prefix)
     ? String(num)
     : String(num).padStart(2, "0");
   return prefix + digits;
@@ -96,9 +99,8 @@ export function collectClaimedIds(text: string): ClaimedIds {
       match[2] ?? "",
       match[3] ?? "",
       match[4] ?? "",
-    )) {
+    ))
       covered.add(formatId(id));
-    }
   }
   return { literal, covered };
 }
@@ -107,8 +109,7 @@ export function missingGateIds(claimed: ClaimedIds): string[] {
   const missing: string[] = [];
   for (const [prefix, count, padded, first] of gateIds) {
     for (let i = first; i < first + count; i++) {
-      const num = padded ? String(i).padStart(2, "0") : String(i);
-      const id = prefix + num;
+      const id = prefix + (padded ? String(i).padStart(2, "0") : String(i));
       if (!claimed.literal.has(id) && !claimed.covered.has(id))
         missing.push(id);
     }
@@ -121,7 +122,7 @@ export function scanFences(text: string): { prose: string; unclosed?: string } {
   const prose = text
     .split("\n")
     .filter((line) => {
-      const match = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      const match = line.match(fenceRe);
       if (match?.[1]) {
         if (!fence) fence = match[1];
         else if (match[1][0] === fence[0] && match[1].length >= fence.length)
@@ -147,9 +148,9 @@ export async function checkDocuments(): Promise<string> {
     assert(path);
     const { prose, unclosed } = scanFences(text);
     assert.equal(unclosed, undefined, `Unclosed code fence: ${path}`);
-    for (const match of prose.matchAll(/\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+    for (const match of prose.matchAll(linkRe)) {
       const href = match[1];
-      if (!href || /^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i.test(href)) continue;
+      if (!href || EXTERNAL.test(href)) continue;
       const target = resolve(
         dirname(path),
         decodeURIComponent(href.split("#")[0] ?? ""),

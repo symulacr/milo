@@ -1,6 +1,12 @@
 import { useConvex } from "convex/react";
 import { makeFunctionReference } from "convex/server";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { applyCheckpoint } from "./buyer-reserve-runtime";
 import {
   type ChainOrderRecord,
@@ -19,11 +25,10 @@ const readOrder = makeFunctionReference<
   ChainOrderRecord | null
 >(ORDER_RECORD_FUNCTION);
 
-/**
- * Chain-backed order record from the Convex projection (A1 ingest path).
- * Renders a phase label only when a backing record exists; the checkpoint
- * address is the projection's canonical address, never a typed invention.
- */
+const UNCONFIGURED_TRANSPORT: OrderRecordTransport = {
+  read: async () => null,
+};
+
 export function OrderRecordPanel({
   actorId,
   onRecord,
@@ -48,23 +53,6 @@ export function OrderRecordPanel({
   );
 }
 
-/**
- * Module-level so its identity is stable: `OrderRecordControls` keys its controller on the
- * transport, and a fresh object per render would rebuild the controller (and its snapshot)
- * on every render.
- */
-const UNCONFIGURED_TRANSPORT: OrderRecordTransport = {
-  read: async () => null,
-};
-
-/**
- * The chain-backed order record without a Convex provider.
- *
- * `OrderRecordPanel` calls `useConvex()`, which throws outside a `ConvexProvider`. Routes like
- * the order view must still show the record section when Convex is unconfigured, so this
- * variant supplies a transport that never resolves a record and renders the explicit
- * "unconfigured" absence instead of crashing the tree.
- */
 export function UnconfiguredOrderRecordPanel({
   defaultQuoteId,
 }: {
@@ -94,8 +82,6 @@ export function OrderRecordControls({
 }) {
   const controller = useMemo(() => {
     const created = new OrderRecordController(transport);
-    // Seed the quote id only when the caller supplied one. An absent prop must leave the
-    // controller's own `""` default untouched, so the no-quote state stays exactly as before.
     if (defaultQuoteId !== undefined) created.setQuoteId(defaultQuoteId);
     return created;
   }, [transport, defaultQuoteId]);
@@ -119,12 +105,11 @@ export function OrderRecordControls({
   return (
     <section aria-labelledby="order-record-title">
       <h3 id="order-record-title">Chain-backed order record</h3>
-      <p>
-        Reads the Convex order projection written by the A1 ingest path. The
-        checkpoint address and phase below come only from that record; no phase
-        label is shown without a backing record.
-      </p>
       <p className="micro muted">{orderRecordProvenance()}</p>
+      <p className="micro muted">
+        The checkpoint address and phase come only from that record; no phase
+        label appears without one.
+      </p>
       <label htmlFor="order-record-quote-id">Quote ID</label>
       <input
         id="order-record-quote-id"
@@ -154,10 +139,7 @@ export function OrderRecordControls({
           No phase and no checkpoint address: {view.message}
         </p>
       )}
-      <p className="micro muted">
-        Read as of {new Date(now).toISOString()}. Freshness is read-model only
-        and never grants phase authority.
-      </p>
+      <p className="micro muted">Read as of {new Date(now).toISOString()}.</p>
     </section>
   );
 }
@@ -173,9 +155,7 @@ function RecordFacts({
   const { record, checkpointAddress, phaseLabel } = view;
   function checkpointFromProjection() {
     if (!actorId) {
-      setNotice(
-        "Sign in is required to bind a local recovery context before checkpointing.",
-      );
+      setNotice("Sign in is required to bind a local recovery context.");
       return;
     }
     const scope = {
@@ -186,7 +166,7 @@ function RecordFacts({
     const existing = readKit(scope);
     if (!existing) {
       setNotice(
-        "No local recovery context exists for this actor and quote. Prepare and verify the context first, then checkpoint the projected address.",
+        "No local recovery context exists for this actor and quote. Prepare and verify the context first.",
       );
       return;
     }
@@ -197,51 +177,41 @@ function RecordFacts({
     }
     writeKit(scope, result.kit);
     emitRecoveryKitChanged();
-    setNotice(
-      `Projected checkpoint address ${checkpointAddress} bound into the local recovery context. The address came from the Convex projection, not from typed input.`,
-    );
+    setNotice(`Bound ${checkpointAddress} into the local recovery context.`);
   }
+  const observed =
+    record.observedAt == null
+      ? "None recorded"
+      : new Date(record.observedAt).toISOString();
+  const freshness =
+    record.fresh === true
+      ? " · inside freshness window"
+      : record.fresh === false
+        ? " · outside freshness window (read-model only)"
+        : "";
+  const facts: [string, ReactNode][] = [
+    [
+      "Checkpoint address (projection)",
+      <code key="address">{checkpointAddress}</code>,
+    ],
+    ["Network", record.network],
+    ["Revision", record.revision],
+    ["Latest observation", `${observed}${freshness}`],
+    ["Delivery files", record.fileCount],
+    ["Delivery manifest", record.deliveryManifest ?? "None"],
+  ];
   return (
     <div data-order-record="record">
       <p role="status" data-order-record-phase={record.phase}>
         <strong>{phaseLabel}</strong>
       </p>
       <dl className="detail-grid">
-        <div>
-          <dt>Checkpoint address (projection)</dt>
-          <dd>
-            <code>{checkpointAddress}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>Network</dt>
-          <dd>{record.network}</dd>
-        </div>
-        <div>
-          <dt>Revision</dt>
-          <dd>{record.revision}</dd>
-        </div>
-        <div>
-          <dt>Latest observation</dt>
-          <dd>
-            {record.observedAt == null
-              ? "None recorded"
-              : new Date(record.observedAt).toISOString()}
-            {record.fresh === true
-              ? " · inside freshness window"
-              : record.fresh === false
-                ? " · outside freshness window (read-model only)"
-                : ""}
-          </dd>
-        </div>
-        <div>
-          <dt>Delivery files</dt>
-          <dd>{record.fileCount}</dd>
-        </div>
-        <div>
-          <dt>Delivery manifest</dt>
-          <dd>{record.deliveryManifest ?? "None"}</dd>
-        </div>
+        {facts.map(([term, detail]) => (
+          <div key={term}>
+            <dt>{term}</dt>
+            <dd>{detail}</dd>
+          </div>
+        ))}
       </dl>
       <div className="connection-actions">
         <button

@@ -18,13 +18,13 @@ import { assertProvisioningActive } from "./trustedProvisioning";
 const inputValidator = v.object(admissionArgs);
 export type AdmissionInput = Infer<typeof inputValidator>;
 
-// Invoke only inside a Convex mutation: its indexed reads and final insert share OCC.
 export async function admitCanonical(
   ctx: AdmissionContext,
   input: AdmissionInput,
 ): Promise<AdmissionDecision> {
   requireSessionSubject(await ctx.auth.getUserIdentity());
-  const quote = await ctx.db
+  const { db } = ctx;
+  const quote = await db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))
     .unique();
@@ -34,7 +34,7 @@ export async function admitCanonical(
   const membership = await requireMembership(ctx, quote.scopeId);
   if (!isQuoteBuyer(membership, quote.buyerAccountId))
     throw new Error("Authenticated quote buyer required");
-  const merchant = await ctx.db
+  const merchant = await db
     .query("memberships")
     .withIndex("by_scope_role", (q) =>
       q.eq("scopeId", quote.scopeId).eq("role", "merchant"),
@@ -42,7 +42,6 @@ export async function admitCanonical(
     .unique();
   if (merchant?.status !== "active")
     throw new Error("Active merchant membership required");
-  const merchantAccountId = merchant.accountId;
   const reject = (reason: string): AdmissionDecision => ({
     kind: "rejected",
     reason,
@@ -61,32 +60,32 @@ export async function admitCanonical(
     addressBinding,
     quoteBinding,
   ] = await Promise.all([
-    ctx.db
+    db
       .query("deploymentObservations")
       .withIndex("by_observation", (q) => q.eq("id", input.observationId))
       .unique(),
-    ctx.db.get(input.authorizationId),
-    ctx.db
+    db.get(input.authorizationId),
+    db
       .query("paymentObservations")
       .withIndex("by_payment_intent", (q) =>
         q.eq("paymentIntentId", input.authorizationId),
       )
       .unique(),
-    ctx.db
+    db
       .query("admissionTimingPolicies")
       .withIndex("by_network", (q) => q.eq("network", quote.network))
       .unique(),
-    ctx.db
+    db
       .query("canonicalBindings")
       .withIndex("by_network_nonce", (q) =>
         q.eq("network", quote.network).eq("nonce", quote.nonce),
       )
       .unique(),
-    ctx.db
+    db
       .query("canonicalBindings")
       .withIndex("by_address", (q) => q.eq("address", input.address))
       .unique(),
-    ctx.db
+    db
       .query("canonicalBindings")
       .withIndex("by_quote", (q) => q.eq("quoteId", quote.id))
       .unique(),
@@ -110,11 +109,11 @@ export async function admitCanonical(
   )
     return reject("active payment monitoring consent required");
   const [quotePayment, providerPayment] = await Promise.all([
-    ctx.db
+    db
       .query("paymentIntents")
       .withIndex("by_quote", (q) => q.eq("quoteId", quote.id))
       .unique(),
-    ctx.db
+    db
       .query("paymentIntents")
       .withIndex("by_provider_intent", (q) =>
         q.eq("stripePaymentIntentId", payment.stripePaymentIntentId),
@@ -164,16 +163,13 @@ export async function admitCanonical(
       address: input.address,
     },
   );
-  // Do not return a success before the database write has completed. The
-  // binding, the chain projection and the delivery projection commit together:
-  // a bound quote without an order would strand every downstream read.
   if (pending) {
-    await ctx.db.insert("canonicalBindings", pending);
+    await db.insert("canonicalBindings", pending);
     await createOrder(ctx, {
       quoteId: quote.id,
       scopeId: quote.scopeId,
       buyerId: quote.buyerAccountId,
-      merchantId: merchantAccountId,
+      merchantId: merchant.accountId,
       address: pending.address,
       nonce: pending.nonce,
       artifactFingerprint: quote.artifactFingerprint,
@@ -182,26 +178,17 @@ export async function admitCanonical(
   return decision;
 }
 
-function cleanBinding(
-  binding: AdmissionBinding | null,
-): AdmissionBinding | undefined {
-  if (!binding) return undefined;
-  const {
-    network,
-    nonce,
-    address,
-    quoteId,
-    observationId,
-    authorizationId,
-    boundAt,
-  } = binding;
-  return {
-    network,
-    nonce,
-    address,
-    quoteId,
-    observationId,
-    authorizationId,
-    boundAt,
-  };
-}
+const cleanBinding = (
+  b: AdmissionBinding | null,
+): AdmissionBinding | undefined =>
+  b
+    ? {
+        network: b.network,
+        nonce: b.nonce,
+        address: b.address,
+        quoteId: b.quoteId,
+        observationId: b.observationId,
+        authorizationId: b.authorizationId,
+        boundAt: b.boundAt,
+      }
+    : undefined;

@@ -2,7 +2,6 @@ import { Link } from "react-router";
 import { Panel } from "../components/ui";
 import { useWorkspace } from "../workspace/model";
 
-/** Workspace-only not-found; the public bundle keeps routes/NotFound. */
 export function WorkspaceNotFound() {
   const { mainHeading } = useWorkspace();
   return (

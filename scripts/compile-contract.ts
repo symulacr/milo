@@ -5,7 +5,32 @@ import "./verify-compact-cohort";
 
 const source = "packages/contract/src/order.compact";
 const destination = "packages/contract/generated";
+const COMPILER_VERSION = "0.31.1";
 const sourceHash = await sha256File(source);
+
+const CIRCUITS = [
+  "accept",
+  "approve",
+  "cancelReserved",
+  "decline",
+  "disputeBuyer",
+  "disputeMerchant",
+  "escalateUnreviewed",
+  "expireBootstrap",
+  "expireDispute",
+  "expireReserved",
+  "expireUndelivered",
+  "reserve",
+  "resolve",
+  "submitDelivery",
+];
+
+const artifactPaths = (name: string): string[] => [
+  `zkir/${name}.zkir`,
+  `keys/${name}.prover`,
+  `keys/${name}.verifier`,
+];
+
 await mkdir(".tools", { recursive: true });
 const temporary = await mkdtemp(".tools/contract-build-");
 
@@ -30,39 +55,18 @@ try {
   const metadata = await Bun.file(
     `${temporary}/compiler/contract-info.json`,
   ).json();
-  assert.equal(metadata["compiler-version"], "0.31.1");
-  const circuits = [
-    "accept",
-    "approve",
-    "cancelReserved",
-    "decline",
-    "disputeBuyer",
-    "disputeMerchant",
-    "escalateUnreviewed",
-    "expireBootstrap",
-    "expireDispute",
-    "expireReserved",
-    "expireUndelivered",
-    "reserve",
-    "resolve",
-    "submitDelivery",
-  ];
+  assert.equal(metadata["compiler-version"], COMPILER_VERSION);
   assert.deepEqual(
     metadata.circuits
       .filter((c: { proof: boolean }) => c.proof)
       .map((c: { name: string }) => c.name)
       .sort(),
-    circuits,
+    CIRCUITS,
     "The complete protocol circuit set must be present",
   );
 
-  // The compiler may exit successfully without keys when zkir is unavailable.
-  for (const name of circuits) {
-    for (const artifact of [
-      `zkir/${name}.zkir`,
-      `keys/${name}.prover`,
-      `keys/${name}.verifier`,
-    ]) {
+  for (const name of CIRCUITS) {
+    for (const artifact of artifactPaths(name)) {
       const file = Bun.file(`${temporary}/${artifact}`);
       assert(await file.exists(), `Missing ${artifact}`);
       assert(file.size > 0, `Empty ${artifact}`);
@@ -73,17 +77,18 @@ try {
   const paths = [...new Bun.Glob("**/*").scanSync(temporary)].sort();
   for (const path of paths)
     artifacts[path] = await sha256File(`${temporary}/${path}`);
+
   await Bun.write(
     `${temporary}/compile-receipt.json`,
     `${JSON.stringify(
       {
         scope:
           "full compiler artifacts; not a transaction proof or chain receipt",
-        compiler: "0.31.1",
+        compiler: COMPILER_VERSION,
         runtime: "0.16.0",
         source,
         sourceSha256: sourceHash,
-        proofCircuits: circuits,
+        proofCircuits: CIRCUITS,
         artifacts,
       },
       null,
@@ -93,7 +98,7 @@ try {
   await rm(destination, { recursive: true, force: true });
   await rename(temporary, destination);
   console.log(
-    `Verified full artifacts for ${circuits.length} protocol circuits.`,
+    `Verified full artifacts for ${CIRCUITS.length} protocol circuits.`,
   );
 } finally {
   await rm(temporary, { recursive: true, force: true });

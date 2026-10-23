@@ -4,45 +4,17 @@ import type {
   RecoveryKit,
 } from "../../../packages/domain/src/recovery-kit";
 
-/**
- * Browser-side persistence for the pure recovery-kit state machine
- * (packages/domain/src/recovery-kit.ts, 06-backend-design section 5.2). It uses
- * the platform's own storage API directly - no storage library and no wrapper
- * over the browser - and it never writes a capability: the record holds only
- * the actor, network, order nonce, stage, the pending operation's identity and
- * revision, and status flags (01-blueprint:762). Anything that must cross the
- * network would use native fetch; the only cross-network read the recovery
- * context needs is a Convex operations query, which does not exist yet
- * (OFFCHAIN-POLICY BP-02), so no request is made and that absent endpoint is
- * named in the UI instead of being simulated.
- */
 const KEY_PREFIX = "milo.recovery-kit.";
+const STAGES = new Set(["EXPORTED", "VERIFIED", "CHECKPOINTED", "LOST"]);
+const OPERATIONS = new Set(["deploy", "reserve", "submit", "approve"]);
 
-/** Same-document kit-change ping (storage events do not fire for same-tab writes). */
 export const RECOVERY_KIT_CHANGED = "milo:recovery-kit-changed";
 
-/**
- * Synchronous, deliberately: the change is announced inside the same task as the write, so a
- * listener that reads storage immediately afterwards already sees the new kit. Nothing here is
- * queued or deferred.
- */
 export function emitRecoveryKitChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(RECOVERY_KIT_CHANGED));
 }
 
-/**
- * Subscribe to every local recovery-kit change, from this tab and from others.
- *
- * Two events are needed because neither alone is sufficient: `RECOVERY_KIT_CHANGED` is the
- * same-document ping dispatched by `emitRecoveryKitChanged`, and `"storage"` is the platform
- * event other tabs receive (it never fires for the writing tab). The storage listener filters
- * to this module's keys — `event.key === null` is the `clear()` case, which can drop every kit
- * — so unrelated localStorage writes do not re-render kit readers.
- *
- * Returns the unsubscribe function; safe to call on the server, where there is nothing to
- * subscribe to.
- */
 export function subscribeKitChanges(listener: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const onStorage = (event: StorageEvent) => {
@@ -55,8 +27,6 @@ export function subscribeKitChanges(listener: () => void): () => void {
     window.removeEventListener("storage", onStorage);
   };
 }
-const STAGES = ["EXPORTED", "VERIFIED", "CHECKPOINTED", "LOST"] as const;
-const OPERATIONS = ["deploy", "reserve", "submit", "approve"] as const;
 
 export function recoveryKey(scope: KitScope): string {
   return `${KEY_PREFIX}${scope.actorId}.${scope.network}.${scope.orderNonce}`;
@@ -67,24 +37,18 @@ function validPending(value: unknown): value is PendingOperation | null {
   if (!value || typeof value !== "object") return false;
   const pending = value as Partial<PendingOperation>;
   return (
-    OPERATIONS.includes(pending.operation as (typeof OPERATIONS)[number]) &&
+    OPERATIONS.has(pending.operation as string) &&
     typeof pending.identity === "string" &&
     pending.identity.trim().length > 0 &&
     Number.isSafeInteger(pending.revision)
   );
 }
 
-/**
- * Structural and scope check. A corrupt, partial or foreign-scope record is
- * never a kit, so a stale backup can never unlock another order's context.
- * Every field of RecoveryKit is checked, so the predicate can narrow instead of
- * a cast asserting validity.
- */
 function isKit(value: unknown, scope: KitScope): value is RecoveryKit {
   if (!value || typeof value !== "object") return false;
   const kit = value as Partial<RecoveryKit>;
   return (
-    STAGES.includes(kit.stage as (typeof STAGES)[number]) &&
+    STAGES.has(kit.stage as string) &&
     kit.actorId === scope.actorId &&
     kit.network === scope.network &&
     kit.orderNonce === scope.orderNonce &&
@@ -124,7 +88,6 @@ export function writeKit(
     storage.setItem(recoveryKey(scope), JSON.stringify(kit));
     return true;
   } catch {
-    // Storage can be full or disabled (private mode); the caller reports it.
     return false;
   }
 }

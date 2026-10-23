@@ -60,12 +60,42 @@ const payload = v.union(
 );
 type Input = Infer<typeof payload>;
 
-function bindingKey(input: Input) {
-  if (input.kind === "membership")
-    return JSON.stringify([input.value.privySubject, input.value.scopeId]);
-  if (input.kind === "timing") return input.value.network;
-  return input.kind === "quote" ? input.value.id : input.value.buyerAccountId;
-}
+const bindingKey = (input: Input): string =>
+  input.kind === "membership"
+    ? JSON.stringify([input.value.privySubject, input.value.scopeId])
+    : input.kind === "timing"
+      ? input.value.network
+      : input.kind === "quote"
+        ? input.value.id
+        : input.value.buyerAccountId;
+
+const requireAuthority = (requestId: string, proof: Provenance) =>
+  validateProvenance(
+    proof,
+    requestId,
+    process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
+  );
+
+const auditOf = (ctx: AdmissionContext, requestId: string) =>
+  ctx.db
+    .query("trustedProvisioningAudit")
+    .withIndex("by_request", (q) => q.eq("requestId", requestId))
+    .unique();
+
+const bindingOf = (ctx: AdmissionContext, kind: Input["kind"], key: string) =>
+  ctx.db
+    .query("trustedProvisioning")
+    .withIndex("by_kind_key", (q) => q.eq("kind", kind).eq("key", key))
+    .unique();
+
+const assertActiveBinding = async (
+  ctx: AdmissionContext,
+  bindingId: GenericId<"trustedProvisioning">,
+) => {
+  const binding = await ctx.db.get(bindingId);
+  if (binding?.status !== "active")
+    throw new Error("Trusted provisioning revoked");
+};
 
 export async function assertProvisioningActive(
   ctx: Pick<AdmissionContext, "db">,
@@ -76,7 +106,6 @@ export async function assertProvisioningActive(
     .query("trustedProvisioning")
     .withIndex("by_kind_key", (q) => q.eq("kind", kind).eq("key", key))
     .unique();
-  // Legacy operator-provisioned rows retain their existing admission semantics.
   if (binding?.status === "revoked")
     throw new Error("Trusted provisioning revoked");
 }
@@ -84,11 +113,7 @@ export async function assertProvisioningActive(
 export const provision = internalMutationGeneric({
   args: { requestId: v.string(), provenance, payload },
   handler: async (ctx: AdmissionContext, args) => {
-    validateProvenance(
-      args.provenance,
-      args.requestId,
-      process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
-    );
+    requireAuthority(args.requestId, args.provenance);
     return provisionBinding(ctx, args);
   },
 });
@@ -105,23 +130,14 @@ async function provisionBinding(
     payload: input,
     provenance: args.provenance,
   });
-  const prior = await ctx.db
-    .query("trustedProvisioningAudit")
-    .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
-    .unique();
+  const prior = await auditOf(ctx, args.requestId);
   if (prior) {
     if (prior.operation !== operation)
       throw new Error("Provisioning request conflict");
-    const binding = await ctx.db.get(prior.bindingId);
-    if (binding?.status !== "active")
-      throw new Error("Trusted provisioning revoked");
+    await assertActiveBinding(ctx, prior.bindingId);
     return prior.bindingId;
   }
-  const existing = await ctx.db
-    .query("trustedProvisioning")
-    .withIndex("by_kind_key", (q) => q.eq("kind", input.kind).eq("key", key))
-    .unique();
-  // No adoption, replacement, or reactivation without a separately reviewed migration.
+  const existing = await bindingOf(ctx, input.kind, key);
   if (existing)
     throw new Error(
       existing.payload === serialized
@@ -186,9 +202,6 @@ async function provisionBinding(
     if (other) throw new Error("Stripe customer already bound");
     targetId = await ctx.db.insert("stripeCustomers", input.value);
   } else if (input.kind === "timing") {
-    // The admission timing policy is server configuration, not user data: it
-    // is provisioned once through this audited path so `admission.bind` has a
-    // policy to read in a deployed environment.
     if (
       !Number.isSafeInteger(input.value.captureSafetyMarginMs) ||
       input.value.captureSafetyMarginMs <= 0
@@ -234,41 +247,25 @@ async function provisionBinding(
   return bindingId;
 }
 
-/**
- * Operator action, deliberately not scheduled: `admission.bind` rejects without a
- * timing policy, so a deployed environment needs exactly one audited write here.
- * Re-running returns the existing binding instead of rewriting the policy.
- */
+const TIMING_PAYLOAD: Input = {
+  kind: "timing",
+  value: { network: "preprod", captureSafetyMarginMs: 1000 },
+};
+
 export const ensurePreprodTimingPolicy = internalMutationGeneric({
   args: { requestId: v.string(), provenance },
   handler: async (ctx: AdmissionContext, args) => {
-    validateProvenance(
-      args.provenance,
-      args.requestId,
-      process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
-    );
-    const payload: Input = {
-      kind: "timing",
-      value: { network: "preprod", captureSafetyMarginMs: 1000 },
-    };
-    // The replay check runs before the "already provisioned" check so a retried
-    // request is a success, while a fresh request id against an existing policy
-    // stays the same explicit conflict every other kind raises.
-    const prior = await ctx.db
-      .query("trustedProvisioningAudit")
-      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
-      .unique();
+    requireAuthority(args.requestId, args.provenance);
+    const prior = await auditOf(ctx, args.requestId);
     if (prior) {
       const operation = canonicalPayload({
         action: "provision",
-        payload,
+        payload: TIMING_PAYLOAD,
         provenance: args.provenance,
       });
       if (prior.operation !== operation)
         throw new Error("Provisioning request conflict");
-      const binding = await ctx.db.get(prior.bindingId);
-      if (binding?.status !== "active")
-        throw new Error("Trusted provisioning revoked");
+      await assertActiveBinding(ctx, prior.bindingId);
       return prior.bindingId;
     }
     const existing = await ctx.db
@@ -276,14 +273,7 @@ export const ensurePreprodTimingPolicy = internalMutationGeneric({
       .withIndex("by_network", (q) => q.eq("network", "preprod"))
       .unique();
     if (existing) {
-      const binding = await ctx.db
-        .query("trustedProvisioning")
-        .withIndex("by_kind_key", (q) =>
-          q.eq("kind", "timing").eq("key", "preprod"),
-        )
-        .unique();
-      // A row written outside this audited path is a conflict, not a success:
-      // the caller cannot tell a provisioned policy from a hand-inserted one.
+      const binding = await bindingOf(ctx, "timing", "preprod");
       if (binding?.status !== "active")
         throw new Error("Existing timing policy is not provisioned");
       return binding._id;
@@ -291,7 +281,7 @@ export const ensurePreprodTimingPolicy = internalMutationGeneric({
     return provisionBinding(ctx, {
       requestId: args.requestId,
       provenance: args.provenance,
-      payload,
+      payload: TIMING_PAYLOAD,
     });
   },
 });
@@ -304,21 +294,14 @@ export const revoke = internalMutationGeneric({
     expectedVersion: v.number(),
   },
   handler: async (ctx: AdmissionContext, args) => {
-    validateProvenance(
-      args.provenance,
-      args.requestId,
-      process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
-    );
+    requireAuthority(args.requestId, args.provenance);
     const operation = canonicalPayload({
       action: "revoke",
       bindingId: args.bindingId,
       expectedVersion: args.expectedVersion,
       provenance: args.provenance,
     });
-    const prior = await ctx.db
-      .query("trustedProvisioningAudit")
-      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
-      .unique();
+    const prior = await auditOf(ctx, args.requestId);
     if (prior) {
       if (prior.operation !== operation)
         throw new Error("Provisioning request conflict");

@@ -1,10 +1,3 @@
-/**
- * Build-time synthetic fixtures for the public /demo tour (04-ui-design §4.4).
- * Stable case IDs, template revisions, fictional merchants and example-only
- * state. Never a runtime service registry or real order creation; no real
- * scope, customer identifiers or protected order context belongs in these
- * datasets or in the ?context= URL.
- */
 import { REVIEW_DEADLINE } from "./reviewDeadline";
 
 type DemoImage = {
@@ -30,47 +23,74 @@ export type DemoContext = {
 
 const TEMPLATE = "image-pack-v1 · template r3";
 
-const sc01: DemoContext = {
-  id: "SC-01",
-  label: "Commerce imagery",
-  caseId: "CASE-SC01-A",
-  templateRevision: TEMPLATE,
-  merchant: "North Studio",
-  pack: "Three-image product pack",
-  scope:
-    "Listing-ready images of one ceramic vessel: a hero portrait, a material detail and a collection composition. Consistent dimensions for the buyer's storefront.",
-  rights: "Website and organic social",
-  deadline: `Review due ${REVIEW_DEADLINE} · sample clock`,
-  amount: "$360 USD",
-  images: [
-    {
-      src: "/images/hero.webp",
-      title: "The hero",
-      note: "Product portrait · studio composition",
-      alt: "Sample Still Studio photography: sculptural vessel on a warm studio plinth",
-    },
-    {
-      src: "/images/detail.webp",
-      title: "The details",
-      note: "Material study · close composition",
-      alt: "Sample Still Studio photography: detail of an olive ceramic vessel",
-    },
-    {
-      src: "/images/collection.webp",
-      title: "The collection",
-      note: "Campaign composition · family portrait",
-      alt: "Sample Still Studio photography: the three-piece collection arrangement",
-    },
-  ],
+type ImageSeed = readonly [
+  src: string,
+  title: string,
+  note: string,
+  alt: string,
+];
+
+type ContextSeed = {
+  id: DemoContext["id"];
+  label: string;
+  merchant: string;
+  pack: string;
+  scope: string;
+  rights: string;
+  deadline: string;
+  amount: string;
+  images: readonly [ImageSeed, ImageSeed, ImageSeed];
 };
 
-export const demoContexts: DemoContext[] = [
-  sc01,
+function context(seed: ContextSeed): DemoContext {
+  return {
+    ...seed,
+    caseId: `CASE-${seed.id.replace("-", "")}-A`,
+    templateRevision: TEMPLATE,
+    images: seed.images.map(([src, title, note, alt]) => ({
+      src,
+      title,
+      note,
+      alt,
+    })) as [DemoImage, DemoImage, DemoImage],
+  };
+}
+
+const SEEDS: readonly ContextSeed[] = [
+  {
+    id: "SC-01",
+    label: "Commerce imagery",
+    merchant: "North Studio",
+    pack: "Three-image product pack",
+    scope:
+      "Listing-ready images of one ceramic vessel: a hero portrait, a material detail and a collection composition. Consistent dimensions for the buyer's storefront.",
+    rights: "Website and organic social",
+    deadline: `Review due ${REVIEW_DEADLINE} · sample clock`,
+    amount: "$360 USD",
+    images: [
+      [
+        "/images/hero.webp",
+        "The hero",
+        "Product portrait · studio composition",
+        "Sample Still Studio photography: sculptural vessel on a warm studio plinth",
+      ],
+      [
+        "/images/detail.webp",
+        "The details",
+        "Material study · close composition",
+        "Sample Still Studio photography: detail of an olive ceramic vessel",
+      ],
+      [
+        "/images/collection.webp",
+        "The collection",
+        "Campaign composition · family portrait",
+        "Sample Still Studio photography: the three-piece collection arrangement",
+      ],
+    ],
+  },
   {
     id: "SC-02",
     label: "Product visualization",
-    caseId: "CASE-SC02-A",
-    templateRevision: TEMPLATE,
     merchant: "Unison Objects",
     pack: "Three-image render study",
     scope:
@@ -79,31 +99,29 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 12 Sep 2026, 09:30 UTC · sample clock",
     amount: "$420 USD",
     images: [
-      {
-        src: "/images/sc-02-01.webp",
-        title: "The form",
-        note: "Overall composition · render",
-        alt: "Sample Unison photography: stacked container forms on a plinth",
-      },
-      {
-        src: "/images/sc-02-02.webp",
-        title: "The join",
-        note: "Close detail · render",
-        alt: "Sample Unison photography: close study of the container join",
-      },
-      {
-        src: "/images/sc-02-03.webp",
-        title: "The colorways",
-        note: "Set of three · render",
-        alt: "Sample Unison photography: three colorway studies in a row",
-      },
+      [
+        "/images/sc-02-01.webp",
+        "The form",
+        "Overall composition · render",
+        "Sample Unison photography: stacked container forms on a plinth",
+      ],
+      [
+        "/images/sc-02-02.webp",
+        "The join",
+        "Close detail · render",
+        "Sample Unison photography: close study of the container join",
+      ],
+      [
+        "/images/sc-02-03.webp",
+        "The colorways",
+        "Set of three · render",
+        "Sample Unison photography: three colorway studies in a row",
+      ],
     ],
   },
   {
     id: "SC-03",
     label: "Campaign and launch creative",
-    caseId: "CASE-SC03-A",
-    templateRevision: TEMPLATE,
     merchant: "Basil Club",
     pack: "Three-image launch set",
     scope:
@@ -112,31 +130,29 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 14 Sep 2026, 12:00 UTC · sample clock",
     amount: "$510 USD",
     images: [
-      {
-        src: "/images/sc-03-01.webp",
-        title: "The poster",
-        note: "Hero composition · launch",
-        alt: "Sample Basil Club photography: sun and rays over a horizon line",
-      },
-      {
-        src: "/images/sc-03-02.webp",
-        title: "The crop",
-        note: "Story format · launch",
-        alt: "Sample Basil Club photography: close crop of the launch motif",
-      },
-      {
-        src: "/images/sc-03-03.webp",
-        title: "The series",
-        note: "Set of three · launch",
-        alt: "Sample Basil Club photography: three small launch motifs in a row",
-      },
+      [
+        "/images/sc-03-01.webp",
+        "The poster",
+        "Hero composition · launch",
+        "Sample Basil Club photography: sun and rays over a horizon line",
+      ],
+      [
+        "/images/sc-03-02.webp",
+        "The crop",
+        "Story format · launch",
+        "Sample Basil Club photography: close crop of the launch motif",
+      ],
+      [
+        "/images/sc-03-03.webp",
+        "The series",
+        "Set of three · launch",
+        "Sample Basil Club photography: three small launch motifs in a row",
+      ],
     ],
   },
   {
     id: "SC-04",
     label: "Property and hospitality imagery",
-    caseId: "CASE-SC04-A",
-    templateRevision: TEMPLATE,
     merchant: "Hotel Aria",
     pack: "Three-image arrival set",
     scope:
@@ -145,31 +161,29 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 16 Sep 2026, 15:00 UTC · sample clock",
     amount: "$390 USD",
     images: [
-      {
-        src: "/images/sc-04-01.webp",
-        title: "The arrival",
-        note: "Doorway composition",
-        alt: "Sample Hotel Aria photography: arched doorway on a quiet facade",
-      },
-      {
-        src: "/images/sc-04-02.webp",
-        title: "The threshold",
-        note: "Close detail",
-        alt: "Sample Hotel Aria photography: close study of the arched threshold",
-      },
-      {
-        src: "/images/sc-04-03.webp",
-        title: "The set",
-        note: "Set of three",
-        alt: "Sample Hotel Aria photography: three small arrival studies in a row",
-      },
+      [
+        "/images/sc-04-01.webp",
+        "The arrival",
+        "Doorway composition",
+        "Sample Hotel Aria photography: arched doorway on a quiet facade",
+      ],
+      [
+        "/images/sc-04-02.webp",
+        "The threshold",
+        "Close detail",
+        "Sample Hotel Aria photography: close study of the arched threshold",
+      ],
+      [
+        "/images/sc-04-03.webp",
+        "The set",
+        "Set of three",
+        "Sample Hotel Aria photography: three small arrival studies in a row",
+      ],
     ],
   },
   {
     id: "SC-05",
     label: "Publishing and entertainment artwork",
-    caseId: "CASE-SC05-A",
-    templateRevision: TEMPLATE,
     merchant: "Chronicle House",
     pack: "Three-image cover proofs",
     scope:
@@ -178,31 +192,29 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 18 Sep 2026, 10:00 UTC · sample clock",
     amount: "$470 USD",
     images: [
-      {
-        src: "/images/sc-05-01.webp",
-        title: "The cover",
-        note: "Front composition",
-        alt: "Sample Chronicle House photography: standing book covers in ink tones",
-      },
-      {
-        src: "/images/sc-05-02.webp",
-        title: "The spine",
-        note: "Close detail",
-        alt: "Sample Chronicle House photography: close study of a book spine",
-      },
-      {
-        src: "/images/sc-05-03.webp",
-        title: "The series",
-        note: "Set of three",
-        alt: "Sample Chronicle House photography: three small cover studies in a row",
-      },
+      [
+        "/images/sc-05-01.webp",
+        "The cover",
+        "Front composition",
+        "Sample Chronicle House photography: standing book covers in ink tones",
+      ],
+      [
+        "/images/sc-05-02.webp",
+        "The spine",
+        "Close detail",
+        "Sample Chronicle House photography: close study of a book spine",
+      ],
+      [
+        "/images/sc-05-03.webp",
+        "The series",
+        "Set of three",
+        "Sample Chronicle House photography: three small cover studies in a row",
+      ],
     ],
   },
   {
     id: "SC-06",
     label: "Brand and market adaptation",
-    caseId: "CASE-SC06-A",
-    templateRevision: TEMPLATE,
     merchant: "Locale Supply",
     pack: "Three-image market edition",
     scope:
@@ -211,31 +223,29 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 21 Sep 2026, 14:00 UTC · sample clock",
     amount: "$440 USD",
     images: [
-      {
-        src: "/images/sc-06-01.webp",
-        title: "The badge",
-        note: "Adapted mark",
-        alt: "Sample Locale Supply photography: circular badge with ribbon",
-      },
-      {
-        src: "/images/sc-06-02.webp",
-        title: "The label",
-        note: "Close detail",
-        alt: "Sample Locale Supply photography: close study of the badge label",
-      },
-      {
-        src: "/images/sc-06-03.webp",
-        title: "The placements",
-        note: "Set of three",
-        alt: "Sample Locale Supply photography: three small badge studies in a row",
-      },
+      [
+        "/images/sc-06-01.webp",
+        "The badge",
+        "Adapted mark",
+        "Sample Locale Supply photography: circular badge with ribbon",
+      ],
+      [
+        "/images/sc-06-02.webp",
+        "The label",
+        "Close detail",
+        "Sample Locale Supply photography: close study of the badge label",
+      ],
+      [
+        "/images/sc-06-03.webp",
+        "The placements",
+        "Set of three",
+        "Sample Locale Supply photography: three small badge studies in a row",
+      ],
     ],
   },
   {
     id: "SC-07",
     label: "Business and sales communication",
-    caseId: "CASE-SC07-A",
-    templateRevision: TEMPLATE,
     merchant: "Quotient Office",
     pack: "Three-image deck figures",
     scope:
@@ -244,31 +254,32 @@ export const demoContexts: DemoContext[] = [
     deadline: "Review due 23 Sep 2026, 11:00 UTC · sample clock",
     amount: "$380 USD",
     images: [
-      {
-        src: "/images/sc-07-01.webp",
-        title: "The headline",
-        note: "Chart composition",
-        alt: "Sample Quotient Office photography: ascending chart bars on a baseline",
-      },
-      {
-        src: "/images/sc-07-02.webp",
-        title: "The detail",
-        note: "Close crop",
-        alt: "Sample Quotient Office photography: close study of the chart bars",
-      },
-      {
-        src: "/images/sc-07-03.webp",
-        title: "The set",
-        note: "Set of three",
-        alt: "Sample Quotient Office photography: three small chart studies in a row",
-      },
+      [
+        "/images/sc-07-01.webp",
+        "The headline",
+        "Chart composition",
+        "Sample Quotient Office photography: ascending chart bars on a baseline",
+      ],
+      [
+        "/images/sc-07-02.webp",
+        "The detail",
+        "Close crop",
+        "Sample Quotient Office photography: close study of the chart bars",
+      ],
+      [
+        "/images/sc-07-03.webp",
+        "The set",
+        "Set of three",
+        "Sample Quotient Office photography: three small chart studies in a row",
+      ],
     ],
   },
 ];
 
-const fallback = sc01;
+export const demoContexts: DemoContext[] = SEEDS.map(context);
 
-/** Accept only known synthetic context IDs; unknown input defaults to SC-01. */
+const fallback = demoContexts[0];
+
 export function demoContextById(id: string | null): DemoContext {
   return demoContexts.find((context) => context.id === id) ?? fallback;
 }

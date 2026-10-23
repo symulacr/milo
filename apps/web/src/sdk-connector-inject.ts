@@ -1,5 +1,3 @@
-/** Demo/E2E-only wallet-SDK connector injection; production never ships it. "VERIFIED via SDK
- * connector" is NOT "VERIFIED with Lace". */
 import type { InitialAPI } from "@midnight-ntwrk/dapp-connector-api";
 import {
   type WalletSdkSession,
@@ -7,20 +5,20 @@ import {
 } from "../../../packages/midnight-client/src/wallet-sdk-connector";
 
 const SDK_CONNECTOR_RDNS = "network.midnight.wallet-sdk";
-/** Registry-change ping: mounted wallet UI re-enumerates after a late inject or clear. */
 export const MIDNIGHT_REGISTRY_EVENT = "milo:midnight-registry";
+
 type SdkConnectorHandle = {
   inject: typeof injectSdkConnector;
   clear: typeof clearSdkConnector;
   rdns: string;
 };
+
 declare global {
   interface Window {
     __MILO_SDK_CONNECTOR__?: SdkConnectorHandle;
   }
 }
 
-/** Register a wallet-SDK session as a discoverable window.midnight InitialAPI. */
 export function injectSdkConnector(
   session: WalletSdkSession,
   options: { rdns?: string; name?: string } = {},
@@ -42,7 +40,6 @@ function clearSdkConnector(rdns: string = SDK_CONNECTOR_RDNS): void {
   window.dispatchEvent(new Event(MIDNIGHT_REGISTRY_EVENT));
 }
 
-/** Stable handle for E2E/Playwright: window.__MILO_SDK_CONNECTOR__. */
 export function installSdkConnectorHandle(): void {
   window.__MILO_SDK_CONNECTOR__ = {
     inject: injectSdkConnector,

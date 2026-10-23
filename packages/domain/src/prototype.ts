@@ -1,4 +1,3 @@
-/** A deterministic, synthetic fixture for UI prototyping; it has no persistence or chain authority. */
 export type Role = "buyer" | "merchant" | "operator";
 export type Phase =
   | "DRAFT"
@@ -52,6 +51,7 @@ export const ACTION_NAMES = [
 export type ActionName = (typeof ACTION_NAMES)[number];
 
 export type Action = ActionName;
+
 export interface ActionPayload {
   verifiedFileIds?: string[];
 }
@@ -70,11 +70,7 @@ export interface SimState {
   filesVerified: boolean;
   outcomeUnknown: boolean;
   capabilityAvailable: boolean;
-  /** Set by the immutable delivery submission; full-approval resolution
-   * requires it, mirroring order.compact resolve. */
   deliverySubmitted: boolean;
-  /** Verified recovery kit — a distinct consent moment before the payment
-   * hold (05 §4.2/§4.3), reset on role change like device readiness. */
   recoveryVerified: boolean;
   revision: number;
   events: SimEvent[];
@@ -91,85 +87,47 @@ export const SYNTHETIC_ORDER_FIXTURE = {
 
 const FILE_IDS = SYNTHETIC_ORDER_FIXTURE.files.map((file) => file.id);
 
+const seed = (
+  phase: Phase,
+  payment: Payment,
+  role: Role,
+  overrides?: Partial<Omit<SimState, "events">>,
+): Omit<SimState, "events"> => ({
+  phase,
+  payment,
+  role,
+  ready: true,
+  filesVerified: false,
+  outcomeUnknown: false,
+  capabilityAvailable: true,
+  deliverySubmitted: true,
+  recoveryVerified: true,
+  revision: 0,
+  ...overrides,
+});
+
 const scenarios: Record<Scenario, Omit<SimState, "events">> = {
-  fresh: {
-    phase: "DRAFT",
-    payment: "none",
-    role: "buyer",
+  fresh: seed("DRAFT", "none", "buyer", {
     ready: false,
-    filesVerified: false,
-    outcomeUnknown: false,
-    capabilityAvailable: true,
     deliverySubmitted: false,
     recoveryVerified: false,
-    revision: 0,
-  },
-  review: {
-    phase: "SUBMITTED",
-    payment: "authorized",
-    role: "buyer",
-    ready: true,
-    filesVerified: false,
-    outcomeUnknown: false,
-    capabilityAvailable: true,
-    deliverySubmitted: true,
-    recoveryVerified: true,
-    revision: 0,
-  },
-  dispute: {
-    phase: "DISPUTED",
-    payment: "authorized",
-    role: "operator",
-    ready: true,
-    filesVerified: false,
-    outcomeUnknown: false,
-    capabilityAvailable: true,
-    deliverySubmitted: true,
-    recoveryVerified: true,
-    revision: 0,
-  },
-  expired: {
-    phase: "SUBMITTED",
-    payment: "expired",
-    role: "buyer",
-    ready: true,
-    filesVerified: false,
-    outcomeUnknown: false,
-    capabilityAvailable: true,
-    deliverySubmitted: true,
-    recoveryVerified: true,
-    revision: 0,
-  },
-  pending: {
-    phase: "APPROVED",
-    payment: "authorized",
-    role: "operator",
-    ready: true,
+  }),
+  review: seed("SUBMITTED", "authorized", "buyer"),
+  dispute: seed("DISPUTED", "authorized", "operator"),
+  expired: seed("SUBMITTED", "expired", "buyer"),
+  pending: seed("APPROVED", "authorized", "operator", {
     filesVerified: true,
     outcomeUnknown: true,
-    capabilityAvailable: true,
-    deliverySubmitted: true,
-    recoveryVerified: true,
-    revision: 0,
-  },
-  "lost-capability": {
-    phase: "DEPLOYED",
-    payment: "authorized",
-    role: "buyer",
-    ready: true,
-    filesVerified: false,
-    deliverySubmitted: false,
-    recoveryVerified: true,
-    outcomeUnknown: false,
+  }),
+  "lost-capability": seed("DEPLOYED", "authorized", "buyer", {
     capabilityAvailable: false,
-    revision: 0,
-  },
+    deliverySubmitted: false,
+  }),
 };
 
 export function createScenario(scenario: Scenario): SimState {
-  const state = scenarios[scenario];
   return {
-    ...state,
+    ...scenarios[scenario],
     events: [
       {
         id: "event-0",
@@ -180,32 +138,33 @@ export function createScenario(scenario: Scenario): SimState {
   };
 }
 
+const DESCRIPTIONS: Record<ActionName, string> = {
+  ready: "Confirm simulated prerequisites",
+  "verify-recovery": "Verify recovery kit",
+  authorize: "Authorize synthetic payment hold",
+  deploy: "Deploy synthetic order",
+  reserve: "Reserve order",
+  accept: "Accept order",
+  submit: "Submit three-image delivery",
+  verify: "Verify supplied file receipts",
+  approve: "Approve delivery",
+  dispute: "Open dispute",
+  "resolve-approve": "Resolve dispute for approval",
+  "resolve-cancel": "Resolve dispute by cancellation",
+  cancel: "Cancel reserved order",
+  decline: "Decline reserved order",
+  "advance-deadline": "Advance synthetic deadline",
+  capture: "Reconcile capture",
+  void: "Reconcile void",
+  "expire-hold": "Mark hold expired",
+  reconcile: "Reconcile unknown outcome",
+  restore: "Restore synthetic capability",
+  "lose-capability": "Lose synthetic capability",
+  "mark-unknown": "Mark outcome unknown",
+};
+
 export function actionDescription(action: Action): string {
-  const name = action;
-  return {
-    ready: "Confirm simulated prerequisites",
-    "verify-recovery": "Verify recovery kit",
-    authorize: "Authorize synthetic payment hold",
-    deploy: "Deploy synthetic order",
-    reserve: "Reserve order",
-    accept: "Accept order",
-    submit: "Submit three-image delivery",
-    verify: "Verify supplied file receipts",
-    approve: "Approve delivery",
-    dispute: "Open dispute",
-    "resolve-approve": "Resolve dispute for approval",
-    "resolve-cancel": "Resolve dispute by cancellation",
-    cancel: "Cancel reserved order",
-    decline: "Decline reserved order",
-    "advance-deadline": "Advance synthetic deadline",
-    capture: "Reconcile capture",
-    void: "Reconcile void",
-    "expire-hold": "Mark hold expired",
-    reconcile: "Reconcile unknown outcome",
-    restore: "Restore synthetic capability",
-    "lose-capability": "Lose synthetic capability",
-    "mark-unknown": "Mark outcome unknown",
-  }[name];
+  return action === "ready" ? DESCRIPTIONS.ready : DESCRIPTIONS[action];
 }
 
 export function changeRole(state: SimState, role: Role): SimState {
@@ -231,8 +190,7 @@ export function invalidateFileVerification(state: SimState): SimState {
 }
 
 export function availableActions(state: SimState): Action[] {
-  const candidates: readonly ActionName[] = ACTION_NAMES;
-  return candidates.filter((action) => {
+  return ACTION_NAMES.filter((action) => {
     try {
       transition(
         state,
@@ -246,265 +204,302 @@ export function availableActions(state: SimState): Action[] {
   });
 }
 
+type Check = (state: SimState, action: Action, payload?: ActionPayload) => void;
+
+const guard = (action: Action, condition: unknown, message: string): void => {
+  if (!condition) throw new Error(`Cannot ${action}: ${message}`);
+};
+
+const all =
+  (...checks: Check[]): Check =>
+  (state, action, payload) => {
+    for (const check of checks) check(state, action, payload);
+  };
+
+const asRole =
+  (role: Role): Check =>
+  (state, action) =>
+    guard(action, state.role === role, `${role} role required`);
+
+const inPhase =
+  (phase: Phase): Check =>
+  (state, action) =>
+    guard(action, state.phase === phase, `${phase} phase required`);
+
+const holdsPayment =
+  (payment: Payment): Check =>
+  (state, action) =>
+    guard(
+      action,
+      state.payment === payment,
+      `${payment} payment hold required`,
+    );
+
+const capable: Check = (state, action) =>
+  guard(action, state.capabilityAvailable, "synthetic capability unavailable");
+
+const known: Check = (state, action) =>
+  guard(action, !state.outcomeUnknown, "outcome must be reconciled first");
+
+const actionable = all(capable, known);
+
+const DEADLINE_PHASES: Partial<Record<Phase, Phase>> = {
+  DEPLOYED: "CANCELLED",
+  RESERVED: "CANCELLED",
+  ACCEPTED: "CANCELLED",
+  SUBMITTED: "DISPUTED",
+  DISPUTED: "CANCELLED",
+};
+
+const DEADLINE_DETAIL =
+  "Deadline reached; awaiting the applicable action. Synthetic advance only — no clock, network action, or automatic external effect occurred.";
+
+interface Rule {
+  check: Check;
+  detail: string | ((state: SimState) => string);
+  changes?: Partial<SimState>;
+  resolve?: (state: SimState) => SimState;
+}
+
+const rule = (
+  check: Check,
+  detail: Rule["detail"],
+  changes?: Partial<SimState>,
+): Rule => ({ check, detail, changes });
+
+const RULES: Record<ActionName, Rule> = {
+  ready: rule(
+    all(
+      asRole("buyer"),
+      (s, a) =>
+        guard(
+          a,
+          s.phase === "DRAFT" || s.phase === "DEPLOYED",
+          "DRAFT or DEPLOYED phase required",
+        ),
+      (s, a) => guard(a, !s.ready, "simulated prerequisites already ready"),
+      actionable,
+    ),
+    "Synthetic prerequisites marked ready.",
+    { ready: true },
+  ),
+  "verify-recovery": rule(
+    all(
+      asRole("buyer"),
+      inPhase("DRAFT"),
+      actionable,
+      (s, a) => guard(a, s.ready, "device preparation required first"),
+      (s, a) => guard(a, !s.recoveryVerified, "recovery kit already verified"),
+    ),
+    "Synthetic recovery kit verified locally; no bytes leave this browser.",
+    { recoveryVerified: true },
+  ),
+  authorize: rule(
+    all(
+      asRole("buyer"),
+      inPhase("DRAFT"),
+      (s, a) => guard(a, s.ready, "simulated prerequisites not ready"),
+      (s, a) =>
+        guard(
+          a,
+          s.recoveryVerified,
+          "verified recovery kit required before the hold",
+        ),
+      (s, a) =>
+        guard(
+          a,
+          s.payment === "none",
+          "payment hold already has a terminal or authorized state",
+        ),
+      actionable,
+    ),
+    "Synthetic payment hold authorized; no provider was contacted.",
+    { payment: "authorized" },
+  ),
+  deploy: rule(
+    all(
+      asRole("buyer"),
+      inPhase("DRAFT"),
+      (s, a) => guard(a, s.ready, "simulated prerequisites not ready"),
+      holdsPayment("authorized"),
+      actionable,
+    ),
+    "Synthetic order moved to DEPLOYED; no chain transaction was sent. A real bootstrap is staged and multi-transaction today.",
+    { phase: "DEPLOYED" },
+  ),
+  reserve: rule(
+    all(
+      asRole("buyer"),
+      inPhase("DEPLOYED"),
+      (s, a) => guard(a, s.ready, "simulated prerequisites not ready"),
+      holdsPayment("authorized"),
+      actionable,
+    ),
+    "Synthetic order reserved.",
+    { phase: "RESERVED" },
+  ),
+  accept: rule(
+    all(
+      asRole("merchant"),
+      inPhase("RESERVED"),
+      holdsPayment("authorized"),
+      actionable,
+    ),
+    "Synthetic merchant acceptance recorded.",
+    { phase: "ACCEPTED" },
+  ),
+  submit: rule(
+    all(asRole("merchant"), inPhase("ACCEPTED"), actionable),
+    "Synthetic immutable delivery submission recorded.",
+    { phase: "SUBMITTED", deliverySubmitted: true },
+  ),
+  verify: rule(
+    all(
+      asRole("buyer"),
+      inPhase("SUBMITTED"),
+      actionable,
+      (s, a) => guard(a, !s.filesVerified, "file receipts already verified"),
+      (_s, a, payload) =>
+        guard(
+          a,
+          sameFileIds(payload),
+          "all three synthetic file receipt IDs (01, 02, 03) are required",
+        ),
+    ),
+    "Sample file receipt IDs recorded. The UI separately compares downloaded SHA-256 digests; no chain commitment is verified.",
+    { filesVerified: true },
+  ),
+  approve: rule(
+    all(
+      asRole("buyer"),
+      inPhase("SUBMITTED"),
+      holdsPayment("authorized"),
+      actionable,
+      (s, a) => guard(a, s.filesVerified, "verified file receipts required"),
+    ),
+    "Synthetic approval recorded; payment remains separately authorized.",
+    { phase: "APPROVED" },
+  ),
+  dispute: rule(
+    all(
+      (s, a) =>
+        guard(
+          a,
+          (s.role === "buyer" &&
+            (s.phase === "SUBMITTED" || s.phase === "ACCEPTED")) ||
+            (s.role === "merchant" && s.phase === "ACCEPTED"),
+          "dispute requires buyer in SUBMITTED or either party in ACCEPTED",
+        ),
+      actionable,
+    ),
+    (state) => `Synthetic ${state.role} dispute opened.`,
+    { phase: "DISPUTED" },
+  ),
+  "resolve-approve": rule(
+    all(asRole("operator"), inPhase("DISPUTED"), actionable, (s, a) =>
+      guard(
+        a,
+        s.deliverySubmitted,
+        "a submitted delivery is required for full approval",
+      ),
+    ),
+    "Synthetic operator resolved for full approval; payment remains separate.",
+    { phase: "APPROVED" },
+  ),
+  "resolve-cancel": rule(
+    all(asRole("operator"), inPhase("DISPUTED"), actionable),
+    "Synthetic operator resolved for full cancellation; payment remains separate.",
+    { phase: "CANCELLED" },
+  ),
+  cancel: rule(
+    all(asRole("buyer"), inPhase("RESERVED"), actionable),
+    "Synthetic reserved order cancelled.",
+    { phase: "CANCELLED" },
+  ),
+  decline: rule(
+    all(asRole("merchant"), inPhase("RESERVED"), actionable),
+    "Synthetic merchant decline recorded as cancellation.",
+    { phase: "CANCELLED" },
+  ),
+  "advance-deadline": {
+    check: known,
+    detail: DEADLINE_DETAIL,
+    resolve: advanceDeadline,
+  },
+  capture: rule(
+    all(
+      asRole("operator"),
+      inPhase("APPROVED"),
+      holdsPayment("authorized"),
+      actionable,
+    ),
+    "Synthetic capture reconciliation recorded; no payment was captured.",
+    { payment: "captured" },
+  ),
+  void: rule(
+    all(
+      asRole("operator"),
+      inPhase("CANCELLED"),
+      holdsPayment("authorized"),
+      actionable,
+    ),
+    "Synthetic void reconciliation recorded; no payment was voided.",
+    { payment: "voided" },
+  ),
+  "expire-hold": rule(
+    all(holdsPayment("authorized"), known),
+    "Synthetic hold expiry recorded; order phase is unchanged.",
+    { payment: "expired" },
+  ),
+  reconcile: rule(
+    (s, a) => guard(a, s.outcomeUnknown, "outcome is already known"),
+    "Synthetic observation reconciled; no external effect was repeated.",
+    { outcomeUnknown: false },
+  ),
+  restore: rule(
+    (s, a) =>
+      guard(
+        a,
+        !s.capabilityAvailable,
+        "synthetic capability is already available",
+      ),
+    "Synthetic capability restored only in this fixture.",
+    { capabilityAvailable: true },
+  ),
+  "lose-capability": rule(capable, "Synthetic capability marked unavailable.", {
+    capabilityAvailable: false,
+  }),
+  "mark-unknown": rule(known, "Synthetic external outcome marked unknown.", {
+    outcomeUnknown: true,
+  }),
+};
+
 export function transition(
   state: SimState,
   action: Action,
   payload?: ActionPayload,
 ): SimState {
-  const name = action;
-  const require = (condition: boolean, message: string) => {
-    if (!condition) throw new Error(`Cannot ${name}: ${message}`);
-  };
-  const buyer = () => require(state.role === "buyer", "buyer role required");
-  const merchant = () =>
-    require(state.role === "merchant", "merchant role required");
-  const operator = () =>
-    require(state.role === "operator", "operator role required");
-  const phase = (value: Phase) =>
-    require(state.phase === value, `${value} phase required`);
-  const authorized = () =>
-    require(state.payment === "authorized", "authorized payment hold required");
-  const capable = () =>
-    require(state.capabilityAvailable, "synthetic capability unavailable");
-  const known = () =>
-    require(!state.outcomeUnknown, "outcome must be reconciled first");
-  const actionable = () => {
-    capable();
-    known();
-  };
+  const rule = RULES[action];
+  rule.check(state, action, payload);
+  if (rule.resolve) return rule.resolve(state);
+  const detail = rule.detail;
+  return apply(
+    state,
+    DESCRIPTIONS[action],
+    typeof detail === "function" ? detail(state) : detail,
+    rule.changes ?? {},
+  );
+}
 
-  switch (name) {
-    case "ready":
-      buyer();
-      require(state.phase === "DRAFT" ||
-        state.phase === "DEPLOYED", "DRAFT or DEPLOYED phase required");
-      require(!state.ready, "simulated prerequisites already ready");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic prerequisites marked ready.",
-        { ready: true },
-      );
-    case "verify-recovery":
-      buyer();
-      phase("DRAFT");
-      actionable();
-      require(state.ready, "device preparation required first");
-      require(!state.recoveryVerified, "recovery kit already verified");
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic recovery kit verified locally; no bytes leave this browser.",
-        { recoveryVerified: true },
-      );
-    case "authorize":
-      buyer();
-      phase("DRAFT");
-      require(state.ready, "simulated prerequisites not ready");
-      require(state.recoveryVerified, "verified recovery kit required before the hold");
-      require(state.payment ===
-        "none", "payment hold already has a terminal or authorized state");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic payment hold authorized; no provider was contacted.",
-        { payment: "authorized" },
-      );
-    case "deploy":
-      buyer();
-      phase("DRAFT");
-      require(state.ready, "simulated prerequisites not ready");
-      authorized();
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic order moved to DEPLOYED; no chain transaction was sent. A real bootstrap is staged and multi-transaction today.",
-        { phase: "DEPLOYED" },
-      );
-    case "reserve":
-      buyer();
-      phase("DEPLOYED");
-      require(state.ready, "simulated prerequisites not ready");
-      authorized();
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic order reserved.",
-        { phase: "RESERVED" },
-      );
-    case "accept":
-      merchant();
-      phase("RESERVED");
-      authorized();
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic merchant acceptance recorded.",
-        { phase: "ACCEPTED" },
-      );
-    case "submit":
-      merchant();
-      phase("ACCEPTED");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic immutable delivery submission recorded.",
-        { phase: "SUBMITTED", deliverySubmitted: true },
-      );
-    case "verify":
-      buyer();
-      phase("SUBMITTED");
-      actionable();
-      require(!state.filesVerified, "file receipts already verified");
-      require(sameFileIds(
-        payload,
-      ), "all three synthetic file receipt IDs (01, 02, 03) are required");
-      return apply(
-        state,
-        actionDescription(action),
-        "Sample file receipt IDs recorded. The UI separately compares downloaded SHA-256 digests; no chain commitment is verified.",
-        { filesVerified: true },
-      );
-    case "approve":
-      buyer();
-      phase("SUBMITTED");
-      authorized();
-      actionable();
-      require(state.filesVerified, "verified file receipts required");
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic approval recorded; payment remains separately authorized.",
-        { phase: "APPROVED" },
-      );
-    case "dispute":
-      // 01 §4.2: buyer in SUBMITTED; either party in ACCEPTED.
-      require((state.role === "buyer" &&
-        (state.phase === "SUBMITTED" || state.phase === "ACCEPTED")) ||
-        (state.role === "merchant" &&
-          state.phase ===
-            "ACCEPTED"), "dispute requires buyer in SUBMITTED or either party in ACCEPTED");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        `Synthetic ${state.role} dispute opened.`,
-        { phase: "DISPUTED" },
-      );
-    case "resolve-approve":
-      operator();
-      phase("DISPUTED");
-      actionable();
-      require(state.deliverySubmitted, "a submitted delivery is required for full approval");
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic operator resolved for full approval; payment remains separate.",
-        { phase: "APPROVED" },
-      );
-    case "resolve-cancel":
-      operator();
-      phase("DISPUTED");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic operator resolved for full cancellation; payment remains separate.",
-        { phase: "CANCELLED" },
-      );
-    case "cancel":
-      buyer();
-      phase("RESERVED");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic reserved order cancelled.",
-        { phase: "CANCELLED" },
-      );
-    case "decline":
-      merchant();
-      phase("RESERVED");
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic merchant decline recorded as cancellation.",
-        { phase: "CANCELLED" },
-      );
-    case "advance-deadline":
-      known();
-      return advanceDeadline(state);
-    case "capture":
-      operator();
-      phase("APPROVED");
-      authorized();
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic capture reconciliation recorded; no payment was captured.",
-        { payment: "captured" },
-      );
-    case "void":
-      operator();
-      phase("CANCELLED");
-      authorized();
-      actionable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic void reconciliation recorded; no payment was voided.",
-        { payment: "voided" },
-      );
-    case "expire-hold":
-      authorized();
-      known();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic hold expiry recorded; order phase is unchanged.",
-        { payment: "expired" },
-      );
-    case "reconcile":
-      require(state.outcomeUnknown, "outcome is already known");
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic observation reconciled; no external effect was repeated.",
-        { outcomeUnknown: false },
-      );
-    case "restore":
-      require(!state.capabilityAvailable, "synthetic capability is already available");
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic capability restored only in this fixture.",
-        { capabilityAvailable: true },
-      );
-    case "lose-capability":
-      capable();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic capability marked unavailable.",
-        { capabilityAvailable: false },
-      );
-    case "mark-unknown":
-      known();
-      return apply(
-        state,
-        actionDescription(action),
-        "Synthetic external outcome marked unknown.",
-        { outcomeUnknown: true },
-      );
-  }
+function advanceDeadline(state: SimState): SimState {
+  const nextPhase = DEADLINE_PHASES[state.phase];
+  if (!nextPhase)
+    throw new Error(
+      `Cannot advance-deadline: no pending deadline in ${state.phase}`,
+    );
+  return apply(state, DESCRIPTIONS["advance-deadline"], DEADLINE_DETAIL, {
+    phase: nextPhase,
+  });
 }
 
 function sameFileIds(payload?: ActionPayload): boolean {
@@ -514,27 +509,6 @@ function sameFileIds(payload?: ActionPayload): boolean {
     ids.length === FILE_IDS.length &&
     new Set(ids).size === FILE_IDS.length &&
     FILE_IDS.every((id) => ids.includes(id))
-  );
-}
-
-function advanceDeadline(state: SimState): SimState {
-  const transitions: Partial<Record<Phase, Partial<SimState>>> = {
-    DEPLOYED: { phase: "CANCELLED" },
-    RESERVED: { phase: "CANCELLED" },
-    ACCEPTED: { phase: "CANCELLED" },
-    SUBMITTED: { phase: "DISPUTED" },
-    DISPUTED: { phase: "CANCELLED" },
-  };
-  const nextPhase = transitions[state.phase];
-  if (!nextPhase)
-    throw new Error(
-      `Cannot advance-deadline: no pending deadline in ${state.phase}`,
-    );
-  return apply(
-    state,
-    actionDescription("advance-deadline"),
-    "Deadline reached; awaiting the applicable action. Synthetic advance only — no clock, network action, or automatic external effect occurred.",
-    nextPhase,
   );
 }
 

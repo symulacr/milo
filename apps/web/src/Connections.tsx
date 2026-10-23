@@ -21,19 +21,17 @@ import {
 } from "./connection-runtime";
 
 const SessionConnection = lazy(() => import("./SessionConnection"));
-/** Mirrored from sdk-connector-inject: that demo-only module must stay out of this graph. */
 const REGISTRY_EVENT = "milo:midnight-registry";
-const PROVER_SLOTS =
-  "6 required MidnightProviders slots · local prover :6300 vs wallet-delegated prover disclosure";
 const DEFAULT_LACE_STATE: LaceState = {
   status: "disconnected",
   message: "Not connected. Midnight Lace API v4 is required in this browser.",
 };
-/** Wallet session cached per `window`: a route change must not drop a live connection. */
+
 let cachedWindow: Window | undefined;
 let cachedState: LaceState = DEFAULT_LACE_STATE;
 let cachedConnection: LaceConnection | undefined;
 let cachedSink: ((state: LaceState) => void) | undefined;
+
 function laceSession(): LaceConnection | undefined {
   if (typeof window === "undefined") return undefined;
   if (cachedWindow !== window) {
@@ -47,8 +45,10 @@ function laceSession(): LaceConnection | undefined {
   });
   return cachedConnection;
 }
+
 const discover = (): InitialAPI[] =>
   typeof window === "undefined" ? [] : discoverLaceWallets(window.midnight);
+
 class IdentityBoundary extends Component<
   { children: ReactNode },
   { failed: boolean }
@@ -65,6 +65,7 @@ class IdentityBoundary extends Component<
     );
   }
 }
+
 type LaceProps = {
   wallets: InitialAPI[];
   rescan: () => InitialAPI[];
@@ -72,11 +73,8 @@ type LaceProps = {
   setState: (next: LaceState) => void;
 };
 
-/** Real Midnight wallet connector status (Lace API v4). */
 function LaceStatus({ wallets, rescan, state, setState }: LaceProps) {
   const [consent, setConsent] = useState(false);
-  // Selection is tracked by reverse-DNS id: injection keys are UUIDs and their order is not
-  // stable, so an index would point at a different wallet later.
   const [selectedRdns, setSelectedRdns] = useState(
     () => wallets[0]?.rdns ?? "",
   );
@@ -89,20 +87,15 @@ function LaceStatus({ wallets, rescan, state, setState }: LaceProps) {
     cachedSink = setState;
     setState(cachedState);
     const timer = setInterval(() => {
-      // A hidden tab needs no wallet round-trip; the next visible tick resumes.
       if (typeof document !== "undefined" && document.hidden) return;
       void connection?.refresh();
     }, 15000);
-    // Only the interval is torn down: the connection is cached per window, so leaving the
-    // route must not drop a live session. "Forget connection" is the only disconnect.
     return () => {
       cachedSink = undefined;
       clearInterval(timer);
     };
   }, [connection, setState]);
   const busy = state.status === "connected" || state.status === "connecting";
-  // Re-enumerate at click time: an extension (or a test) can add a wallet after first paint
-  // without firing any event, and the first click must still connect.
   const connect = () => {
     const fresh = rescan();
     void connection?.connect(
@@ -113,14 +106,9 @@ function LaceStatus({ wallets, rescan, state, setState }: LaceProps) {
   };
   const pick = (event: ChangeEvent<HTMLSelectElement>) =>
     setSelectedRdns(wallets[Number(event.target.value)]?.rdns ?? "");
-  // Wallet self-reported name is unauthenticated metadata (01 §3.4.2).
   const label = wallets[selected]?.name;
   return (
     <>
-      <p>
-        PREPROD only. Milo reads connection status and network — never keys,
-        balances or signatures.
-      </p>
       <p role="status">{state.message}</p>
       {!busy && (
         <label className="connection-consent">
@@ -179,21 +167,16 @@ function LaceStatus({ wallets, rescan, state, setState }: LaceProps) {
           </button>
         )}
       </div>
-      <p className="micro muted">
-        Rechecked every 15 seconds. A wallet enabled after this page loaded is
-        detected on focus, on its own announcement, or on connect.
-      </p>
     </>
   );
 }
+
 type ReadinessProps = {
   config: PublicConfig;
   laceState: LaceState;
   wallets: InitialAPI[];
 };
 
-/** Five-stage readiness view. "pass" reports only what the browser can observe, never that the
- * dependency works; stage 4 tracks the live connection rather than mere detection. */
 function ConnectionReadiness({ config, laceState, wallets }: ReadinessProps) {
   const count = wallets.length;
   const lace: [string, string] =
@@ -211,14 +194,12 @@ function ConnectionReadiness({ config, laceState, wallets }: ReadinessProps) {
           : ["No v4 wallet detected", "pending"];
   const flag = (on: boolean) =>
     [on ? "Configured" : "Not configured", on ? "pass" : "pending"] as const;
-  const net = config.midnightNetwork.toUpperCase();
   const stages: [string, string, string][] = [
-    ["Public config", `/api/public-config loaded: ${net}`, "pass"],
+    ["Public config", `${config.midnightNetwork.toUpperCase()} loaded`, "pass"],
     ["Email identity", ...flag(Boolean(config.betterAuthUrl))],
     ["Convex backend", ...flag(Boolean(config.convexUrl))],
     ["Midnight Lace wallet", ...lace],
-    // Slot wiring is a build-time concern the browser cannot verify.
-    ["Provider & Prover slots", PROVER_SLOTS, "pending"],
+    ["Provider & Prover slots", "Build-time only", "pending"],
   ];
   return (
     <ol className="health-stepper" aria-label="Connection readiness stages">
@@ -229,6 +210,23 @@ function ConnectionReadiness({ config, laceState, wallets }: ReadinessProps) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function Panel({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="panel reading-panel" aria-labelledby={id}>
+      <h2 id={id}>{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -246,8 +244,6 @@ export function Connections({
     setWallets(fresh);
     return fresh;
   };
-  // Late injection: re-enumerate when the SDK connector announces a change and when the window
-  // regains focus, since extensions commonly inject after first paint without any event.
   useEffect(() => {
     const sync = () => setWallets(discover());
     window.addEventListener(REGISTRY_EVENT, sync);
@@ -257,6 +253,12 @@ export function Connections({
       window.removeEventListener("focus", sync);
     };
   }, []);
+  const records = (config: PublicConfig) =>
+    config.convexUrl
+      ? config.betterAuthUrl
+        ? "Order records load from the Convex orders:read projection after backend verification."
+        : "Convex is configured, but the auth service is missing. Backend session verification is unavailable."
+      : "Convex is not configured. No authenticated application records are connected. No phase label is shown without a backing order record.";
   return (
     <div className="connections-page">
       <div className="page-heading">
@@ -266,10 +268,6 @@ export function Connections({
           </h1>
         </div>
       </div>
-      <p>
-        Real identity and wallet checks that back the order console. Signing in
-        does not create agreements, payments or chain submissions.
-      </p>
       <PublicConfigGate onRetry={() => headingRef.current?.focus()}>
         {(config) => (
           <>
@@ -278,11 +276,7 @@ export function Connections({
               laceState={laceState}
               wallets={wallets}
             />
-            <section
-              className="panel reading-panel"
-              aria-labelledby="identity-title"
-            >
-              <h2 id="identity-title">Email identity</h2>
+            <Panel id="identity-title" title="Email identity">
               {config.betterAuthUrl ? (
                 <IdentityBoundary>
                   <Suspense fallback={<p role="status">Loading sign-in…</p>}>
@@ -298,32 +292,18 @@ export function Connections({
                   origin at the auth service.
                 </p>
               )}
-            </section>
-            <section
-              className="panel reading-panel"
-              aria-labelledby="lace-title"
-            >
-              <h2 id="lace-title">Midnight Lace · PREPROD</h2>
+            </Panel>
+            <Panel id="lace-title" title="Midnight Lace · PREPROD">
               <LaceStatus
                 wallets={wallets}
                 rescan={rescan}
                 state={laceState}
                 setState={setLaceState}
               />
-            </section>
-            <section
-              className="panel reading-panel"
-              aria-labelledby="records-title"
-            >
-              <h2 id="records-title">Application records</h2>
-              <p>
-                {config.convexUrl
-                  ? config.betterAuthUrl
-                    ? "After backend identity verification, the order console loads the chain-backed order record (phase + checkpoint address) from the Convex `orders:read` projection written by the A1 ingest path. No order is created or modified by these controls. Never paste a recovery phrase, wallet key or app secret into Milo."
-                    : "Convex is configured, but the auth service is missing. Backend session verification is unavailable."
-                  : "Convex is not configured. No authenticated application records are connected. No phase label is shown without a backing order record."}
-              </p>
-            </section>
+            </Panel>
+            <Panel id="records-title" title="Application records">
+              <p>{records(config)}</p>
+            </Panel>
           </>
         )}
       </PublicConfigGate>
@@ -334,14 +314,12 @@ export function Connections({
   );
 }
 
-/** Distinct copy per failure mode (04 §10): timeout vs invalid config. */
 export function connectionErrorMessage(cause: unknown): string {
   return cause instanceof DOMException && cause.name === "AbortError"
     ? "Loading the connection configuration timed out after 15 seconds. Check network access to the static host, then retry."
     : "Connection configuration could not be loaded or is invalid. No provider was enabled. Ask the operator to check /api/public-config and the PREPROD setting.";
 }
 
-/** The one /api/public-config loader: abort + 15s timeout + retry around native fetch. */
 function PublicConfigGate({
   children,
   onRetry,

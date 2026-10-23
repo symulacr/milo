@@ -1,7 +1,3 @@
-/* Sealed Ledger x Studio tokens. Imported first; styles.css :root aliases these. */
-
-/* Metric-matched display fallback (04-ui-design §2.1): scaled to Newsreader's
-   own metrics so the swap does not shift first paint. */
 @font-face {
   font-family: "Newsreader Fallback";
   src: local("Georgia"), local("Georgia Pro"), local("Times New Roman");
@@ -53,9 +49,6 @@
   --tracking-display: -0.02em;
 }
 
-/* Dark mode (04-ui-design §2.1): the OS preference and an explicit
-   `data-theme="dark"` share one set. The `:not([data-theme="light"])` guard
-   lets an explicit light choice win over the OS preference. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
@@ -85,6 +78,7 @@
     --ring: 0 0 0 3px #b7a4f566;
   }
 }
+
 :root[data-theme="dark"] {
   color-scheme: dark;
   --c-bg: #15130f;

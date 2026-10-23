@@ -8,265 +8,237 @@ import {
   paymentAuthorization,
 } from "./admissionValidators";
 
-// Catalog approval and customer linking remain operator-provisioned, never browser-writable.
+const s = v.string();
+const n = v.number();
+const b = v.boolean();
+const optS = v.optional(s);
+const optN = v.optional(n);
+
+const literals = <T extends string>(...values: T[]) =>
+  v.union(...values.map((value) => v.literal(value)));
+
+const PREPROD = v.literal("preprod");
+const ACTIVE_REVOKED = literals("active", "revoked");
+const NULLABLE_S = v.union(s, v.null());
+
 export default defineSchema({
   trustedProvisioning: defineTable({
-    kind: v.union(
-      v.literal("membership"),
-      v.literal("quote"),
-      v.literal("customer"),
-      v.literal("timing"),
-    ),
-    key: v.string(),
-    version: v.number(),
-    payload: v.string(),
+    kind: literals("membership", "quote", "customer", "timing"),
+    key: s,
+    version: n,
+    payload: s,
     targetId: v.union(
       v.id("memberships"),
       v.id("approvedQuotes"),
       v.id("stripeCustomers"),
       v.id("admissionTimingPolicies"),
     ),
-    status: v.union(v.literal("active"), v.literal("revoked")),
+    status: ACTIVE_REVOKED,
   }).index("by_kind_key", ["kind", "key"]),
   trustedProvisioningAudit: defineTable({
-    requestId: v.string(),
-    operation: v.string(),
-    operatorId: v.string(),
-    sourceId: v.string(),
-    evidenceFingerprint: v.string(),
-    recordedAt: v.number(),
+    requestId: s,
+    operation: s,
+    operatorId: s,
+    sourceId: s,
+    evidenceFingerprint: s,
+    recordedAt: n,
     bindingId: v.id("trustedProvisioning"),
   }).index("by_request", ["requestId"]),
   approvedQuotes: defineTable({
     ...frozenQuoteFields,
     imagePackPolicy: v.object(imagePackPolicyFields),
-    expiresAt: v.number(),
+    expiresAt: n,
   }).index("by_quote", ["id"]),
   stripeCustomers: defineTable({
-    buyerAccountId: v.string(),
-    stripeAccountId: v.string(),
-    stripeCustomerId: v.string(),
+    buyerAccountId: s,
+    stripeAccountId: s,
+    stripeCustomerId: s,
   })
     .index("by_buyer", ["buyerAccountId"])
     .index("by_provider_customer", ["stripeAccountId", "stripeCustomerId"]),
   paymentJobs: defineTable({
-    quoteId: v.string(),
-    stripeAccountId: v.string(),
-    stripeCustomerId: v.string(),
-    consentSubject: v.string(),
-    consentAt: v.number(),
-    generation: v.number(),
-    startedAt: v.number(),
-    firstAttemptAt: v.optional(v.number()),
-    mode: v.optional(v.union(v.literal("create"), v.literal("observe"))),
-    state: v.union(
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("complete"),
-      v.literal("blocked"),
-    ),
+    quoteId: s,
+    stripeAccountId: s,
+    stripeCustomerId: s,
+    consentSubject: s,
+    consentAt: n,
+    generation: n,
+    startedAt: n,
+    firstAttemptAt: optN,
+    mode: v.optional(literals("create", "observe")),
+    state: literals("queued", "running", "complete", "blocked"),
   }).index("by_quote", ["quoteId"]),
   frozenQuotes: defineTable(frozenQuoteFields).index("by_quote", ["id"]),
   paymentMonitors: defineTable({
-    claimed: v.optional(v.boolean()),
-    quoteId: v.string(),
+    claimed: v.optional(b),
+    quoteId: s,
     paymentIntentId: v.id("paymentIntents"),
-    consentSubject: v.string(),
-    binding: v.string(),
-    generation: v.number(),
-    attempt: v.number(),
-    consentAt: v.number(),
-    expiresAt: v.number(),
-    nextAt: v.number(),
-    startedAt: v.number(),
-    state: v.union(
-      v.literal("waiting"),
-      v.literal("running"),
-      v.literal("stopped"),
-    ),
+    consentSubject: s,
+    binding: s,
+    generation: n,
+    attempt: n,
+    consentAt: n,
+    expiresAt: n,
+    nextAt: n,
+    startedAt: n,
+    state: literals("waiting", "running", "stopped"),
   }).index("by_quote", ["quoteId"]),
   deploymentObservations: defineTable(deploymentObservationFields)
     .index("by_observation", ["id"])
     .index("by_address", ["address"]),
-  // One current result per immutable intent; historical receipts belong elsewhere.
   paymentObservations: defineTable({
     paymentIntentId: v.id("paymentIntents"),
     authorization: paymentAuthorization,
     monitorId: v.optional(v.id("paymentMonitors")),
-    monitorGeneration: v.optional(v.number()),
+    monitorGeneration: optN,
   }).index("by_payment_intent", ["paymentIntentId"]),
   admissionTimingPolicies: defineTable({
-    network: v.literal("preprod"),
-    captureSafetyMarginMs: v.number(),
+    network: PREPROD,
+    captureSafetyMarginMs: n,
   }).index("by_network", ["network"]),
   canonicalBindings: defineTable(bindingFields)
     .index("by_network_nonce", ["network", "nonce"])
     .index("by_address", ["address"])
     .index("by_quote", ["quoteId"]),
-  // Admitted chain-order truth for the A1 observation path.
   chainOrders: defineTable({
-    orderId: v.string(),
-    quoteId: v.string(),
-    network: v.literal("preprod"),
-    address: v.string(),
-    nonce: v.string(),
-    artifactFingerprint: v.string(),
-    phase: v.union(
-      v.literal("DEPLOYED"),
-      v.literal("RESERVED"),
-      v.literal("ACCEPTED"),
-      v.literal("SUBMITTED"),
-      v.literal("DISPUTED"),
-      v.literal("APPROVED"),
-      v.literal("CANCELLED"),
+    orderId: s,
+    quoteId: s,
+    network: PREPROD,
+    address: s,
+    nonce: s,
+    artifactFingerprint: s,
+    phase: literals(
+      "DEPLOYED",
+      "RESERVED",
+      "ACCEPTED",
+      "SUBMITTED",
+      "DISPUTED",
+      "APPROVED",
+      "CANCELLED",
     ),
-    revision: v.number(),
-    deliveryManifest: v.optional(v.union(v.string(), v.null())),
-    terminal: v.boolean(),
-    merchantActive: v.boolean(),
-    observedAt: v.optional(v.number()),
-    lastStateHex: v.optional(v.string()),
-    blockHeight: v.optional(v.number()),
-    blockHash: v.optional(v.string()),
+    revision: n,
+    deliveryManifest: v.optional(NULLABLE_S),
+    terminal: b,
+    merchantActive: b,
+    observedAt: optN,
+    lastStateHex: optS,
+    blockHeight: optN,
+    blockHash: optS,
   })
     .index("by_order", ["orderId"])
     .index("by_address", ["address"])
     .index("by_quote", ["quoteId"])
     .index("by_terminal", ["terminal"]),
-  // Durable chain-observation log behind orders:recordObservation.
   chainObservations: defineTable({
-    orderId: v.string(),
-    phase: v.string(),
-    revision: v.number(),
-    observedAt: v.number(),
-    kind: v.string(),
+    orderId: s,
+    phase: s,
+    revision: n,
+    observedAt: n,
+    kind: s,
   }).index("by_order", ["orderId"]),
   memberships: defineTable({
-    privySubject: v.string(),
-    accountId: v.string(),
-    scopeId: v.string(),
-    role: v.union(
-      v.literal("buyer"),
-      v.literal("merchant"),
-      v.literal("operator"),
-    ),
-    status: v.union(v.literal("active"), v.literal("revoked")),
+    privySubject: s,
+    accountId: s,
+    scopeId: s,
+    role: literals("buyer", "merchant", "operator"),
+    status: ACTIVE_REVOKED,
   })
     .index("by_subject_scope", ["privySubject", "scopeId"])
     .index("by_scope_role", ["scopeId", "role"]),
   orders: defineTable({
-    id: v.string(),
-    buyerId: v.string(),
-    merchantId: v.string(),
-    disputeOperatorId: v.optional(v.string()),
-    scopeId: v.string(),
+    id: s,
+    buyerId: s,
+    merchantId: s,
+    disputeOperatorId: optS,
+    scopeId: s,
     profile: v.literal("image-pack-v1"),
     outputCount: v.literal(3),
-    phase: v.union(
-      v.literal("ACCEPTED"),
-      v.literal("SUBMITTED"),
-      v.literal("DISPUTED"),
-      v.literal("TERMINAL"),
-    ),
-    revision: v.number(),
+    phase: literals("ACCEPTED", "SUBMITTED", "DISPUTED", "TERMINAL"),
+    revision: n,
   }).index("by_order", ["id"]),
-  // One-time upload grant; storageId binds only after attachUpload.
   fileGrants: defineTable({
-    orderId: v.string(),
-    uploaderId: v.string(),
-    expiresAt: v.number(),
-    consumed: v.boolean(),
-    uploadTicket: v.optional(v.string()),
-    storageId: v.optional(v.string()),
+    orderId: s,
+    uploaderId: s,
+    expiresAt: n,
+    consumed: b,
+    uploadTicket: optS,
+    storageId: optS,
     inspected: v.optional(
-      v.object({
-        storageId: v.string(),
-        sha256: v.string(),
-        contentType: v.string(),
-        byteLength: v.number(),
-      }),
+      v.object({ storageId: s, sha256: s, contentType: s, byteLength: n }),
     ),
   })
     .index("by_order", ["orderId"])
     .index("by_storage", ["storageId"]),
-  // Immutable frozen delivery manifest; manifest is the digest-bound commitment.
   deliveries: defineTable({
-    orderId: v.string(),
-    merchantId: v.string(),
-    revision: v.number(),
+    orderId: s,
+    merchantId: s,
+    revision: n,
     files: v.array(
       v.object({
-        grantId: v.string(),
-        storageId: v.string(),
-        sha256: v.string(),
-        contentType: v.string(),
-        byteLength: v.number(),
+        grantId: s,
+        storageId: s,
+        sha256: s,
+        contentType: s,
+        byteLength: n,
       }),
     ),
-    manifest: v.string(),
+    manifest: s,
   }).index("by_order", ["orderId"]),
   paymentIntents: defineTable({
-    quoteId: v.string(),
-    quoteVersion: v.number(),
-    buyerAccountId: v.string(),
-    stripeAccountId: v.string(),
-    stripeCustomerId: v.string(),
-    stripePaymentIntentId: v.string(),
-    amountMinor: v.number(),
-    currency: v.string(),
+    quoteId: s,
+    quoteVersion: n,
+    buyerAccountId: s,
+    stripeAccountId: s,
+    stripeCustomerId: s,
+    stripePaymentIntentId: s,
+    amountMinor: n,
+    currency: s,
     environment: v.literal("test"),
-    network: v.literal("preprod"),
+    network: PREPROD,
   })
     .index("by_quote", ["quoteId"])
     .index("by_provider_intent", ["stripePaymentIntentId"])
     .index("by_buyer", ["buyerAccountId"]),
-  // Durable webhook receipt. Business uniqueness is (provider, accountId, eventId).
   paymentInbox: defineTable({
     provider: v.literal("stripe"),
-    accountId: v.string(),
-    eventId: v.string(),
-    eventType: v.string(),
-    digest: v.string(),
-    paymentIntentRef: v.union(v.string(), v.null()),
-    receivedAt: v.number(),
-    processedAt: v.optional(v.number()),
+    accountId: s,
+    eventId: s,
+    eventType: s,
+    digest: s,
+    paymentIntentRef: NULLABLE_S,
+    receivedAt: n,
+    processedAt: optN,
   })
     .index("by_provider_event", ["provider", "accountId", "eventId"])
     .index("by_account", ["accountId"])
     .index("by_intent", ["paymentIntentRef"]),
-  // Settlement outbox. One identity per (orderId, action, contractRevision).
-  // by_intent is a bound-scan index (.take(64)); never .unique() — F-21.
   settlementOps: defineTable({
-    orderId: v.string(),
-    action: v.union(v.literal("capture"), v.literal("void")),
-    contractRevision: v.number(),
+    orderId: s,
+    action: literals("capture", "void"),
+    contractRevision: n,
     paymentIntentId: v.id("paymentIntents"),
-    quoteId: v.string(),
-    quoteVersion: v.number(),
-    amountMinor: v.number(),
-    currency: v.string(),
-    idempotencyKey: v.string(),
-    phase: v.string(),
-    generation: v.number(),
-    attempt: v.number(),
-    state: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("complete"),
-      v.literal("blocked"),
-      v.literal("reconciliation"),
+    quoteId: s,
+    quoteVersion: n,
+    amountMinor: n,
+    currency: s,
+    idempotencyKey: s,
+    phase: s,
+    generation: n,
+    attempt: n,
+    state: literals(
+      "pending",
+      "running",
+      "complete",
+      "blocked",
+      "reconciliation",
     ),
-    nextAt: v.number(),
-    startedAt: v.optional(v.number()),
-    finishedAt: v.optional(v.number()),
+    nextAt: n,
+    startedAt: optN,
+    finishedAt: optN,
     receipt: v.optional(
-      v.object({
-        providerStatus: v.string(),
-        amountCaptured: v.number(),
-        observedAt: v.number(),
-      }),
+      v.object({ providerStatus: s, amountCaptured: n, observedAt: n }),
     ),
-    lastReason: v.optional(v.string()),
+    lastReason: optS,
   })
     .index("by_intent", ["paymentIntentId"])
     .index("by_identity", ["orderId", "action", "contractRevision"])

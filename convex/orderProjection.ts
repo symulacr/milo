@@ -2,13 +2,6 @@ import type { Infer } from "convex/values";
 import { v } from "convex/values";
 import type { AdmissionContext } from "./admissionContext";
 
-/**
- * Order creation: one durable `chainOrders` row (the phase authority) and one
- * `orders` row (the delivery projection read by `files.*`) for a quote that has
- * just been canonically admitted. Called inside the `admission.bind` mutation so
- * the binding, the chain projection and the delivery projection commit together.
- */
-
 const deliveryPhase = v.union(
   v.literal("ACCEPTED"),
   v.literal("SUBMITTED"),
@@ -30,24 +23,16 @@ export type CreateOrderInput = Infer<typeof createOrderArgs>;
 
 export type DeliveryPhase = Infer<typeof deliveryPhase>;
 
-/**
- * The delivery projection only distinguishes the phases `files.*` acts on:
- * uploads are permitted in ACCEPTED, reads continue through SUBMITTED and
- * DISPUTED, and both terminal phases collapse to TERMINAL.
- */
+const PHASES: Partial<Record<string, DeliveryPhase>> = {
+  ACCEPTED: "ACCEPTED",
+  SUBMITTED: "SUBMITTED",
+  DISPUTED: "DISPUTED",
+};
+
 export function deliveryPhaseFor(phase: string): DeliveryPhase {
-  if (phase === "ACCEPTED") return "ACCEPTED";
-  if (phase === "SUBMITTED") return "SUBMITTED";
-  if (phase === "DISPUTED") return "DISPUTED";
-  return "TERMINAL";
+  return PHASES[phase] ?? "TERMINAL";
 }
 
-/**
- * The dispute operator is the scope's operator membership, resolved once here so
- * `files.*` and `delivery-policy` can name it without a second authority lookup.
- * A missing or revoked operator is not an admission failure: the order is created
- * with no operator, and the dispute read branch stays closed until one exists.
- */
 async function resolveDisputeOperatorId(
   ctx: AdmissionContext,
   scopeId: string,
@@ -59,6 +44,32 @@ async function resolveDisputeOperatorId(
     )
     .unique();
   return operator?.status === "active" ? operator.accountId : undefined;
+}
+
+function findOrder(ctx: AdmissionContext, orderId: string) {
+  return ctx.db
+    .query("orders")
+    .withIndex("by_order", (q) => q.eq("id", orderId))
+    .unique();
+}
+
+function orderRow(
+  input: CreateOrderInput,
+  disputeOperatorId: string | undefined,
+  phase: DeliveryPhase,
+  revision: number,
+) {
+  return {
+    id: input.quoteId,
+    buyerId: input.buyerId,
+    merchantId: input.merchantId,
+    ...(disputeOperatorId === undefined ? {} : { disputeOperatorId }),
+    scopeId: input.scopeId,
+    profile: "image-pack-v1" as const,
+    outputCount: 3 as const,
+    phase,
+    revision,
+  };
 }
 
 export async function createOrder(
@@ -77,24 +88,17 @@ export async function createOrder(
       existing.nonce !== input.nonce
     )
       throw new Error("Existing order cannot be adopted or rebound");
-    // A chain row without its delivery projection would strand `files.*` on an
-    // order that exists on chain. Backfill rather than assume the pair is intact.
-    const projection = await ctx.db
-      .query("orders")
-      .withIndex("by_order", (q) => q.eq("id", input.quoteId))
-      .unique();
+    const projection = await findOrder(ctx, input.quoteId);
     if (!projection) {
-      await ctx.db.insert("orders", {
-        id: input.quoteId,
-        buyerId: input.buyerId,
-        merchantId: input.merchantId,
-        ...(disputeOperatorId === undefined ? {} : { disputeOperatorId }),
-        scopeId: input.scopeId,
-        profile: "image-pack-v1",
-        outputCount: 3,
-        phase: deliveryPhaseFor(existing.phase),
-        revision: existing.revision,
-      });
+      await ctx.db.insert(
+        "orders",
+        orderRow(
+          input,
+          disputeOperatorId,
+          deliveryPhaseFor(existing.phase),
+          existing.revision,
+        ),
+      );
       return { orderId: existing.orderId, created: true };
     }
     return { orderId: existing.orderId, created: false };
@@ -104,7 +108,6 @@ export async function createOrder(
     .withIndex("by_address", (q) => q.eq("address", input.address))
     .unique();
   if (claimed) throw new Error("Contract address is already claimed");
-  const now = Date.now();
   await ctx.db.insert("chainOrders", {
     orderId: input.quoteId,
     quoteId: input.quoteId,
@@ -117,36 +120,22 @@ export async function createOrder(
     deliveryManifest: null,
     terminal: false,
     merchantActive: true,
-    observedAt: now,
+    observedAt: Date.now(),
   });
-  await ctx.db.insert("orders", {
-    id: input.quoteId,
-    buyerId: input.buyerId,
-    merchantId: input.merchantId,
-    ...(disputeOperatorId === undefined ? {} : { disputeOperatorId }),
-    scopeId: input.scopeId,
-    profile: "image-pack-v1",
-    outputCount: 3,
-    phase: deliveryPhaseFor("DEPLOYED"),
-    revision: 0,
-  });
+  await ctx.db.insert(
+    "orders",
+    orderRow(input, disputeOperatorId, deliveryPhaseFor("DEPLOYED"), 0),
+  );
   return { orderId: input.quoteId, created: true };
 }
 
-/**
- * Mirror one observed chain phase into the delivery projection. `chainOrders`
- * stays the authority; this only keeps `files.*` aligned with it.
- */
 export async function projectDeliveryPhase(
   ctx: AdmissionContext,
   orderId: string,
   phase: string,
   revision: number,
 ): Promise<void> {
-  const order = await ctx.db
-    .query("orders")
-    .withIndex("by_order", (q) => q.eq("id", orderId))
-    .unique();
+  const order = await findOrder(ctx, orderId);
   if (!order) throw new Error("Order projection is missing");
   const next = deliveryPhaseFor(phase);
   if (order.phase === next && order.revision === revision) return;

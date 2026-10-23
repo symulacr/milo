@@ -15,11 +15,6 @@ export function OperatorCases() {
             : "No disputed sample is selected."}
         </h2>
         <p>The operator decides resolution — never the buyer’s approval.</p>
-        <p className="micro muted">
-          The protocol keeps dispute and finance authorities separate (01
-          §3.4.3); this sample collapses them into one operator role for
-          exploration.
-        </p>
         <div className="guard-note">
           <strong>Sample 001 — {quote.name}</strong>
           <p>“{disputeReason}”</p>
@@ -28,8 +23,6 @@ export function OperatorCases() {
           type="button"
           className="button"
           onClick={() => {
-            // Only seed the fixture when no dispute is open: an operator
-            // clicking through from a custom dispute must not have it wiped.
             if (state.phase !== "DISPUTED") reset("dispute");
             navigate("/operator/cases/sample-001");
           }}

@@ -1,44 +1,5 @@
-/**
- * @milo/midnight-client — browser-oriented Midnight client foundation.
- *
- * Minimal exports only. Wave B (buyer reserve UI) imports from here;
- * see README.md for the wiring plan.
- */
-
-export {
-  type AcceptCallInput,
-  type AcceptRequest,
-  type AssembledProviders,
-  assembleProviders,
-  type MidnightProviderSlots,
-  type OrderCircuitRequest,
-  type PreparedAcceptCall,
-  type PreparedReserveCall,
-  type ProviderAssemblyInput,
-  prepareAcceptCall,
-  prepareReserveCall,
-  type ReserveCallInput,
-  type ReserveRequest,
-  WALLET_SIGNED_RESERVE_RUNTIME,
-  type WalletSignedReserveRuntime,
-} from "./circuits.ts";
-export {
-  classifyMidnightClientError,
-  InsufficientDustError,
-  isInsufficientDustError,
-  isLockedWalletError,
-  isMidnightClientError,
-  isRejectedSignatureError,
-  isWrongNetworkError,
-  LockedWalletError,
-  MIDNIGHT_CLIENT_ERROR_CODES,
-  MidnightClientError,
-  type MidnightClientErrorCode,
-  type MidnightClientErrorDetail,
-  RejectedSignatureError,
-  rethrowAsMidnightClientError,
-  WrongNetworkError,
-} from "./errors.ts";
+export * from "./circuits.ts";
+export * from "./errors.ts";
 export {
   assertLocalDisposableNetwork,
   assertNetworkGuard,
@@ -68,14 +29,7 @@ export {
   type WalletActor,
   type WalletSecretKeys,
 } from "./provider-factory.ts";
-export {
-  type BuyerPrivateState,
-  type Configuration,
-  type MerchantPrivateState,
-  Phase,
-  Role,
-  type Terms,
-} from "./types.ts";
+export * from "./types.ts";
 export {
   assertWalletConnected,
   discoverWallets,

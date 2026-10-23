@@ -4,6 +4,10 @@ import { internalActionGeneric, makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
 import { provisionTestCustomerFacts } from "../packages/backend/src/stripe-customer-provisioning.server";
 
+const PROVISION = makeFunctionReference<"mutation">(
+  "trustedProvisioning:provision",
+);
+
 export const provision = internalActionGeneric({
   args: {
     requestId: v.string(),
@@ -16,9 +20,6 @@ export const provision = internalActionGeneric({
   returns: v.id("trustedProvisioning"),
   handler: async (ctx, args) =>
     provisionTestCustomerFacts(args, (verified) =>
-      ctx.runMutation(
-        makeFunctionReference<"mutation">("trustedProvisioning:provision"),
-        verified,
-      ),
+      ctx.runMutation(PROVISION, verified),
     ),
 });

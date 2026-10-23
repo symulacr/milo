@@ -1,12 +1,3 @@
-/**
- * RECONSTRUCTED — Phase 8 W1-A
- * Stripe HMAC webhook ingress + authenticated private-file transport.
- * Specs: FINDINGS-LEDGER F-04/F-13, W2-A2, W2-A3, IMPLEMENTATION-WB-stripe.
- */
-
-// HMAC-SHA256 via @noble/hashes (maintained). WebCrypto is preferred in
-// verifyStripeSignatureAsync; the sync path exists for tests and non-async call
-// sites. Convex default runtime allows pure-JS packages (no "use node").
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import {
@@ -17,14 +8,11 @@ import {
 import { v } from "convex/values";
 import { bytesToHex, hexToBytes } from "../packages/backend/src/encoding";
 
-function utf8Bytes(s: string): Uint8Array {
-  return new TextEncoder().encode(s);
-}
-function byteLen(s: string | Uint8Array): number {
-  return typeof s === "string" ? utf8Bytes(s).length : s.length;
-}
+const ENCODER = new TextEncoder();
+const utf8 = (s: string): Uint8Array => ENCODER.encode(s);
+const byteLen = (s: string | Uint8Array): number =>
+  typeof s === "string" ? utf8(s).length : s.length;
 
-/** Constant-time hex compare (equal length, no early exit). */
 function timingSafeEqualHex(aHex: string, bHex: string): boolean {
   const a = hexToBytes(aHex);
   const b = hexToBytes(bHex);
@@ -35,32 +23,27 @@ function timingSafeEqualHex(aHex: string, bHex: string): boolean {
 }
 
 async function hmacSha256HexWeb(key: string, payload: string): Promise<string> {
-  const enc = new TextEncoder();
-  const cryptoObj = globalThis.crypto;
-  if (!cryptoObj?.subtle) throw new Error("WebCrypto unavailable");
-  const keyBytes = enc.encode(key);
-  const cryptoKey = await cryptoObj.subtle.importKey(
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error("WebCrypto unavailable");
+  const cryptoKey = await subtle.importKey(
     "raw",
-    keyBytes as unknown as ArrayBuffer,
+    utf8(key) as unknown as ArrayBuffer,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const sig = await cryptoObj.subtle.sign(
+  const sig = await subtle.sign(
     "HMAC",
     cryptoKey,
-    enc.encode(payload) as unknown as ArrayBuffer,
+    utf8(payload) as unknown as ArrayBuffer,
   );
   return bytesToHex(new Uint8Array(sig));
 }
 
-function createHmacCompat(secret: string, payload: string): string {
-  return bytesToHex(hmac(sha256, utf8Bytes(secret), utf8Bytes(payload)));
-}
+const createHmacCompat = (secret: string, payload: string): string =>
+  bytesToHex(hmac(sha256, utf8(secret), utf8(payload)));
 
-/** 256 KiB encoded-byte cap on webhook bodies. */
 export const WEBHOOK_MAX_BYTES = 256 * 1024;
-/** Replay window for signed webhook delivery timestamps. */
 export const WEBHOOK_TOLERANCE_MS = 5 * 60_000;
 
 const WHSEC = /^whsec_[a-zA-Z0-9]+$/;
@@ -70,14 +53,10 @@ export function bodyTooLarge(
   body: string | Uint8Array,
   maxBytes = WEBHOOK_MAX_BYTES,
 ): boolean {
-  const bytes = byteLen(body);
-  return bytes > maxBytes;
+  return byteLen(body) > maxBytes;
 }
 
-export type ParsedSignature = {
-  timestamp: number;
-  v1: string[];
-};
+export type ParsedSignature = { timestamp: number; v1: string[] };
 
 export function parseStripeSignatureHeader(
   header: string | null | undefined,
@@ -98,24 +77,33 @@ export function parseStripeSignatureHeader(
       timestamp = ts;
     } else if (key === "v1") {
       if (value.length === 0) continue;
-      // Candidates may be foreign/invalid; only a matching HMAC is accepted.
       if (value.length > 128) return null;
       v1.push(value);
     }
   }
-  if (timestamp === null || v1.length === 0) return null;
-  return { timestamp, v1 };
+  return timestamp === null || v1.length === 0 ? null : { timestamp, v1 };
 }
 
 export type VerifyResult = { ok: true } | { ok: false; reason: string };
 
-export async function verifyStripeSignatureAsync(input: {
+const refuse = (reason: string): { ok: false; reason: string } => ({
+  ok: false,
+  reason,
+});
+
+type VerifyInput = {
   payload: string;
   header: string | null | undefined;
   secret: string;
   now: number;
   toleranceMs?: number;
-}): Promise<VerifyResult> {
+};
+
+type Prechecked =
+  | { ok: false; reason: string }
+  | { ok: true; signed: string; v1: string[] };
+
+function precheck(input: VerifyInput): Prechecked {
   const { payload, header, secret, now } = input;
   const tolerance = input.toleranceMs ?? WEBHOOK_TOLERANCE_MS;
   if (typeof secret !== "string" || !WHSEC.test(secret))
@@ -132,59 +120,36 @@ export async function verifyStripeSignatureAsync(input: {
   const skew = tsMs - nowMs;
   if (!Number.isSafeInteger(skew) || Math.abs(skew) > tolerance)
     return refuse("Timestamp outside ±5 minute replay window");
-  const signed = `${parsed.timestamp}.${payload}`;
-  const expected = await hmacSha256HexWeb(secret, signed);
-  for (const candidate of parsed.v1) {
-    if (timingSafeEqualHex(candidate, expected)) return { ok: true };
-  }
-  return refuse("No matching v1 signature");
+  return { ok: true, signed: `${parsed.timestamp}.${payload}`, v1: parsed.v1 };
 }
 
-function refuse(reason: string): VerifyResult {
-  return { ok: false, reason };
+const matchAny = (v1: string[], expected: string): VerifyResult =>
+  v1.some((candidate) => timingSafeEqualHex(candidate, expected))
+    ? { ok: true }
+    : refuse("No matching v1 signature");
+
+export function verifyStripeSignature(input: VerifyInput): VerifyResult {
+  const pre = precheck(input);
+  return pre.ok
+    ? matchAny(pre.v1, createHmacCompat(input.secret, pre.signed))
+    : pre;
 }
 
-/**
- * HMAC-SHA256 over `${timestamp}.${payload}`, constant-time compare,
- * ±5 minute replay window (inclusive), `whsec_` endpoint secret only.
- */
-export function verifyStripeSignature(input: {
-  payload: string;
-  header: string | null | undefined;
-  secret: string;
-  now: number;
-  toleranceMs?: number;
-}): VerifyResult {
-  const { payload, header, secret, now } = input;
-  const tolerance = input.toleranceMs ?? WEBHOOK_TOLERANCE_MS;
-  if (typeof secret !== "string" || !WHSEC.test(secret))
-    return refuse("Endpoint secret must match whsec_ charset (fail-closed)");
-  if (typeof payload !== "string" || bodyTooLarge(payload))
-    return refuse("Webhook body exceeds the 256 KiB cap");
-  if (!Number.isSafeInteger(now) || now < 0)
-    return refuse("Invalid verification clock");
-  const parsed = parseStripeSignatureHeader(header);
-  if (!parsed) return refuse("Malformed stripe-signature header");
-  const tsMs =
-    parsed.timestamp < 1e12 ? parsed.timestamp * 1000 : parsed.timestamp;
-  const nowMs = now < 1e12 ? now * 1000 : now;
-  const skew = tsMs - nowMs;
-  if (!Number.isSafeInteger(skew) || Math.abs(skew) > tolerance)
-    return refuse("Timestamp outside ±5 minute replay window");
-  const signed = `${parsed.timestamp}.${payload}`;
-  const expected = createHmacCompat(secret, signed);
-  for (const candidate of parsed.v1) {
-    if (timingSafeEqualHex(candidate, expected)) return { ok: true };
-  }
-  return refuse("No matching v1 signature");
+export async function verifyStripeSignatureAsync(
+  input: VerifyInput,
+): Promise<VerifyResult> {
+  const pre = precheck(input);
+  return pre.ok
+    ? matchAny(pre.v1, await hmacSha256HexWeb(input.secret, pre.signed))
+    : pre;
 }
 
-function env(name: string): string | undefined {
+const env = (name: string): string | undefined => {
   const value = process.env[name];
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
+};
 
 type StripeEventEnvelope = {
   id: string;
@@ -215,122 +180,95 @@ function paymentIntentRef(envelope: StripeEventEnvelope): string | null {
   const pi = object.payment_intent;
   if (typeof pi === "string") return pi;
   if (pi && typeof pi === "object" && typeof pi.id === "string") return pi.id;
-  if (typeof object.id === "string" && object.id.startsWith("pi_"))
-    return object.id;
-  return null;
+  return typeof object.id === "string" && object.id.startsWith("pi_")
+    ? object.id
+    : null;
 }
 
-/**
- * POST /webhooks/stripe — HMAC verify → livemode!==false + account match →
- * settlement:recordEvent (inbox dedup) → schedule settlement:reconcile.
- * Secrets unset → 503 (fail closed, never accept unsigned traffic).
- */
-export async function stripeWebhookHandler(
-  actionCtx: unknown,
-  request: Request,
-): Promise<Response> {
-  const secret = env("STRIPE_WEBHOOK_SECRET");
-  const accountId = env("STRIPE_ACCOUNT_ID") ?? "test";
-  if (!secret || !WHSEC.test(secret)) {
-    return new Response("Stripe webhook secrets are not configured", {
-      status: 503,
-    });
-  }
-  const raw = await request.text();
-  if (bodyTooLarge(raw)) {
-    return new Response("Payload too large", { status: 413 });
-  }
-  const header = request.headers.get("stripe-signature");
-  const verified = await verifyStripeSignatureAsync({
-    payload: raw,
-    header,
-    secret,
-    now: Date.now(),
-  });
-  if (!verified.ok) {
-    return new Response(`Signature verification failed: ${verified.reason}`, {
-      status: 400,
-    });
-  }
-  const envelope = parseEnvelope(raw);
-  if (!envelope) {
-    return new Response("Malformed event envelope", { status: 400 });
-  }
-  // livemode !== false is refused (test-mode only).
-  if (envelope.livemode !== false) {
-    return new Response("Live-mode events are refused", { status: 400 });
-  }
-  if (envelope.account && envelope.account !== accountId) {
-    return new Response("Stripe account mismatch", { status: 400 });
-  }
-  const recordEvent = makeFunctionReference<
-    "mutation",
-    {
-      provider: "stripe";
-      accountId: string;
-      eventId: string;
-      eventType: string;
-      digest: string;
-      paymentIntentRef: string | null;
-    },
-    { isNew: boolean }
-  >("settlement:recordEvent");
-  const reconcile = makeFunctionReference<"mutation">("settlement:reconcile");
-  // Use a Convex-free runner when present (tests), else the scheduled mutation path
-  // is reached through the action runtime. Record is idempotent on (provider,account,event).
-  const runMutation =
-    (
-      actionCtx as {
-        runMutation?: (ref: unknown, args: unknown) => Promise<unknown>;
-      }
-    )?.runMutation ??
-    (
-      globalThis as {
-        __miloRunMutation?: (ref: unknown, args: unknown) => Promise<unknown>;
-      }
-    ).__miloRunMutation;
-  const args = {
-    provider: "stripe" as const,
-    accountId,
-    eventId: envelope.id,
-    eventType: envelope.type,
-    digest: createHmacCompat("digest", raw).slice(0, 64),
-    paymentIntentRef: paymentIntentRef(envelope),
-  };
-  let isNew = true;
-  if (runMutation) {
-    const result = (await runMutation(recordEvent, args)) as { isNew: boolean };
-    isNew = result.isNew;
-    if (isNew)
-      await runMutation(reconcile, {
-        provider: "stripe",
-        eventId: envelope.id,
-        accountId,
-      });
-  } else {
-    // Convex httpAction path: schedule through the action's ctx at runtime.
-    // The durable record happens inside settlement:recordEvent.
-    const action = (
-      globalThis as {
-        __miloSchedule?: (ref: unknown, args: unknown) => Promise<void>;
-      }
-    ).__miloSchedule;
-    if (action) {
-      await action(recordEvent, args);
-      await action(reconcile, {
-        provider: "stripe",
-        eventId: envelope.id,
-        accountId,
-      });
-    }
-  }
-  return new Response(JSON.stringify({ received: true, isNew }), {
+type RecordEventArgs = {
+  provider: "stripe";
+  accountId: string;
+  eventId: string;
+  eventType: string;
+  digest: string;
+  paymentIntentRef: string | null;
+};
+
+const RECORD_EVENT = makeFunctionReference<
+  "mutation",
+  RecordEventArgs,
+  { isNew: boolean }
+>("settlement:recordEvent");
+const RECONCILE = makeFunctionReference<"mutation">("settlement:reconcile");
+
+type Runner = (ref: unknown, args: unknown) => Promise<unknown>;
+
+const textResponse = (body: string, status: number): Response =>
+  new Response(body, { status });
+
+const jsonResponse = (body: unknown): Response =>
+  new Response(JSON.stringify(body), {
     status: 200,
     headers: {
       "content-type": "application/json",
       "cache-control": "no-store",
     },
   });
+
+export async function stripeWebhookHandler(
+  actionCtx: unknown,
+  request: Request,
+): Promise<Response> {
+  const secret = env("STRIPE_WEBHOOK_SECRET");
+  const accountId = env("STRIPE_ACCOUNT_ID") ?? "test";
+  if (!secret || !WHSEC.test(secret))
+    return textResponse("Stripe webhook secrets are not configured", 503);
+  const raw = await request.text();
+  if (bodyTooLarge(raw)) return textResponse("Payload too large", 413);
+  const verified = await verifyStripeSignatureAsync({
+    payload: raw,
+    header: request.headers.get("stripe-signature"),
+    secret,
+    now: Date.now(),
+  });
+  if (!verified.ok)
+    return textResponse(
+      `Signature verification failed: ${verified.reason}`,
+      400,
+    );
+  const envelope = parseEnvelope(raw);
+  if (!envelope) return textResponse("Malformed event envelope", 400);
+  if (envelope.livemode !== false)
+    return textResponse("Live-mode events are refused", 400);
+  if (envelope.account && envelope.account !== accountId)
+    return textResponse("Stripe account mismatch", 400);
+  const args: RecordEventArgs = {
+    provider: "stripe",
+    accountId,
+    eventId: envelope.id,
+    eventType: envelope.type,
+    digest: createHmacCompat("digest", raw).slice(0, 64),
+    paymentIntentRef: paymentIntentRef(envelope),
+  };
+  const reconcileArgs = {
+    provider: "stripe",
+    eventId: envelope.id,
+    accountId,
+  };
+  const runMutation =
+    (actionCtx as { runMutation?: Runner } | undefined)?.runMutation ??
+    (globalThis as { __miloRunMutation?: Runner }).__miloRunMutation;
+  const schedule = (globalThis as { __miloSchedule?: Runner }).__miloSchedule;
+  let isNew = true;
+  if (runMutation) {
+    isNew = ((await runMutation(RECORD_EVENT, args)) as { isNew: boolean })
+      .isNew;
+    if (isNew) await runMutation(RECONCILE, reconcileArgs);
+  } else if (schedule) {
+    await schedule(RECORD_EVENT, args);
+    await schedule(RECONCILE, reconcileArgs);
+  }
+  return jsonResponse({ received: true, isNew });
 }
 
 export const stripeWebhook = httpActionGeneric(stripeWebhookHandler);
@@ -343,7 +281,6 @@ http.route({
 });
 export default http;
 
-// Keep validators referenced so schema consumers stay aligned.
 export const webhookRecordArgs = v.object({
   provider: v.literal("stripe"),
   accountId: v.string(),

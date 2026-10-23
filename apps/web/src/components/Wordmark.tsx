@@ -1,4 +1,3 @@
-/** Brand mark: the ✳ seal asterisk as inline SVG (emoji rendering varies). */
 export function WordmarkStar() {
   return (
     <svg className="wordmark-star" viewBox="0 0 32 32" aria-hidden="true">

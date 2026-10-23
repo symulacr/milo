@@ -16,6 +16,22 @@ import { UnconfiguredPaymentMonitoring } from "../PaymentMonitoring";
 import { phaseFrame } from "../workspace/framing";
 import { useWorkspace } from "../workspace/model";
 
+const QUEUE: Record<string, { to: string; label: string }> = {
+  merchant: { to: "/merchant/orders", label: "Studio queue" },
+  operator: { to: "/operator/cases", label: "Resolution desk" },
+  buyer: { to: "/orders", label: "Your orders" },
+};
+
+const REVIEWED = ["SUBMITTED", "DISPUTED", "APPROVED"];
+
+function slotState(
+  verified: boolean,
+  result: string | undefined,
+): "match" | "mismatch" | "pending" {
+  if (verified) return "match";
+  return result === "fail" ? "mismatch" : "pending";
+}
+
 export function OrderView() {
   const {
     state,
@@ -30,9 +46,7 @@ export function OrderView() {
     fileResults,
   } = useWorkspace();
   const frame = phaseFrame(state.phase, state.role);
-  // The browser already holds the delivered bytes, so run the pinned-byte
-  // check for the reviewer instead of making it a separate click. One
-  // automatic attempt per order revision; the manual button stays as fallback.
+  const queue = QUEUE[state.role] ?? QUEUE.buyer;
   const autoCheck = useRef("");
   useEffect(() => {
     const key = `${state.revision}:${state.phase}:${state.role}`;
@@ -54,21 +68,7 @@ export function OrderView() {
       <div className="page-heading">
         <div>
           <div className="breadcrumbs">
-            <Link
-              to={
-                state.role === "merchant"
-                  ? "/merchant/orders"
-                  : state.role === "operator"
-                    ? "/operator/cases"
-                    : "/orders"
-              }
-            >
-              {state.role === "merchant"
-                ? "Studio queue"
-                : state.role === "operator"
-                  ? "Resolution desk"
-                  : "Your orders"}
-            </Link>
+            <Link to={queue.to}>{queue.label}</Link>
             <span>/</span>
             <span>Sample 001</span>
           </div>
@@ -133,33 +133,29 @@ export function OrderView() {
                   </p>
                   <span>PNG · 3 files</span>
                 </div>
-                {/* Three-slot SHA-256 strip: one slot per pinned digest, so a
-                    partial or failed check is visible per file, never summed
-                    into a single opaque "verified" claim. */}
                 <section
                   className="verify-slots"
                   aria-label="SHA-256 file verification"
                 >
                   {sampleFiles.map((file) => {
-                    const slotState = state.filesVerified
-                      ? "match"
-                      : fileResults[file.id] === "fail"
-                        ? "mismatch"
-                        : "pending";
+                    const slot = slotState(
+                      state.filesVerified,
+                      fileResults[file.id],
+                    );
                     return (
                       <div
                         key={file.id}
                         className="verify-slot"
-                        data-state={slotState}
+                        data-state={slot}
                       >
                         <strong>
                           {file.id} · {file.title}
                         </strong>
                         <code className="hash">{file.hash.slice(0, 16)}…</code>
                         <span>
-                          {slotState === "match"
+                          {slot === "match"
                             ? "✓ SHA-256 verified"
-                            : slotState === "mismatch"
+                            : slot === "mismatch"
                               ? "× Digest mismatch"
                               : checking
                                 ? "⋯ Checking bytes…"
@@ -169,9 +165,7 @@ export function OrderView() {
                     );
                   })}
                 </section>
-                {!["SUBMITTED", "DISPUTED", "APPROVED"].includes(
-                  state.phase,
-                ) && (
+                {!REVIEWED.includes(state.phase) && (
                   <div className="soft-note">
                     Reference images. No delivery is submitted at this phase.
                   </div>
@@ -182,8 +176,6 @@ export function OrderView() {
               </Tabs.Content>
             </Tabs.Root>
           </Panel>
-          {/* Timeline + evidence stay visible in the work column
-              (04 §7.1), not behind a tab. */}
           <Panel className="activity-panel">
             <h2 className="activity-heading">Activity</h2>
             <Timeline />

@@ -1,29 +1,6 @@
-/**
- * A `WalletProvider` backed by a connected DApp Connector wallet.
- *
- * The browser has no local secret keys: the wallet extension holds them and
- * exposes only the connector surface. `midnight-js` needs a `WalletProvider` to
- * balance a transaction and to name the coin and encryption public keys, so this
- * adapts the connector to that interface and nothing more.
- *
- * Three properties matter here and are enforced rather than assumed:
- *
- * 1. The keys are the wallet's, read once at construction and cached. Reading
- *    them lazily on every call would let a wallet switch accounts mid-session and
- *    silently produce a transaction the user cannot sign.
- * 2. `balanceTx` sends the transaction to the wallet unsealed, which is the
- *    connector's contract for "pay fees and remove imbalances". It does not
- *    sign: signing is the wallet's own step, so this adapter can never produce a
- *    signature the user did not approve.
- * 3. A balancing failure is surfaced with the wallet's message, never swallowed.
- *    A silent fallback would let the caller believe a transaction was balanced
- *    when the wallet refused.
- */
-
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
 import type { WalletProviderSlot } from "../../../packages/midnight-client/src/provider-factory.ts";
 
-/** Raised when the connector cannot be adapted, so callers fail closed by type. */
 export class WalletProviderUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,18 +9,21 @@ export class WalletProviderUnavailableError extends Error {
 }
 
 export type ConnectorWalletProvider = WalletProviderSlot & {
-  /** The shielded address the connector reported, for display and cross-checks. */
   readonly shieldedAddress: string;
 };
 
-/**
- * Build a `WalletProvider` from a connected wallet.
- *
- * Fails closed when the connector does not expose the methods the reserve path
- * needs. A wallet that answers `getShieldedAddresses` but not
- * `balanceUnsealedTransaction` cannot pay a fee, so it is not a usable provider
- * and must not be presented as one.
- */
+const REQUIRED_METHODS = [
+  "getShieldedAddresses",
+  "balanceUnsealedTransaction",
+  "submitTransaction",
+] as const;
+
+const describe = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const missing = (method: string): string =>
+  `The connected wallet does not expose ${method}.`;
+
 export async function connectorWalletProvider(
   api: ConnectedAPI,
 ): Promise<ConnectorWalletProvider> {
@@ -71,9 +51,6 @@ export async function connectorWalletProvider(
     getCoinPublicKey: () => coinPublicKey,
     getEncryptionPublicKey: () => encryptionPublicKey,
     async balanceTx(tx: unknown, _ttl?: Date): Promise<unknown> {
-      // The connector speaks serialized transactions, so the caller's value must
-      // already be a string. Guessing at a conversion here would hide a mismatch
-      // between the caller and the wallet until the wallet rejected it.
       if (typeof tx !== "string")
         throw new WalletProviderUnavailableError(
           `balanceTx expects a serialized transaction string from the connector; received ${typeof tx}.`,
@@ -88,34 +65,19 @@ export async function connectorWalletProvider(
       } catch (error) {
         if (error instanceof WalletProviderUnavailableError) throw error;
         throw new WalletProviderUnavailableError(
-          `The wallet could not balance the transaction: ${error instanceof Error ? error.message : String(error)}`,
+          `The wallet could not balance the transaction: ${describe(error)}`,
         );
       }
     },
   };
 }
 
-/**
- * Whether a connected wallet can back a signed reserve.
- *
- * This is the runtime answer to the question `WALLET_SIGNED_RESERVE_RUNTIME`
- * answers statically. It reports capability, not success: a wallet can expose
- * every method and still refuse a specific transaction, and only a real signed
- * transaction plus a matching observation proves the path works.
- */
 export async function connectorSupportsSignedReserve(
   api: ConnectedAPI,
 ): Promise<{ supported: boolean; reason?: string }> {
-  for (const method of [
-    "getShieldedAddresses",
-    "balanceUnsealedTransaction",
-    "submitTransaction",
-  ] as const) {
+  for (const method of REQUIRED_METHODS) {
     if (typeof api[method] !== "function")
-      return {
-        supported: false,
-        reason: `The connected wallet does not expose ${method}.`,
-      };
+      return { supported: false, reason: missing(method) };
   }
   try {
     const shielded = await api.getShieldedAddresses();
@@ -131,7 +93,7 @@ export async function connectorSupportsSignedReserve(
   } catch (error) {
     return {
       supported: false,
-      reason: `The connected wallet failed to report its shielded addresses: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `The connected wallet failed to report its shielded addresses: ${describe(error)}`,
     };
   }
   return { supported: true };

@@ -6,8 +6,13 @@ export type Provenance = {
   evidenceFingerprint: string;
 };
 
-// Internal-call authority comes from Convex, not from these audit labels.
-// The caller must verify source evidence before invoking; a digest is not attestation.
+const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/;
+const AUTHORITY_ERROR =
+  "Allowlisted operator/source and evidence fingerprint required";
+
+const isId = (value: unknown): boolean =>
+  typeof value === "string" && ID_PATTERN.test(value);
+
 export function validateProvenance(
   provenance: Provenance,
   requestId: string,
@@ -15,9 +20,7 @@ export function validateProvenance(
 ) {
   validateProvisioningAuthority(provenance, requestId, configuredAuthorities);
   if (!HEX64.test(provenance.evidenceFingerprint))
-    throw new Error(
-      "Allowlisted operator/source and evidence fingerprint required",
-    );
+    throw new Error(AUTHORITY_ERROR);
 }
 
 export function validateProvisioningAuthority(
@@ -25,7 +28,6 @@ export function validateProvisioningAuthority(
   requestId: string,
   configuredAuthorities: string | undefined,
 ) {
-  // Missing and malformed configuration are distinct operator failures.
   if (configuredAuthorities === undefined)
     throw new Error("Trusted provisioning authority configuration required");
   let authorities: unknown;
@@ -41,15 +43,9 @@ export function validateProvisioningAuthority(
         entry?.operatorId === provenance.operatorId &&
         entry?.sourceId === provenance.sourceId,
     ) ||
-    ![requestId, provenance.operatorId, provenance.sourceId].every(
-      (value) =>
-        typeof value === "string" &&
-        /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(value),
-    )
+    ![requestId, provenance.operatorId, provenance.sourceId].every(isId)
   )
-    throw new Error(
-      "Allowlisted operator/source and evidence fingerprint required",
-    );
+    throw new Error(AUTHORITY_ERROR);
 }
 
 export function canonicalPayload(value: unknown): string {

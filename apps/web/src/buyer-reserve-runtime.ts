@@ -1,13 +1,3 @@
-/**
- * Browser buyer-reserve and checkpoint flow logic for the order console.
- *
- * This module is the fail-closed gate in front of midnight-client's
- * `prepareReserveCall` and the pure recovery-kit state machine. Every missing
- * prerequisite is an explicit blocked reason — never a simulated success. A
- * prepared reserve is a descriptor only: no proof, no signature, no submission,
- * and `confirmOperation` runs only on a real observed transition.
- */
-
 import {
   beginOperation,
   checkpointAddress,
@@ -24,12 +14,7 @@ import {
   type WalletConnectionState,
 } from "../../../packages/midnight-client/src";
 
-/** Resonance of midnight-client's honesty flag. */
 const RESERVE_SUBMIT_PATH: "UNKNOWN" = WALLET_SIGNED_RESERVE_RUNTIME;
-
-// ---------------------------------------------------------------------------
-// Checkpoint (bind an observed canonical address onto a verified kit)
-// ---------------------------------------------------------------------------
 
 type CheckpointBlockedReason =
   | "kit-missing"
@@ -65,66 +50,41 @@ const CHECKPOINT_COPY: Record<CheckpointBlockedReason, string> = {
     "An order nonce is not a canonical address. Supply the deployed contract address from a confirmed observation.",
 };
 
-/**
- * Fail-closed readiness check for checkpointing. Callers must pass a real
- * observed address (from a confirmed deployment); a missing observation is a
- * blocked reason, not a prompt to fabricate one.
- */
+const blocked = (
+  reason: CheckpointBlockedReason,
+  message: string,
+): CheckpointAssessment => ({ ready: false, reason, message });
+
 export function assessCheckpoint(
   kit: RecoveryKit | null | undefined,
   observedAddress: string | null | undefined,
 ): CheckpointAssessment {
-  if (!kit) {
-    return {
-      ready: false,
-      reason: "kit-missing",
-      message: CHECKPOINT_COPY["kit-missing"],
-    };
-  }
-  if (kit.stage === "LOST") {
-    return {
-      ready: false,
-      reason: "kit-lost",
-      message: CHECKPOINT_COPY["kit-lost"],
-    };
-  }
-  if (kit.stage === "CHECKPOINTED") {
-    return {
-      ready: false,
-      reason: "kit-already-checkpointed",
-      message: CHECKPOINT_COPY["kit-already-checkpointed"],
-    };
-  }
-  if (kit.stage !== "VERIFIED") {
-    return {
-      ready: false,
-      reason: "kit-not-verified",
-      message: CHECKPOINT_COPY["kit-not-verified"],
-    };
-  }
+  if (!kit) return blocked("kit-missing", CHECKPOINT_COPY["kit-missing"]);
+  if (kit.stage === "LOST")
+    return blocked("kit-lost", CHECKPOINT_COPY["kit-lost"]);
+  if (kit.stage === "CHECKPOINTED")
+    return blocked(
+      "kit-already-checkpointed",
+      CHECKPOINT_COPY["kit-already-checkpointed"],
+    );
+  if (kit.stage !== "VERIFIED")
+    return blocked("kit-not-verified", CHECKPOINT_COPY["kit-not-verified"]);
+
   const address = (observedAddress ?? "").trim();
   if (address.length === 0) {
-    // Distinguish "no observation at all" from "typed empty": both block,
-    // but the copy names the missing observation first when nothing was supplied.
-    return {
-      ready: false,
-      reason:
-        observedAddress === null || observedAddress === undefined
-          ? "deployment-not-observable"
-          : "address-missing",
-      message:
-        observedAddress === null || observedAddress === undefined
-          ? CHECKPOINT_COPY["deployment-not-observable"]
-          : CHECKPOINT_COPY["address-missing"],
-    };
+    const absent = observedAddress === null || observedAddress === undefined;
+    return absent
+      ? blocked(
+          "deployment-not-observable",
+          CHECKPOINT_COPY["deployment-not-observable"],
+        )
+      : blocked("address-missing", CHECKPOINT_COPY["address-missing"]);
   }
-  if (address === kit.orderNonce) {
-    return {
-      ready: false,
-      reason: "address-is-order-nonce",
-      message: CHECKPOINT_COPY["address-is-order-nonce"],
-    };
-  }
+  if (address === kit.orderNonce)
+    return blocked(
+      "address-is-order-nonce",
+      CHECKPOINT_COPY["address-is-order-nonce"],
+    );
   return { ready: true, address };
 }
 
@@ -136,23 +96,20 @@ type CheckpointResult =
       readonly message: string;
     };
 
-/**
- * Bind an observed canonical address onto a verified kit via
- * `checkpointAddress`. Never advances a kit without a real address; domain
- * validation remains the authority for nonce and stage checks.
- */
+const reasonOf = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
+
 export function applyCheckpoint(
   kit: RecoveryKit | null | undefined,
   observedAddress: string | null | undefined,
 ): CheckpointResult {
   const assessment = assessCheckpoint(kit, observedAddress);
-  if (!assessment.ready) {
+  if (!assessment.ready)
     return {
       ok: false,
       reason: assessment.reason,
       message: assessment.message,
     };
-  }
   try {
     const next = checkpointAddress(kit as RecoveryKit, assessment.address);
     return {
@@ -164,17 +121,13 @@ export function applyCheckpoint(
     return {
       ok: false,
       reason: "checkpoint-failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "The canonical address could not be checkpointed.",
+      message: reasonOf(
+        error,
+        "The canonical address could not be checkpointed.",
+      ),
     };
   }
 }
-
-// ---------------------------------------------------------------------------
-// Prepare reserve (midnight-client descriptor; no signature, no submission)
-// ---------------------------------------------------------------------------
 
 type PrepareReserveBlockedReason =
   | "kit-missing"
@@ -219,21 +172,27 @@ const PREPARE_COPY: Record<PrepareReserveBlockedReason, string> = {
     "Prove, balance and submit are not available in this build. Preparing a reserve is a descriptor only; no signed transaction will be produced until the wallet-mediated submit path is ready.",
 };
 
+const REQUIRED_SLOTS: readonly (keyof MidnightProviderSlots)[] = [
+  "privateStateProvider",
+  "publicDataProvider",
+  "zkConfigProvider",
+  "proofProvider",
+  "walletProvider",
+  "midnightProvider",
+];
+
 function missingProviderSlots(
   providers: Partial<MidnightProviderSlots>,
 ): string[] {
-  const required: (keyof MidnightProviderSlots)[] = [
-    "privateStateProvider",
-    "publicDataProvider",
-    "zkConfigProvider",
-    "proofProvider",
-    "walletProvider",
-    "midnightProvider",
-  ];
-  return required.filter(
+  return REQUIRED_SLOTS.filter(
     (slot) => providers[slot] === undefined || providers[slot] === null,
   );
 }
+
+const prepareBlocked = (
+  reason: PrepareReserveBlockedReason,
+  message = PREPARE_COPY[reason],
+): PrepareReserveAssessment => ({ ready: false, reason, message });
 
 export type PrepareReserveInput = {
   readonly kit: RecoveryKit | null | undefined;
@@ -243,87 +202,29 @@ export type PrepareReserveInput = {
   readonly expectedRevision?: bigint;
 };
 
-/**
- * Ordered fail-closed gate in front of `prepareReserveCall`. Each check names
- * the missing piece; nothing here contacts the wallet or chain.
- */
 export function assessPrepareReserve(
   input: PrepareReserveInput,
 ): PrepareReserveAssessment {
   const kit = input.kit;
-  if (!kit) {
-    return {
-      ready: false,
-      reason: "kit-missing",
-      message: PREPARE_COPY["kit-missing"],
-    };
-  }
-  if (kit.stage === "LOST") {
-    return {
-      ready: false,
-      reason: "kit-lost",
-      message: PREPARE_COPY["kit-lost"],
-    };
-  }
-  if (kit.stage !== "CHECKPOINTED" || !kit.address) {
-    return {
-      ready: false,
-      reason: "kit-not-checkpointed",
-      message: PREPARE_COPY["kit-not-checkpointed"],
-    };
-  }
+  if (!kit) return prepareBlocked("kit-missing");
+  if (kit.stage === "LOST") return prepareBlocked("kit-lost");
+  if (kit.stage !== "CHECKPOINTED" || !kit.address)
+    return prepareBlocked("kit-not-checkpointed");
+
   const wallet = input.wallet;
-  if (!wallet || wallet.status === "disconnected") {
-    return {
-      ready: false,
-      reason: wallet ? "wallet-not-connected" : "wallet-missing",
-      message: wallet
-        ? PREPARE_COPY["wallet-not-connected"]
-        : PREPARE_COPY["wallet-missing"],
-    };
-  }
-  if (wallet.status === "connecting") {
-    return {
-      ready: false,
-      reason: "wallet-not-connected",
-      message: PREPARE_COPY["wallet-not-connected"],
-    };
-  }
-  if (wallet.status === "error") {
-    return {
-      ready: false,
-      reason: "wallet-not-connected",
-      message: PREPARE_COPY["wallet-not-connected"],
-    };
-  }
-  if (wallet.networkId !== SUPPORTED_MIDNIGHT_NETWORK) {
-    return {
-      ready: false,
-      reason: "network-wrong",
-      message: PREPARE_COPY["network-wrong"],
-    };
-  }
-  if (!input.privateState) {
-    return {
-      ready: false,
-      reason: "private-state-missing",
-      message: PREPARE_COPY["private-state-missing"],
-    };
-  }
+  if (!wallet) return prepareBlocked("wallet-missing");
+  if (wallet.status !== "connected")
+    return prepareBlocked("wallet-not-connected");
+  if (wallet.networkId !== SUPPORTED_MIDNIGHT_NETWORK)
+    return prepareBlocked("network-wrong");
+  if (!input.privateState) return prepareBlocked("private-state-missing");
+
   const missing = missingProviderSlots(input.providers);
-  if (missing.length > 0) {
-    return {
-      ready: false,
-      reason: "providers-incomplete",
-      message: `${PREPARE_COPY["providers-incomplete"]} Missing: ${missing.join(", ")}.`,
-    };
-  }
-  if (RESERVE_SUBMIT_PATH === "UNKNOWN") {
-    // Preparation itself is allowed — it returns a descriptor and does not
-    // sign. This reason is surfaced as a status note, not a hard block on the
-    // prepare call, because the descriptor is still useful and honest.
-    return { ready: true };
-  }
+  if (missing.length > 0)
+    return prepareBlocked(
+      "providers-incomplete",
+      `${PREPARE_COPY["providers-incomplete"]} Missing: ${missing.join(", ")}.`,
+    );
   return { ready: true };
 }
 
@@ -339,22 +240,16 @@ type PrepareReserveResult =
       readonly message: string;
     };
 
-/**
- * Prepare a buyer `reserve` descriptor through midnight-client. Fails closed
- * on any missing prerequisite. Success means a validated descriptor only —
- * never a signed transaction and never a completed reserve.
- */
 export function prepareBuyerReserve(
   input: PrepareReserveInput,
 ): PrepareReserveResult {
   const assessment = assessPrepareReserve(input);
-  if (!assessment.ready) {
+  if (!assessment.ready)
     return {
       ok: false,
       reason: assessment.reason,
       message: assessment.message,
     };
-  }
   const kit = input.kit as RecoveryKit;
   const wallet = input.wallet as Extract<
     WalletConnectionState,
@@ -378,17 +273,10 @@ export function prepareBuyerReserve(
     return {
       ok: false,
       reason: "prepare-failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Reserve preparation failed closed.",
+      message: reasonOf(error, "Reserve preparation failed closed."),
     };
   }
 }
-
-// ---------------------------------------------------------------------------
-// In-flight operation tracking (begin / confirm) — real transitions only
-// ---------------------------------------------------------------------------
 
 type BeginReserveResult =
   | { readonly ok: true; readonly kit: RecoveryKit; readonly message: string }
@@ -398,11 +286,6 @@ type BeginReserveResult =
       readonly message: string;
     };
 
-/**
- * Record an in-flight reserve on the recovery kit. Call only when a real
- * submission attempt is underway (or about to be): begin leaves the kit
- * unusable until confirm or abandon. Never invents a transaction identity.
- */
 export function beginReserveOperation(
   kit: RecoveryKit,
   identity: string,
@@ -419,10 +302,7 @@ export function beginReserveOperation(
     return {
       ok: false,
       reason: "begin-failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "The reserve operation could not be begun.",
+      message: reasonOf(error, "The reserve operation could not be begun."),
     };
   }
 }
@@ -435,23 +315,17 @@ type ConfirmReserveResult =
       readonly message: string;
     };
 
-/**
- * Confirm a reserve only from a real observed transition (identity + revision).
- * Passing no observation fails closed — this function never fabricates a
- * chain result and never marks an order usable without evidence.
- */
 export function confirmObservedReserve(
   kit: RecoveryKit,
   observation: { identity: string; revision: number } | null | undefined,
 ): ConfirmReserveResult {
-  if (!observation) {
+  if (!observation)
     return {
       ok: false,
       reason: "no-observation",
       message:
         "No observed transition is available. A reserve is confirmed only after a real chain observation matches the pending identity and revision.",
     };
-  }
   try {
     const next = confirmOperation(
       kit,
@@ -467,15 +341,14 @@ export function confirmObservedReserve(
     return {
       ok: false,
       reason: "confirm-failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "The observed transition does not confirm this reserve.",
+      message: reasonOf(
+        error,
+        "The observed transition does not confirm this reserve.",
+      ),
     };
   }
 }
 
-/** Honest run-status copy for the export/run surface. */
 export function reserveRunStatus(): string {
   return `Wallet-signed reserve runtime: ${RESERVE_SUBMIT_PATH}. Prepare produces a descriptor only. No reserve is claimed complete without a real signed transaction and a matching observation.`;
 }

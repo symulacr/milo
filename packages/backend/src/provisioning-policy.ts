@@ -6,23 +6,22 @@ import { validPublicConstructor } from "./public-constructor.ts";
 export const PROVIDER_RETRY_WINDOW_MS = 23 * 60 * 60_000;
 export const PROVIDER_LEASE_MS = 60_000;
 
+const nonNegative = (value: number): boolean =>
+  Number.isSafeInteger(value) && value >= 0;
+
 export function validJobClock(
   job: { generation: number; startedAt: number; firstAttemptAt?: number },
   now: number,
 ) {
   return (
-    Number.isSafeInteger(now) &&
-    now >= 0 &&
+    nonNegative(now) &&
     Number.isSafeInteger(job.generation) &&
     job.generation > 0 &&
     job.generation < Number.MAX_SAFE_INTEGER &&
-    Number.isSafeInteger(job.startedAt) &&
-    job.startedAt >= 0 &&
+    nonNegative(job.startedAt) &&
     job.startedAt <= now &&
     (job.firstAttemptAt === undefined ||
-      (Number.isSafeInteger(job.firstAttemptAt) &&
-        job.firstAttemptAt >= 0 &&
-        job.firstAttemptAt <= job.startedAt))
+      (nonNegative(job.firstAttemptAt) && job.firstAttemptAt <= job.startedAt))
   );
 }
 
@@ -43,9 +42,8 @@ export function validateImagePackPolicy(
     policy.unitPriceMinor <= 0 ||
     policy.unitPriceMinor !== quote.amountMinor ||
     quote.currency !== "USD"
-  ) {
+  )
     throw new Error("Approved USD image-pack policy required");
-  }
 }
 
 export function validateFreeze(
@@ -55,8 +53,7 @@ export function validateFreeze(
 ) {
   if (
     !validPublicConstructor(quote) ||
-    !Number.isSafeInteger(now) ||
-    now < 0 ||
+    !nonNegative(now) ||
     quote.network !== "preprod" ||
     !Number.isSafeInteger(expiresAt) ||
     expiresAt <= now ||
@@ -76,9 +73,8 @@ export function validateFreeze(
       quote.initialStateFingerprint,
       quote.genesisHash,
     ].every((value) => HEX64.test(value))
-  ) {
+  )
     throw new Error("Approved preprod quote is invalid or expired");
-  }
   let previous = Math.floor(now / 1000);
   for (const deadline of [
     quote.acceptanceDeadlineSeconds,
@@ -98,10 +94,8 @@ export function usableObservation(
   startedAt: number,
 ) {
   return (
-    Number.isSafeInteger(now) &&
-    now >= 0 &&
-    Number.isSafeInteger(startedAt) &&
-    startedAt >= 0 &&
+    nonNegative(now) &&
+    nonNegative(startedAt) &&
     startedAt <= now &&
     Number.isSafeInteger(authorization.usableFrom) &&
     Number.isSafeInteger(authorization.usableUntil) &&
@@ -111,9 +105,6 @@ export function usableObservation(
     authorization.usableUntil >= authorization.usableFrom &&
     authorization.usableUntil - authorization.usableFrom <=
       PAYMENT_AUTHORIZATION_WINDOW_MS &&
-    // Usable half-open window: capture/observation must land before usableUntil
-    // (which is already min(captureBeforeMs, observation TTL)). Age < 60s alone
-    // would still accept a hold whose provider expiry has already passed.
     now < authorization.usableUntil &&
     HEX64.test(authorization.providerReceiptFingerprint)
   );

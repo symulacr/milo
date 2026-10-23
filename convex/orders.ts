@@ -1,15 +1,3 @@
-/**
- * Chain-backed order projection writer and reader.
- *
- * `orders:recordObservation` is the A1 chain ingest half behind the
- * `observationIngest → chainObservations → orders` path. The bind/patch body
- * is `applyChainObservation` (fixture-free, fail-closed). This module only
- * wires that body to Convex storage and exposes the read-model projection
- * the console is allowed to show.
- *
- * Labels: local Convex RUNTIME evidence is not a hosted-provider row.
- */
-
 import {
   type DataModelFromSchemaDefinition,
   type GenericQueryCtx,
@@ -129,27 +117,30 @@ type ChainDbCtx = {
   };
 };
 
+function findChainOrder(
+  ctx: ChainDbCtx,
+  index: "by_order" | "by_address",
+  field: "orderId" | "address",
+  value: string,
+): Promise<ChainOrderDocument | null> {
+  return ctx.db
+    .query("chainOrders")
+    .withIndex(index, (q) => q.eq(field, value))
+    .unique() as Promise<ChainOrderDocument | null>;
+}
+
 function chainDb(ctx: ChainDbCtx): ChainObservationDb {
   return {
     async orderById(orderId) {
-      const doc = (await ctx.db
-        .query("chainOrders")
-        .withIndex("by_order", (q) => q.eq("orderId", orderId))
-        .unique()) as ChainOrderDocument | null;
+      const doc = await findChainOrder(ctx, "by_order", "orderId", orderId);
       return doc ? toChainOrderRow(doc) : undefined;
     },
     async addressOwner(address) {
-      const doc = (await ctx.db
-        .query("chainOrders")
-        .withIndex("by_address", (q) => q.eq("address", address))
-        .unique()) as ChainOrderDocument | null;
+      const doc = await findChainOrder(ctx, "by_address", "address", address);
       return doc ? { orderId: doc.orderId } : undefined;
     },
     async patchOrder(orderId, patch) {
-      const doc = (await ctx.db
-        .query("chainOrders")
-        .withIndex("by_order", (q) => q.eq("orderId", orderId))
-        .unique()) as ChainOrderDocument | null;
+      const doc = await findChainOrder(ctx, "by_order", "orderId", orderId);
       if (!doc) throw new Error("chain order disappeared mid-observation");
       await ctx.db.patch(doc._id, patch);
     },
@@ -159,10 +150,6 @@ function chainDb(ctx: ChainDbCtx): ChainObservationDb {
   };
 }
 
-/**
- * Durable chain-observation writer. Throws only on programmer error after
- * `applyChainObservation` already failed closed; the verdict is returned.
- */
 export const recordObservation = internalMutationGeneric({
   args: recordObservationArgs,
   returns: observationBinding,
@@ -182,11 +169,8 @@ export const recordObservation = internalMutationGeneric({
       },
       Date.now(),
     );
-    // Keep the delivery projection aligned with the chain on a real bind. The
-    // chain row stays the authority; `files.*` reads the projection.
     if (result.kind === "bind") {
       await projectDeliveryPhase(ctx, args.orderId, args.phase, args.revision);
-      // A terminal phase is the only thing that may open a capture or a void.
       if (args.phase === "APPROVED" || args.phase === "CANCELLED")
         await ctx.scheduler.runAfter(0, openSettlementRef, {
           orderId: args.orderId,
@@ -196,22 +180,6 @@ export const recordObservation = internalMutationGeneric({
   },
 });
 
-/**
- * Read-model projection for the console. A phase is present only when a
- * backing `chainOrders` row exists; missing quote or missing order is null.
- *
- * Authorization mirrors the sibling read paths (`paymentMonitoring.status`,
- * `files.*`): the caller must present a verified Privy subject, and that
- * subject must hold an active membership in the quote's scope as its buyer or
- * its merchant. A missing quote, a missing backing order, or a
- * non-participant membership row is an ordinary absence, so the query returns
- * null rather than throwing and keeps its `v.union(record, v.null())`
- * contract. The `chainOrders` row carries no scope or party columns, so the
- * quote is resolved first to find the scope; memberships are keyed by
- * (privySubject, scopeId), so one active merchant membership in the quote's
- * scope is that quote's merchant. Identity failure alone throws, as every
- * sibling does.
- */
 export const read = queryGeneric({
   args: { quoteId: v.string() },
   returns: v.union(chainOrderRecord, v.null()),
@@ -247,8 +215,6 @@ export const read = queryGeneric({
       status: "active" | "revoked";
     } | null;
     const isBuyer = isQuoteBuyer(membership, quote.buyerAccountId);
-    // Memberships are keyed by (privySubject, scopeId), so one active merchant
-    // membership in the quote's scope is that quote's merchant.
     const isMerchant =
       membership?.status === "active" && membership.role === "merchant";
     if (!isBuyer && !isMerchant) return null;
@@ -257,14 +223,16 @@ export const read = queryGeneric({
       observedAt === null
         ? null
         : Date.now() - observedAt <= MAX_OBSERVATION_AGE_MS;
-    const deliveries = await ctx.db
-      .query("deliveries")
-      .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
-      .collect();
-    const grants = await ctx.db
-      .query("fileGrants")
-      .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
-      .collect();
+    const [deliveries, grants] = await Promise.all([
+      ctx.db
+        .query("deliveries")
+        .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
+        .collect(),
+      ctx.db
+        .query("fileGrants")
+        .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
+        .collect(),
+    ]);
     const lastDelivery = deliveries[deliveries.length - 1] as
       | { files?: unknown[] }
       | undefined;

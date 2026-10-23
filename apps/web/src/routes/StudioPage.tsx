@@ -18,13 +18,10 @@ export function StudioPage() {
           A sample creative studio making considered product imagery, not a real
           listing.
         </p>
-        <p>“Warm light, quiet shapes — one vessel, one story.”</p>
         <div className="hero-actions">
           <a href="/quotes/sample-001" className="button">
             View the sample agreement ↗
           </a>
-          {/* The tour is an in-bundle public route, so it navigates without a
-              full-page reload. */}
           <Link to="/demo" className="button secondary">
             Take the 4-step guided tour
           </Link>

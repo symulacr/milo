@@ -1,17 +1,3 @@
-/**
- * Thin structural types for the order contract boundary.
- *
- * Circuit identifiers and private-state shapes are derived from the generated
- * contract artifacts (packages/contract/generated/contract/index.d.ts), not a
- * parallel hand-maintained union. `hashTerms` / `hashCapability` live on the
- * generated module's `pureCircuits` and are never reimplemented here — openings
- * must never cross as transaction arguments (packages/contract/SPEC.md).
- *
- * Runtime loading of the generated module is a Wave B concern (it pulls the
- * Compact WASM runtime). This package only needs the types.
- */
-
-/** Mirrors generated `Phase`. */
 export const Phase = {
   DEPLOYED: 0,
   RESERVED: 1,
@@ -23,7 +9,6 @@ export const Phase = {
 } as const;
 export type Phase = (typeof Phase)[keyof typeof Phase];
 
-/** Mirrors generated `Role` (`BUYER=0`, `MERCHANT=1`, `OPERATOR=2`). */
 export const Role = {
   BUYER: 0,
   MERCHANT: 1,
@@ -31,7 +16,6 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
-/** Mirrors generated `Terms`. Values are Compact-serialized field shapes. */
 export type Terms = {
   readonly serviceVersion: bigint;
   readonly packQuantity: bigint;
@@ -45,7 +29,6 @@ export type Terms = {
   readonly salt: Uint8Array;
 };
 
-/** Mirrors generated `Configuration` (public constructor inputs). */
 export type Configuration = {
   readonly network: Uint8Array;
   readonly orderNonce: Uint8Array;
@@ -59,19 +42,13 @@ export type Configuration = {
   readonly resolutionDeadline: bigint;
 };
 
-/**
- * Actor-local private state for the buyer `reserve` path. Secrets never
- * synchronize through Convex or Cascade (packages/contract/SPEC.md).
- */
 export type BuyerPrivateState = {
   readonly actor: "buyer";
   readonly secret: Uint8Array;
   readonly terms: Terms;
-  /** Buyer approval limit. Reserve-only and self-declared. */
   readonly limit: bigint;
 };
 
-/** Actor-local private state for the merchant `accept` path. */
 export type MerchantPrivateState = {
   readonly actor: "merchant";
   readonly secret: Uint8Array;

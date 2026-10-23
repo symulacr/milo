@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { testStripeClient } from "./stripe-provisioning.server";
+import { isTestStripeId, testStripeClient } from "./stripe-observer.server";
 import {
   canonicalPayload,
   type Provenance,
@@ -38,7 +38,16 @@ export interface CustomerFactReader {
   };
 }
 
-// Provider existence is verified; the buyer mapping remains operator-asserted.
+const IDENTIFIER_FIELDS = [
+  "buyerAccountId",
+  "stripeAccountId",
+  "stripeCustomerId",
+] as const;
+
+function isTrustedIdentifier(value: string): boolean {
+  return value.length > 0 && value.length <= 512 && value.trim() === value;
+}
+
 export async function provisionTestCustomerFacts<T>(
   input: CustomerFactRequest,
   commit: (args: CustomerFactCommit) => Promise<T>,
@@ -50,19 +59,11 @@ export async function provisionTestCustomerFacts<T>(
     process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES,
   );
   if (
-    ![
-      input.buyerAccountId,
-      input.stripeAccountId,
-      input.stripeCustomerId,
-    ].every(
-      (id) =>
-        typeof id === "string" &&
-        id.length > 0 &&
-        id.length <= 512 &&
-        id.trim() === id,
+    !IDENTIFIER_FIELDS.every(
+      (field) =>
+        typeof input[field] === "string" && isTrustedIdentifier(input[field]),
     ) ||
-    !/^acct_[a-zA-Z0-9]+$/.test(input.stripeAccountId) ||
-    !/^cus_[a-zA-Z0-9]+$/.test(input.stripeCustomerId)
+    !isTestStripeId(input.stripeAccountId, input.stripeCustomerId)
   )
     throw new Error("Invalid trusted customer fact identifiers");
 
@@ -83,11 +84,9 @@ export async function provisionTestCustomerFacts<T>(
     accountId = account.id;
     customerId = customer.id;
   } catch {
-    // Provider-path failures stay redacted: they can carry identifiers and payloads.
     throw new Error("Stripe test customer facts unavailable");
   }
-  // Local digest computation sits outside the redaction boundary: a throw here
-  // is a programmer error and must not surface as a provider outage.
+
   const evidenceFingerprint = createHash("sha256")
     .update(
       canonicalPayload({
@@ -105,7 +104,6 @@ export async function provisionTestCustomerFacts<T>(
     )
     .digest("hex");
 
-  // The existing mutation rechecks current authority and immutable/revoked state.
   return commit({
     requestId: input.requestId,
     provenance: {

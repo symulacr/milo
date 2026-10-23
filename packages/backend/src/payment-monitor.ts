@@ -23,6 +23,14 @@ export type MonitorStatus = {
   canStop: boolean;
 };
 
+type Session = { state: string; consentAt: number; expiresAt: number };
+
+const validLifetime = (session: Session): boolean =>
+  Number.isSafeInteger(session.consentAt) &&
+  session.consentAt >= 0 &&
+  Number.isSafeInteger(session.expiresAt) &&
+  session.expiresAt === session.consentAt + MONITOR_DURATION_MS;
+
 export function projectMonitorStatus(
   session: {
     state: "waiting" | "running" | "stopped";
@@ -34,20 +42,16 @@ export function projectMonitorStatus(
   now: number,
 ): Pick<MonitorStatus, "state" | "expiresAt" | "canStop"> {
   if (!session) return { state: "none", expiresAt: null, canStop: false };
-  const validLifetime =
-    Number.isSafeInteger(session.consentAt) &&
-    session.consentAt >= 0 &&
-    Number.isSafeInteger(session.expiresAt) &&
-    session.expiresAt === session.consentAt + MONITOR_DURATION_MS;
-  const expiresAt = validLifetime ? session.expiresAt : null;
+  const lifetime = validLifetime(session);
+  const expiresAt = lifetime ? session.expiresAt : null;
   const canStop = ownsConsent && session.state !== "stopped";
   if (session.state === "stopped")
     return { state: "stopped", expiresAt, canStop };
-  if (validLifetime && Number.isSafeInteger(now) && now >= session.expiresAt)
+  if (lifetime && Number.isSafeInteger(now) && now >= session.expiresAt)
     return { state: "expired", expiresAt, canStop };
   return {
     state:
-      bindingCurrent && validLifetime && monitorLive(session, now)
+      bindingCurrent && lifetime && monitorLive(session, now)
         ? session.state
         : "unavailable",
     expiresAt,
@@ -55,22 +59,16 @@ export function projectMonitorStatus(
   };
 }
 
-export function monitorLive(
-  session: { state: string; consentAt: number; expiresAt: number },
-  now: number,
-) {
+export function monitorLive(session: Session, now: number) {
   return (
     session.state !== "stopped" &&
     Number.isSafeInteger(now) &&
-    Number.isSafeInteger(session.consentAt) &&
-    session.consentAt >= 0 &&
+    validLifetime(session) &&
     now >= session.consentAt &&
-    session.expiresAt === session.consentAt + MONITOR_DURATION_MS &&
     now < session.expiresAt
   );
 }
 
-// Snapshot all authority, including trusted revocation versions, across external I/O.
 export async function monitorBinding(
   ctx: MonitorQueryContext,
   quoteId: string,

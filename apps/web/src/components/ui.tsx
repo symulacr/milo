@@ -9,7 +9,6 @@ export function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-/* Status is always icon + text, never color alone (04-ui-design §2.1). */
 const toneGlyphs: Record<string, ReactNode> = {
   success: <CheckIcon />,
   warning: <AlertIcon />,

@@ -34,10 +34,11 @@ export async function verifySampleFiles(
     sampleFiles.map(async (file) => {
       const response = await fetch(file.src, { signal, cache: "no-store" });
       if (!response.ok) throw new Error("File unavailable. Please try again.");
-      const bytes = await response.arrayBuffer();
-      const digest = await crypto.subtle.digest("SHA-256", bytes);
-      const hash = bytesToHex(new Uint8Array(digest));
-      if (hash !== file.hash)
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        await response.arrayBuffer(),
+      );
+      if (bytesToHex(new Uint8Array(digest)) !== file.hash)
         throw new Error(
           "Cannot verify: sample bytes do not match the expected digest. Approval stays blocked.",
         );

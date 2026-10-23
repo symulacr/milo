@@ -49,7 +49,6 @@ export interface PaymentAuthorization {
   currency: string;
   usableFrom: number;
   usableUntil: number;
-  /** Independently retrieved provider authorization expiry, in milliseconds. */
   captureBeforeMs: number;
   source: "payment-observer";
   status: "pending" | "authorized" | "captured" | "voided" | "failed";
@@ -57,7 +56,6 @@ export interface PaymentAuthorization {
 }
 export interface ObservedDeployment extends PublicConstructorInputs {
   id: string;
-  /** Frozen-quote provenance the writer and admission both require. */
   quoteId: string;
   quoteVersion: number;
   observationVersion: 2;
@@ -98,7 +96,6 @@ export interface AdmissionTransaction {
   authenticatedAccountId(): string | undefined;
   serverNow(): number;
   getFrozenQuote(id: string): FrozenQuote | undefined;
-  /** Returns current independently observed provider state, never a caller claim. */
   getCurrentPaymentAuthorization(id: string): PaymentAuthorization | undefined;
   getObservedDeployment(id: string): ObservedDeployment | undefined;
   getAdmissionTimingPolicy(network: string): AdmissionTimingPolicy | undefined;
@@ -107,9 +104,6 @@ export interface AdmissionTransaction {
   getBindingByQuote(quoteId: string): AdmissionBinding | undefined;
   insertBinding(binding: AdmissionBinding): void;
 }
-// The 5-field payment-to-quote identity kernel. The two sides use different
-// field names (payment carriers: quoteId, quoteVersion; quote carriers: id,
-// version), so transposed arguments fail to compile.
 export function paymentBindsQuote(
   payment: {
     quoteId: string;
@@ -134,12 +128,9 @@ export function paymentBindsQuote(
     payment.currency === quote.currency
   );
 }
-
-/** Server-owned capture safety policy; callers cannot supply it in admission input. */
 export interface AdmissionTimingPolicy {
   captureSafetyMarginMs: number;
 }
-/** Production must implement this as one database transaction; tests may use an explicit double. */
 export interface AtomicAdmissionRepository {
   transact<T>(operation: (tx: AdmissionTransaction) => T): T;
 }
@@ -154,14 +145,60 @@ export type AdmissionDecision =
   | { kind: "already-bound"; binding: AdmissionBinding }
   | { kind: "rejected"; reason: string };
 
-/** Freshness window for deployment observations at write and at bind. */
 export const MAX_OBSERVATION_AGE_MS = 5 * 60_000;
-// ADMISSION.md invariant: a payment observation authorizes admission for one
-// minute. Every consumer below imports this constant; the literals were
-// drift-prone copies of the same fact.
 export const PAYMENT_AUTHORIZATION_WINDOW_MS = 60_000;
-/** Future-dated observations beyond this skew are contradictory, not merely fresh. */
 export const MAX_FUTURE_SKEW_MS = 30_000;
+
+const INPUT_KEYS = [
+  "address",
+  "authorizationId",
+  "observationId",
+  "quoteId",
+] as const;
+const REQUIRED_SET: ReadonlySet<string> = new Set(REQUIRED_ENTRYPOINTS);
+const QUOTE_HASHES = [
+  "termsCommitment",
+  "artifactFingerprint",
+  "keySetFingerprint",
+  "rolesFingerprint",
+  "initialStateFingerprint",
+  "genesisHash",
+] as const;
+const OBSERVED_HASHES = [
+  ...QUOTE_HASHES,
+  "maintenanceReceiptFingerprint",
+  "blockHash",
+  "stateFingerprint",
+] as const;
+const POLICY_FIELDS = [
+  "termsCommitment",
+  "constructorVersion",
+  "constructorEncoding",
+  "buyerCommitment",
+  "merchantCommitment",
+  "operatorCommitment",
+  "artifactFingerprint",
+  "keySetFingerprint",
+  "rolesFingerprint",
+  "initialStateFingerprint",
+  "genesisHash",
+  "acceptanceDeadlineSeconds",
+  "deliveryDeadlineSeconds",
+  "reviewDeadlineSeconds",
+  "resolutionDeadlineSeconds",
+] as const;
+
+const isId = (value: string | undefined): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+const hash = (value: string): boolean => HEX64.test(value);
+const rejected = (reason: string): AdmissionDecision => ({
+  kind: "rejected",
+  reason,
+});
+const positive = (value: number): boolean =>
+  Number.isSafeInteger(value) && value > 0;
+const hashes = (value: object, fields: readonly string[]): boolean =>
+  fields.every((field) => hash((value as Record<string, string>)[field]));
 
 export function decideCanonicalAdmission(
   repository: AtomicAdmissionRepository,
@@ -264,33 +301,13 @@ function validate(
     observed.observedAt - now > MAX_FUTURE_SKEW_MS
   )
     return "deployment observation is not fresh";
-  if (
-    observed.termsCommitment !== quote.termsCommitment ||
-    observed.constructorVersion !== quote.constructorVersion ||
-    observed.constructorEncoding !== quote.constructorEncoding ||
-    observed.buyerCommitment !== quote.buyerCommitment ||
-    observed.merchantCommitment !== quote.merchantCommitment ||
-    observed.operatorCommitment !== quote.operatorCommitment ||
-    observed.artifactFingerprint !== quote.artifactFingerprint ||
-    observed.keySetFingerprint !== quote.keySetFingerprint ||
-    observed.rolesFingerprint !== quote.rolesFingerprint ||
-    observed.initialStateFingerprint !== quote.initialStateFingerprint ||
-    observed.genesisHash !== quote.genesisHash ||
-    observed.acceptanceDeadlineSeconds !== quote.acceptanceDeadlineSeconds ||
-    observed.deliveryDeadlineSeconds !== quote.deliveryDeadlineSeconds ||
-    observed.reviewDeadlineSeconds !== quote.reviewDeadlineSeconds ||
-    observed.resolutionDeadlineSeconds !== quote.resolutionDeadlineSeconds
-  )
+  if (!POLICY_FIELDS.every((field) => observed[field] === quote[field]))
     return "observed deployment does not match approved quote policy";
-  if (
-    !sameEntrypoints(observed.entrypoints) ||
-    observed.phase !== "DEPLOYED" ||
-    observed.revision !== 0 ||
-    observed.maintenancePolicy !== "locked"
-  )
+  if (!isBootstrapComplete(observed))
     return "observed deployment bootstrap policy is incomplete";
   return undefined;
 }
+
 function validQuote(q: FrozenQuote): boolean {
   return (
     validPublicConstructor(q) &&
@@ -298,22 +315,14 @@ function validQuote(q: FrozenQuote): boolean {
     isId(q.network) &&
     isId(q.nonce) &&
     isId(q.buyerAccountId) &&
-    Number.isSafeInteger(q.version) &&
-    q.version > 0 &&
-    Number.isSafeInteger(q.amountMinor) &&
-    q.amountMinor > 0 &&
+    positive(q.version) &&
+    positive(q.amountMinor) &&
     validDeadlines(q) &&
     q.currency === "USD" &&
-    [
-      q.termsCommitment,
-      q.artifactFingerprint,
-      q.keySetFingerprint,
-      q.rolesFingerprint,
-      q.initialStateFingerprint,
-      q.genesisHash,
-    ].every(hash)
+    hashes(q, QUOTE_HASHES)
   );
 }
+
 function validAuthorization(a: PaymentAuthorization): boolean {
   return (
     a.source === "payment-observer" &&
@@ -321,30 +330,27 @@ function validAuthorization(a: PaymentAuthorization): boolean {
     isId(a.id) &&
     isId(a.quoteId) &&
     isId(a.buyerAccountId) &&
-    Number.isSafeInteger(a.quoteVersion) &&
-    a.quoteVersion > 0 &&
-    Number.isSafeInteger(a.amountMinor) &&
-    a.amountMinor > 0 &&
+    positive(a.quoteVersion) &&
+    positive(a.amountMinor) &&
     a.currency === "USD" &&
     Number.isSafeInteger(a.usableFrom) &&
     Number.isSafeInteger(a.usableUntil) &&
     a.usableFrom >= 0 &&
     a.usableUntil >= 0 &&
     a.usableFrom < a.usableUntil &&
-    Number.isSafeInteger(a.captureBeforeMs) &&
-    a.captureBeforeMs > 0 &&
+    positive(a.captureBeforeMs) &&
     a.usableUntil <= a.captureBeforeMs &&
     hash(a.providerReceiptFingerprint)
   );
 }
+
 function validObserved(o: ObservedDeployment): boolean {
   return (
     o.source === "chain-observer" &&
     o.observationVersion === 2 &&
     isId(o.id) &&
     isId(o.quoteId) &&
-    Number.isSafeInteger(o.quoteVersion) &&
-    o.quoteVersion > 0 &&
+    positive(o.quoteVersion) &&
     isId(o.network) &&
     isId(o.nonce) &&
     HEX64.test(o.address) &&
@@ -353,19 +359,10 @@ function validObserved(o: ObservedDeployment): boolean {
     Number.isSafeInteger(o.blockHeight) &&
     o.blockHeight >= 0 &&
     validDeadlines(o) &&
-    [
-      o.termsCommitment,
-      o.artifactFingerprint,
-      o.keySetFingerprint,
-      o.rolesFingerprint,
-      o.initialStateFingerprint,
-      o.genesisHash,
-      o.maintenanceReceiptFingerprint,
-      o.blockHash,
-      o.stateFingerprint,
-    ].every(hash)
+    hashes(o, OBSERVED_HASHES)
   );
 }
+
 function validDeadlines(value: {
   acceptanceDeadlineSeconds: number;
   deliveryDeadlineSeconds: number;
@@ -379,9 +376,7 @@ function validDeadlines(value: {
     value.resolutionDeadlineSeconds,
   ];
   return (
-    deadlines.every(
-      (deadline) => Number.isSafeInteger(deadline) && deadline > 0,
-    ) &&
+    deadlines.every(positive) &&
     deadlines.every(
       (deadline, index) => index === 0 || deadlines[index - 1] < deadline,
     )
@@ -395,26 +390,17 @@ function validTimingPolicy(policy: unknown): policy is AdmissionTimingPolicy {
     typeof margin === "number" && Number.isSafeInteger(margin) && margin > 0
   );
 }
+
 function sameEntrypoints(actual: readonly string[]): boolean {
   return (
     actual.length === REQUIRED_ENTRYPOINTS.length &&
     new Set(actual).size === actual.length &&
-    REQUIRED_ENTRYPOINTS.every((entrypoint) => actual.includes(entrypoint))
+    actual.every((entrypoint) => REQUIRED_SET.has(entrypoint))
   );
 }
 
-/**
- * Writer-side structural check for a deployment observation. Reused by
- * `observationIngest:recordDeployment` so the ingest path and admission share
- * one validator. Covers quote provenance, the locked DEPLOYED/rev-0 bootstrap,
- * and the exact entrypoint set.
- */
-export function validDeploymentObservation(o: ObservedDeployment): boolean {
+function isBootstrapComplete(o: ObservedDeployment): boolean {
   return (
-    validObserved(o) &&
-    isId(o.quoteId) &&
-    Number.isSafeInteger(o.quoteVersion) &&
-    o.quoteVersion > 0 &&
     sameEntrypoints(o.entrypoints) &&
     o.phase === "DEPLOYED" &&
     o.revision === 0 &&
@@ -422,16 +408,20 @@ export function validDeploymentObservation(o: ObservedDeployment): boolean {
   );
 }
 
-/**
- * Chain bind-verdict vocabulary shared by the observation writer and the
- * order projection: bind | stale | contradictory | address-claimed.
- */
+export function validDeploymentObservation(o: ObservedDeployment): boolean {
+  return (
+    validObserved(o) &&
+    isId(o.quoteId) &&
+    positive(o.quoteVersion) &&
+    isBootstrapComplete(o)
+  );
+}
+
 export type ObservationBinding =
   | { kind: "bind"; phase: string; revision: number }
   | { kind: "stale"; reason: string }
   | { kind: "contradictory"; reason: string }
   | { kind: "address-claimed"; reason: string };
-
 export interface ChainOrderTruth {
   orderId: string;
   address: string;
@@ -440,7 +430,6 @@ export interface ChainOrderTruth {
   phase: string;
   revision: number;
 }
-
 export interface ChainObservationInput {
   orderId: string;
   address: string;
@@ -449,63 +438,44 @@ export interface ChainObservationInput {
   phase: string;
   revision: number;
 }
-
-/**
- * Pure chain-observation verdict. Never writes. `addressOwner` is the current
- * reverse-lookup claimant for the observed address, when one exists.
- */
+const MISMATCH = "observation does not match the admitted order";
 export function decideObservationBinding(
   current: ChainOrderTruth | null | undefined,
   observed: ChainObservationInput,
   addressOwner?: { orderId: string } | null,
 ): ObservationBinding {
-  if (!current) {
-    return {
-      kind: "contradictory",
-      reason: "observation does not match the admitted order",
-    };
-  }
+  if (!current) return { kind: "contradictory", reason: MISMATCH };
   if (
     addressOwner &&
     addressOwner.orderId !== current.orderId &&
     addressOwner.orderId !== observed.orderId
-  ) {
+  )
     return {
       kind: "address-claimed",
       reason: "the observed address is already bound to a different order",
     };
-  }
   if (
     current.orderId !== observed.orderId ||
     current.address !== observed.address ||
     current.nonce !== observed.nonce
-  ) {
-    return {
-      kind: "contradictory",
-      reason: "observation does not match the admitted order",
-    };
-  }
-  if (current.artifactFingerprint !== observed.artifactFingerprint) {
+  )
+    return { kind: "contradictory", reason: MISMATCH };
+  if (current.artifactFingerprint !== observed.artifactFingerprint)
     return {
       kind: "contradictory",
       reason:
         "observation does not reproduce the admitted artifact fingerprint",
     };
-  }
-  if (observed.revision < current.revision) {
+  if (observed.revision < current.revision)
     return {
       kind: "stale",
       reason: "chain observation is behind the recorded revision",
     };
-  }
-  if (observed.revision === current.revision) {
-    return observed.phase === current.phase
-      ? { kind: "bind", phase: observed.phase, revision: observed.revision }
-      : {
-          kind: "contradictory",
-          reason: "observation does not match the admitted order",
-        };
-  }
+  if (
+    observed.revision === current.revision &&
+    observed.phase !== current.phase
+  )
+    return { kind: "contradictory", reason: MISMATCH };
   return { kind: "bind", phase: observed.phase, revision: observed.revision };
 }
 
@@ -523,6 +493,7 @@ function sameBinding(
     binding.authorizationId === input.authorizationId
   );
 }
+
 function assertExactInput(input: BindAdmissionInput): void {
   if (
     !input ||
@@ -532,23 +503,13 @@ function assertExactInput(input: BindAdmissionInput): void {
   )
     throw new Error("admission input must be a plain object");
   const keys = Object.keys(input).sort();
-  const allowed = ["address", "authorizationId", "observationId", "quoteId"];
   if (
     Object.getOwnPropertySymbols(input).length ||
-    keys.length !== allowed.length ||
-    keys.some((key, index) => key !== allowed[index]) ||
-    !allowed.every((key) => isId(input[key as keyof BindAdmissionInput]))
+    keys.length !== INPUT_KEYS.length ||
+    keys.some((key, index) => key !== INPUT_KEYS[index]) ||
+    !INPUT_KEYS.every((key) => isId(input[key]))
   )
     throw new Error(
       "admission input must contain only non-empty quote, observation, authorization IDs and address",
     );
-}
-function hash(value: string): boolean {
-  return HEX64.test(value);
-}
-function isId(value: string | undefined): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-function rejected(reason: string): AdmissionDecision {
-  return { kind: "rejected", reason };
 }

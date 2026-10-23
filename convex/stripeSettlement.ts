@@ -1,8 +1,3 @@
-/**
- * RECONSTRUCTED — D1d stripeSettlement:run
- * Provider action: capture on APPROVED, void on CANCELLED.
- * Test-mode Stripe only. Locally-signed webhooks never reach here as "Stripe events".
- */
 import {
   internalActionGeneric,
   internalQueryGeneric,
@@ -38,14 +33,6 @@ function env(name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-/**
- * One Stripe v1 POST.
- *
- * The idempotency key travels in the `Idempotency-Key` header: Stripe ignores
- * any body parameter of that name, so a retry would otherwise be a second
- * capture. Keys are retained for at least 24 hours and a retry with the same
- * key returns the first response, including a cached 500.
- */
 async function stripeForm(
   path: string,
   form: Record<string, string>,
@@ -53,7 +40,6 @@ async function stripeForm(
 ): Promise<{ status: number; body: string }> {
   const key = env("STRIPE_SECRET_KEY");
   if (!key) throw new Error("STRIPE_SECRET_KEY missing");
-  const body = new URLSearchParams(form).toString();
   const res = await fetch(`https://api.stripe.com/v1${path}`, {
     method: "POST",
     headers: {
@@ -61,11 +47,60 @@ async function stripeForm(
       "Content-Type": "application/x-www-form-urlencoded",
       "Idempotency-Key": idempotencyKey,
     },
-    body,
+    body: new URLSearchParams(form).toString(),
   });
-  const text = await res.text();
-  return { status: res.status, body: text };
+  return { status: res.status, body: await res.text() };
 }
+
+type ProviderOutcome = "captured" | "voided" | "ambiguous" | "retry" | "failed";
+
+function classify(
+  action: "capture" | "void",
+  status: number,
+  body: string,
+  amountMinor: number,
+): { outcome: ProviderOutcome; receipt?: Record<string, unknown> } {
+  if (status >= 200 && status < 300) {
+    let providerStatus = action === "capture" ? "succeeded" : "canceled";
+    let amountCaptured = amountMinor;
+    try {
+      const parsed = JSON.parse(body) as {
+        status?: string;
+        amount_received?: number;
+      };
+      if (parsed.status) providerStatus = parsed.status;
+      if (typeof parsed.amount_received === "number")
+        amountCaptured = parsed.amount_received;
+    } catch {}
+    return {
+      outcome: action === "capture" ? "captured" : "voided",
+      receipt: { providerStatus, amountCaptured, observedAt: Date.now() },
+    };
+  }
+  if (status === 409 || status === 425) return { outcome: "ambiguous" };
+  if (status >= 500 || status === 429) return { outcome: "retry" };
+  return { outcome: "failed" };
+}
+
+const beginRef = makeFunctionReference<
+  "mutation",
+  { opId: string; generation: number; attempt: number },
+  {
+    action: "capture" | "void";
+    idempotencyKey: string;
+    payment: string;
+    amountMinor: number;
+    currency: string;
+  } | null
+>("settlement:begin");
+
+const finishRef = makeFunctionReference<"mutation">("settlement:finish");
+
+const providerRef = makeFunctionReference<
+  "query",
+  { payment: string },
+  unknown
+>("stripeSettlement:providerIntent");
 
 export const run = internalActionGeneric({
   args: {
@@ -75,85 +110,44 @@ export const run = internalActionGeneric({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const beginRef = makeFunctionReference<
-      "mutation",
-      typeof args,
-      {
-        action: "capture" | "void";
-        idempotencyKey: string;
-        payment: string;
-        amountMinor: number;
-        currency: string;
-      } | null
-    >("settlement:begin");
     const started = await ctx.runMutation(beginRef, args);
     if (!started) return null;
-    const finishRef = makeFunctionReference<"mutation">("settlement:finish");
-    const provider = await ctx.runQuery(
-      makeFunctionReference<"query", { payment: string }, unknown>(
-        "stripeSettlement:providerIntent",
-      ),
-      { payment: started.payment },
-    );
-    if (!provider || typeof provider !== "object") {
-      await ctx.runMutation(finishRef, {
+    const finish = (
+      outcome: ProviderOutcome,
+      receipt?: Record<string, unknown>,
+    ) =>
+      ctx.runMutation(finishRef, {
         ...args,
-        outcome: "failed",
+        outcome,
+        ...(receipt ? { receipt } : {}),
       });
-      return null;
-    }
-    const pi = (provider as { stripePaymentIntentId?: string })
-      .stripePaymentIntentId;
+    const provider = await ctx.runQuery(providerRef, {
+      payment: started.payment,
+    });
+    const pi =
+      provider && typeof provider === "object"
+        ? (provider as { stripePaymentIntentId?: string }).stripePaymentIntentId
+        : undefined;
     if (!pi) {
-      await ctx.runMutation(finishRef, { ...args, outcome: "failed" });
+      await finish("failed");
       return null;
     }
+    const path =
+      started.action === "capture"
+        ? `/payment_intents/${pi}/capture`
+        : `/payment_intents/${pi}/cancel`;
     try {
-      const path =
-        started.action === "capture"
-          ? `/payment_intents/${pi}/capture`
-          : `/payment_intents/${pi}/cancel`;
       const result = await stripeForm(path, {}, started.idempotencyKey);
-      if (result.status >= 200 && result.status < 300) {
-        let providerStatus =
-          started.action === "capture" ? "succeeded" : "canceled";
-        let amountCaptured = started.amountMinor;
-        try {
-          const parsed = JSON.parse(result.body) as {
-            status?: string;
-            amount_received?: number;
-          };
-          if (parsed.status) providerStatus = parsed.status;
-          if (typeof parsed.amount_received === "number")
-            amountCaptured = parsed.amount_received;
-        } catch {
-          /* keep defaults */
-        }
-        await ctx.runMutation(finishRef, {
-          ...args,
-          outcome: started.action === "capture" ? "captured" : "voided",
-          receipt: {
-            providerStatus,
-            amountCaptured,
-            observedAt: Date.now(),
-          },
-        });
-        return null;
-      }
-      if (result.status === 409 || result.status === 425) {
-        await ctx.runMutation(finishRef, { ...args, outcome: "ambiguous" });
-        return null;
-      }
-      if (result.status >= 500 || result.status === 429) {
-        // Transient: the same idempotency key makes the retry safe.
-        await ctx.runMutation(finishRef, { ...args, outcome: "retry" });
-        return null;
-      }
-      await ctx.runMutation(finishRef, { ...args, outcome: "failed" });
+      const verdict = classify(
+        started.action,
+        result.status,
+        result.body,
+        started.amountMinor,
+      );
+      await finish(verdict.outcome, verdict.receipt);
       return null;
     } catch {
-      // A transport failure is unknown, not a non-effect: retry under the key.
-      await ctx.runMutation(finishRef, { ...args, outcome: "retry" });
+      await finish("retry");
       return null;
     }
   },

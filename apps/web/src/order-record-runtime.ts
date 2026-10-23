@@ -1,14 +1,3 @@
-/**
- * Browser view-model for the one chain-backed order record the console may
- * show. The record is the Convex projection written by the A1 ingest path
- * (`observationIngest:recordDeployment` / `orders:recordObservation` →
- * `orders` + `chainObservations`); this module never invents a row.
- *
- * Invariant (B3): a phase label is only present when a backing record exists.
- * There is no default phase, no placeholder phase, and no phase for loading,
- * missing, or error states.
- */
-
 export type OrderPhase =
   | "DEPLOYED"
   | "RESERVED"
@@ -18,17 +7,14 @@ export type OrderPhase =
   | "APPROVED"
   | "CANCELLED";
 
-/** Resonance of `convex/orders.ts` `read` returns — the projection, not a client invention. */
 export type ChainOrderRecord = {
   orderId: string;
   network: "preprod";
-  /** Canonical contract address from the admitted binding / observation. */
   address: string;
   phase: OrderPhase;
   revision: number;
   deliveryManifest: string | null;
   observedAt: number | null;
-  /** Read-model freshness only; never transition authority (06 3.1). */
   fresh: boolean | null;
   fileCount: number;
 };
@@ -41,11 +27,6 @@ type OrderRecordAbsentReason =
   | "error"
   | "unconfigured";
 
-/**
- * Every display state of the order record. `phase` and `checkpointAddress`
- * exist only on the `record` arm — the type itself forbids a phase label
- * without a backing record.
- */
 export type OrderRecordView =
   | {
       readonly kind: "absent";
@@ -56,7 +37,6 @@ export type OrderRecordView =
       readonly kind: "record";
       readonly quoteId: string;
       readonly record: ChainOrderRecord;
-      /** Checkpoint address from the projection; never typed or invented. */
       readonly checkpointAddress: string;
       readonly phase: OrderPhase;
       readonly phaseLabel: string;
@@ -67,6 +47,12 @@ export const ORDER_RECORD_FUNCTION = "orders:read";
 export type OrderRecordTransport = {
   read(args: { quoteId: string }): Promise<ChainOrderRecord | null>;
 };
+
+type Outcome =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "result"; record: ChainOrderRecord | null };
 
 const ABSENT_COPY: Record<OrderRecordAbsentReason, string> = {
   "no-quote":
@@ -82,48 +68,24 @@ const ABSENT_COPY: Record<OrderRecordAbsentReason, string> = {
     "Convex is not configured, so no chain-backed order record is reachable. No phase is shown without a backing record.",
 };
 
-/**
- * Pure display decision. A phase label and checkpoint address are returned
- * only together with a non-null backing record; every other path is an
- * explicit absence that names what is missing.
- */
+const absent = (reason: OrderRecordAbsentReason): OrderRecordView => ({
+  kind: "absent",
+  reason,
+  message: ABSENT_COPY[reason],
+});
+
 export function describeOrderRecord(
   quoteId: string | null | undefined,
-  outcome:
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "error" }
-    | { status: "result"; record: ChainOrderRecord | null },
+  outcome: Outcome,
 ): OrderRecordView {
   const trimmed = (quoteId ?? "").trim();
-  if (!trimmed) {
-    return {
-      kind: "absent",
-      reason: "no-quote",
-      message: ABSENT_COPY["no-quote"],
-    };
-  }
-  if (outcome.status === "idle") {
-    return {
-      kind: "absent",
-      reason: "unloaded",
-      message: ABSENT_COPY.unloaded,
-    };
-  }
-  if (outcome.status === "loading") {
-    return {
-      kind: "absent",
-      reason: "loading",
-      message: ABSENT_COPY.loading,
-    };
-  }
-  if (outcome.status === "error") {
-    return { kind: "absent", reason: "error", message: ABSENT_COPY.error };
-  }
+  if (!trimmed) return absent("no-quote");
+  if (outcome.status === "idle") return absent("unloaded");
+  if (outcome.status === "loading") return absent("loading");
+  if (outcome.status === "error") return absent("error");
   const record = outcome.record;
-  if (!record || typeof record.address !== "string" || !record.address) {
-    return { kind: "absent", reason: "missing", message: ABSENT_COPY.missing };
-  }
+  if (!record || typeof record.address !== "string" || !record.address)
+    return absent("missing");
   return {
     kind: "record",
     quoteId: trimmed,
@@ -135,33 +97,23 @@ export function describeOrderRecord(
 }
 
 export function describeUnconfiguredOrderRecord(): OrderRecordView {
-  return {
-    kind: "absent",
-    reason: "unconfigured",
-    message: ABSENT_COPY.unconfigured,
-  };
+  return absent("unconfigured");
 }
 
-/**
- * A1 ingest provenance line for the diagnostics surface. The console reads the
- * projection; it does not re-ingest or simulate observations.
- */
 export function orderRecordProvenance(): string {
   return "Chain-backed order record: Convex orders projection written by the A1 ingest path (observationIngest → chainObservations → orders). Read-only from the browser; the console never writes phases.";
 }
 
+type Snapshot = {
+  quoteId: string;
+  outcome: Outcome;
+  busy: boolean;
+  message: string;
+};
+
 export class OrderRecordController {
   private listeners = new Set<() => void>();
-  private snapshot: {
-    quoteId: string;
-    outcome:
-      | { status: "idle" }
-      | { status: "loading" }
-      | { status: "error" }
-      | { status: "result"; record: ChainOrderRecord | null };
-    busy: boolean;
-    message: string;
-  } = {
+  private snapshot: Snapshot = {
     quoteId: "",
     outcome: { status: "idle" },
     busy: false,
@@ -178,18 +130,17 @@ export class OrderRecordController {
     };
   };
 
-  private update(patch: Partial<typeof this.snapshot>) {
+  private update(patch: Partial<Snapshot>) {
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) listener();
   }
 
   setQuoteId(quoteId: string) {
-    const trimmed = quoteId.trim();
     this.update({
       quoteId,
       outcome: { status: "idle" },
       busy: false,
-      message: trimmed ? ABSENT_COPY.unloaded : ABSENT_COPY["no-quote"],
+      message: quoteId.trim() ? ABSENT_COPY.unloaded : ABSENT_COPY["no-quote"],
     });
   }
 
@@ -226,7 +177,6 @@ export class OrderRecordController {
     }
   }
 
-  /** The pure view for the current snapshot — phase only with a backing record. */
   view(): OrderRecordView {
     return describeOrderRecord(this.snapshot.quoteId, this.snapshot.outcome);
   }

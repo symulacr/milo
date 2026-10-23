@@ -1,30 +1,23 @@
 import { z } from "zod";
 
-// Single owner of the browser-facing connection configuration: scripts and
-// dev/build validate process.env with publicConfig(), the web client parses
-// the /api/public-config response with publicConfigSchema. Both ends of the
-// fetch therefore share one definition of the trust boundary.
+const isHttp = (value: string) => /^https?:$/.test(new URL(value).protocol);
+const isConvex = (value: string) => {
+  const u = new URL(value);
+  return (
+    u.protocol === "https:" &&
+    u.hostname.endsWith(".convex.cloud") &&
+    !u.username &&
+    !u.password &&
+    u.pathname === "/" &&
+    !u.search &&
+    !u.hash
+  );
+};
+
 export const publicConfigSchema = z
   .object({
-    betterAuthUrl: z
-      .url()
-      .refine((value: string) => /^https?:$/.test(new URL(value).protocol))
-      .nullish(),
-    convexUrl: z
-      .url()
-      .refine((value: string) => {
-        const url = new URL(value);
-        return (
-          url.protocol === "https:" &&
-          url.hostname.endsWith(".convex.cloud") &&
-          !url.username &&
-          !url.password &&
-          url.pathname === "/" &&
-          !url.search &&
-          !url.hash
-        );
-      })
-      .nullish(),
+    betterAuthUrl: z.url().refine(isHttp).nullish(),
+    convexUrl: z.url().refine(isConvex).nullish(),
     midnightNetwork: z.literal("preprod"),
   })
   .strict();
@@ -33,10 +26,8 @@ export type PublicConfig = z.infer<typeof publicConfigSchema>;
 export function publicConfig(
   env: Record<string, string | undefined>,
 ): PublicConfig {
-  if (env.MIDNIGHT_NETWORK && env.MIDNIGHT_NETWORK !== "preprod") {
+  if (env.MIDNIGHT_NETWORK && env.MIDNIGHT_NETWORK !== "preprod")
     throw new Error("Only Midnight preprod is enabled for browser connections");
-  }
-  // Empty strings mean unset, as the previous hand-written checks did.
   return publicConfigSchema.parse({
     betterAuthUrl: env.BETTER_AUTH_URL || null,
     convexUrl: env.CONVEX_URL || null,
@@ -44,27 +35,25 @@ export function publicConfig(
   });
 }
 
+const HEADERS = {
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+};
+
 export function publicConfigResponse(
   request: Request,
   config: PublicConfig,
 ): Response {
-  const headers = {
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-  };
-  if (request.method !== "GET") {
+  if (request.method !== "GET")
     return new Response(null, {
       status: 405,
-      headers: { ...headers, Allow: "GET" },
+      headers: { ...HEADERS, Allow: "GET" },
     });
-  }
-  // Select fields again so even an extended server object cannot expose secrets.
+  const { betterAuthUrl, convexUrl, midnightNetwork } = config;
   return Response.json(
+    { betterAuthUrl, convexUrl, midnightNetwork },
     {
-      betterAuthUrl: config.betterAuthUrl,
-      convexUrl: config.convexUrl,
-      midnightNetwork: config.midnightNetwork,
+      headers: HEADERS,
     },
-    { headers },
   );
 }

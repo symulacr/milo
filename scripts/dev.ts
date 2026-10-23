@@ -14,12 +14,20 @@ import {
 
 const browserConfig = publicConfig(process.env);
 
+const publicDirectory = "apps/web/public";
+
 const publicRoutes = Object.fromEntries(
-  Array.from(new Bun.Glob("**/*").scanSync("apps/web/public")).map((path) => [
+  Array.from(new Bun.Glob("**/*").scanSync(publicDirectory)).map((path) => [
     `/${path}`,
-    Bun.file(`apps/web/public/${path}`),
+    Bun.file(`${publicDirectory}/${path}`),
   ]),
 );
+
+const byRoute = (routes: readonly string[], value: unknown) =>
+  Object.fromEntries(routes.map((route) => [route, value]));
+
+const byPrefix = (prefixes: readonly string[], value: unknown) =>
+  Object.fromEntries(prefixes.map((prefix) => [`${prefix}/*`, value]));
 
 Bun.serve({
   hostname: "0.0.0.0",
@@ -30,14 +38,10 @@ Bun.serve({
     "/": landing,
     "/api/public-config": (request) =>
       publicConfigResponse(request, browserConfig),
-    ...Object.fromEntries(publicAppRoutes.map((route) => [route, publicApp])),
-    ...Object.fromEntries(workspaceAppRoutes.map((route) => [route, app])),
-    ...Object.fromEntries(
-      publicAppPrefixes.map((prefix) => [`${prefix}/*`, publicApp]),
-    ),
-    ...Object.fromEntries(
-      workspaceAppPrefixes.map((prefix) => [`${prefix}/*`, app]),
-    ),
+    ...byRoute(publicAppRoutes, publicApp),
+    ...byRoute(workspaceAppRoutes, app),
+    ...byPrefix(publicAppPrefixes, publicApp),
+    ...byPrefix(workspaceAppPrefixes, app),
     "/__qa/axe.js": new Response(Bun.file("node_modules/axe-core/axe.min.js"), {
       headers: { "Content-Type": "text/javascript" },
     }),

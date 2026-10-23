@@ -1,9 +1,3 @@
-/**
- * Pure client recovery-kit state machine for one order. It has no storage,
- * clock, wallet, chain or provider authority: the browser persists it and
- * Convex stores only the non-secret identifiers it mirrors
- * (06-backend-design section 5.2; blueprint section 5.5).
- */
 export type RecoveryStage = "EXPORTED" | "VERIFIED" | "CHECKPOINTED" | "LOST";
 export type RecoveryOperation = "deploy" | "reserve" | "submit" | "approve";
 export type KitStatus = "unprepared" | "ready" | "interrupted" | "lost";
@@ -29,36 +23,41 @@ export interface RecoveryKit extends KitScope {
   requiresReconciliation: boolean;
 }
 
-const nonEmpty = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.trim().length === 0)
-    throw new Error(`${label} is required`);
-  return value;
-};
-
 function require(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+const nonEmpty = (value: unknown, label: string): string => {
+  require(typeof value === "string" &&
+    value.trim().length > 0, `${label} is required`);
+  return value as string;
+};
 
 const copy = (kit: RecoveryKit): RecoveryKit => ({
   ...kit,
   pending: kit.pending ? { ...kit.pending } : null,
 });
 
-/** The one scope-identity decision, shared by verification, restore and the browser's record check. */
 export const sameScope = (kit: KitScope, scope: KitScope): boolean =>
   kit.actorId === scope?.actorId &&
   kit.network === scope?.network &&
   kit.orderNonce === scope?.orderNonce;
 
-/** Exports a predeployment kit bound to actor, network and order nonce. */
+const STAGE_MESSAGES: Record<RecoveryStage, string> = {
+  EXPORTED: "kit is not awaiting verification",
+  VERIFIED: "address bound before verification",
+  CHECKPOINTED: "a commercial operation needs a bound address",
+  LOST: "kit is not lost",
+};
+
+const expectStage = (kit: RecoveryKit, stage: RecoveryStage): void =>
+  require(kit.stage === stage, STAGE_MESSAGES[stage]);
+
 export function createKit(scope: KitScope): RecoveryKit {
-  const kit = {
+  return {
     actorId: nonEmpty(scope?.actorId, "kit actor"),
     network: nonEmpty(scope?.network, "kit network"),
     orderNonce: nonEmpty(scope?.orderNonce, "kit order nonce"),
-  };
-  return {
-    ...kit,
     stage: "EXPORTED",
     address: null,
     pending: null,
@@ -68,29 +67,23 @@ export function createKit(scope: KitScope): RecoveryKit {
   };
 }
 
-/** The isolated-scope verification; a wrong actor/network/order cannot unlock the kit. */
 export function verifyKit(kit: RecoveryKit, scope: KitScope): RecoveryKit {
-  require(kit.stage === "EXPORTED", "kit is not awaiting verification");
+  expectStage(kit, "EXPORTED");
   require(sameScope(kit, scope), "kit scope mismatch");
   return { ...copy(kit), stage: "VERIFIED" };
 }
 
-/** Binds the admitted canonical address after a confirmed deployment; never the nonce. */
 export function checkpointAddress(
   kit: RecoveryKit,
   address: string,
 ): RecoveryKit {
-  require(kit.stage === "VERIFIED", "address bound before verification");
+  expectStage(kit, "VERIFIED");
   const bound = nonEmpty(address, "canonical address");
-  const boundIsNonce = bound === kit.orderNonce;
-  require(!boundIsNonce, "an order nonce is not a canonical address");
+  require(bound !==
+    kit.orderNonce, "an order nonce is not a canonical address");
   return { ...copy(kit), stage: "CHECKPOINTED", address: bound };
 }
 
-/**
- * Records an in-flight operation, refusing a second one until the first is
- * confirmed or abandoned. Every begin leaves the kit unusable.
- */
 export function beginOperation(
   kit: RecoveryKit,
   operation: RecoveryOperation,
@@ -114,16 +107,11 @@ export function beginOperation(
   };
 }
 
-/** Reconciles the retained identity; it never resubmits and never marks the order usable. */
 export function resumeOperation(kit: RecoveryKit): PendingOperation {
   require(kit.pending !== null, "no interrupted operation to resume");
   return { ...kit.pending };
 }
 
-/**
- * Applies the confirmed private-state update exactly once, only on the expected
- * identity and revision. A deployment alone never yields a usable order.
- */
 export function confirmOperation(
   kit: RecoveryKit,
   identity: string,
@@ -148,10 +136,6 @@ export function confirmOperation(
   };
 }
 
-/**
- * Abandons the retained operation. Aborting cannot cancel a possibly submitted
- * transaction, so it always requests reconciliation and never yields a usable order.
- */
 export function abandonOperation(kit: RecoveryKit): RecoveryKit {
   require(kit.pending !== null, "no operation to abandon");
   return {
@@ -162,7 +146,6 @@ export function abandonOperation(kit: RecoveryKit): RecoveryKit {
   };
 }
 
-/** Lost or conflicted capability; the pending identity is kept for support reconciliation. */
 export function loseCapability(kit: RecoveryKit): RecoveryKit {
   require(kit.stage !== "LOST", "capability is already lost");
   return {
@@ -173,9 +156,8 @@ export function loseCapability(kit: RecoveryKit): RecoveryKit {
   };
 }
 
-/** Restores a matching backup. It never re-grants a usable order by itself. */
 export function restoreKit(kit: RecoveryKit, scope: KitScope): RecoveryKit {
-  require(kit.stage === "LOST", "kit is not lost");
+  expectStage(kit, "LOST");
   require(sameScope(kit, scope), "restored backup belongs to another scope");
   return {
     ...copy(kit),
@@ -184,11 +166,6 @@ export function restoreKit(kit: RecoveryKit, scope: KitScope): RecoveryKit {
   };
 }
 
-/**
- * Adopts a same-scope backup only when it does not roll back newer active state:
- * a backup behind the active confirmed revision, or lacking an address the active
- * kit bound, is refused (06 6.2). The pure half of the browser import path.
- */
 export function adoptBackup(
   active: RecoveryKit,
   backup: RecoveryKit,

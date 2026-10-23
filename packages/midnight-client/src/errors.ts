@@ -1,15 +1,3 @@
-/**
- * Typed error taxonomy for the Midnight client boundary.
- *
- * Four codes cover the failure classes the wallet/proof/submit path must
- * distinguish (U6 milestone). Call sites throw subclasses; classifiers fold
- * wallet-sdk / Effect shapes into the same codes so integration and UI do not
- * invent parallel string matching.
- *
- * Error messages and `detail` fields are safe to surface: no secrets, no
- * private-state dumps, no raw witness material.
- */
-
 export const MIDNIGHT_CLIENT_ERROR_CODES = [
   "REJECTED_SIGNATURE",
   "LOCKED_WALLET",
@@ -24,11 +12,9 @@ export type MidnightClientErrorDetail = Readonly<
   Record<string, string | number | boolean | null | undefined>
 >;
 
-/** Base class. `code` is the taxonomy discriminator. */
 export class MidnightClientError extends Error {
   readonly code: MidnightClientErrorCode;
   readonly detail: MidnightClientErrorDetail;
-
   constructor(
     code: MidnightClientErrorCode,
     message: string,
@@ -42,46 +28,35 @@ export class MidnightClientError extends Error {
   }
 }
 
-/** The wallet or user refused to sign / approve a request. */
+type D = MidnightClientErrorDetail;
+
 export class RejectedSignatureError extends MidnightClientError {
-  constructor(
-    message = "Signature or wallet approval was rejected.",
-    detail: MidnightClientErrorDetail = {},
-  ) {
-    super("REJECTED_SIGNATURE", message, detail);
+  constructor(m = "Signature or wallet approval was rejected.", d: D = {}) {
+    super("REJECTED_SIGNATURE", m, d);
     this.name = "RejectedSignatureError";
   }
 }
 
-/** The wallet is locked, disconnected, or otherwise unavailable. */
 export class LockedWalletError extends MidnightClientError {
-  constructor(
-    message = "Wallet is locked or not connected.",
-    detail: MidnightClientErrorDetail = {},
-  ) {
-    super("LOCKED_WALLET", message, detail);
+  constructor(m = "Wallet is locked or not connected.", d: D = {}) {
+    super("LOCKED_WALLET", m, d);
     this.name = "LockedWalletError";
   }
 }
 
-/** The active network is not the one the guard allows. */
 export class WrongNetworkError extends MidnightClientError {
   constructor(
-    message = "Active Midnight network is not allowed by the network guard.",
-    detail: MidnightClientErrorDetail = {},
+    m = "Active Midnight network is not allowed by the network guard.",
+    d: D = {},
   ) {
-    super("WRONG_NETWORK", message, detail);
+    super("WRONG_NETWORK", m, d);
     this.name = "WrongNetworkError";
   }
 }
 
-/** The wallet cannot cover the DUST fee / balancing requirement. */
 export class InsufficientDustError extends MidnightClientError {
-  constructor(
-    message = "Insufficient DUST to cover fees or balancing.",
-    detail: MidnightClientErrorDetail = {},
-  ) {
-    super("INSUFFICIENT_DUST", message, detail);
+  constructor(m = "Insufficient DUST to cover fees or balancing.", d: D = {}) {
+    super("INSUFFICIENT_DUST", m, d);
     this.name = "InsufficientDustError";
   }
 }
@@ -92,12 +67,21 @@ export function isMidnightClientError(
   return value instanceof MidnightClientError;
 }
 
-/**
- * Effect / wallet-sdk error walk. Same shape the dust readiness helper
- * understands (packages/integration/src/dust.mjs): FiberFailure causes, Fail
- * wrappers, Transacting causes, and Sequential/Parallel pairs. Hostile
- * getters must not crash the walk.
- */
+const FIBER_CAUSE = Symbol.for("effect/Runtime/FiberFailure/Cause");
+const LOCKED_MESSAGE = /wallet is not connected|locked or not connected/i;
+const NETWORK_MESSAGE =
+  /unsupported midnight network|network guard|only preprod/i;
+const LOCKED_NAMES = new Set(["LockedWalletError", "ConnectionError"]);
+const PAIR_TAGS = new Set(["Sequential", "Parallel"]);
+
+function field(node: unknown, key: string | symbol): unknown {
+  try {
+    return (node as Record<string | symbol, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
 function walkErrorGraph(error: unknown, limit = 16): object[] {
   const queue: unknown[] = [error];
   const seen = new Set<unknown>();
@@ -107,170 +91,111 @@ function walkErrorGraph(error: unknown, limit = 16): object[] {
     if (!value || typeof value !== "object" || seen.has(value)) continue;
     seen.add(value);
     collected.push(value);
-    const read = (key: string | symbol): unknown => {
-      try {
-        return (value as Record<string | symbol, unknown>)[key];
-      } catch {
-        return undefined;
-      }
-    };
-    const fiberCause = read(Symbol.for("effect/Runtime/FiberFailure/Cause"));
+    const fiberCause = field(value, FIBER_CAUSE);
     if (fiberCause) queue.push(fiberCause);
-    const tag = read("_tag");
-    if (tag === "Fail") queue.push(read("error"));
-    else if (tag === "Die") queue.push(read("defect"));
-    else if (tag === "Wallet.Transacting" && read("cause"))
-      queue.push(read("cause"));
-    else if (tag === "Sequential" || tag === "Parallel") {
-      queue.push(read("left"), read("right"));
-    }
-    queue.push(read("cause"));
+    const tag = field(value, "_tag");
+    if (tag === "Fail") queue.push(field(value, "error"));
+    else if (tag === "Die") queue.push(field(value, "defect"));
+    else if (tag === "Wallet.Transacting" && field(value, "cause"))
+      queue.push(field(value, "cause"));
+    else if (typeof tag === "string" && PAIR_TAGS.has(tag))
+      queue.push(field(value, "left"), field(value, "right"));
+    queue.push(field(value, "cause"));
   }
   return collected;
 }
 
 function firstTag(nodes: object[]): string | undefined {
   for (const node of nodes) {
-    try {
-      const tag = (node as Record<string, unknown>)._tag;
-      if (typeof tag === "string") return tag;
-    } catch {
-      /* hostile getter: skip */
-    }
+    const tag = field(node, "_tag");
+    if (typeof tag === "string") return tag;
   }
   return undefined;
 }
 
-function hasTag(nodes: object[], tag: string): boolean {
+function matchesMessage(nodes: object[], pattern: RegExp): boolean {
   return nodes.some((node) => {
-    try {
-      return (node as Record<string, unknown>)._tag === tag;
-    } catch {
-      return false;
-    }
+    const message = field(node, "message");
+    return typeof message === "string" && pattern.test(message);
   });
 }
 
-/** Wallet.InsufficientFunds limited to the DUST token. */
-export function isInsufficientDustError(error: unknown): boolean {
-  if (error instanceof InsufficientDustError) return true;
-  const nodes = walkErrorGraph(error);
-  return nodes.some((node) => {
-    try {
-      const record = node as Record<string, unknown>;
-      return (
-        record._tag === "Wallet.InsufficientFunds" &&
-        record.tokenType === "dust"
-      );
-    } catch {
-      return false;
-    }
-  });
+type Probe = (nodes: object[]) => boolean;
+
+const PROBES: Record<MidnightClientErrorCode, Probe> = {
+  INSUFFICIENT_DUST: (nodes) =>
+    nodes.some(
+      (node) =>
+        field(node, "_tag") === "Wallet.InsufficientFunds" &&
+        field(node, "tokenType") === "dust",
+    ),
+  REJECTED_SIGNATURE: (nodes) =>
+    nodes.some((node) => field(node, "_tag") === "Wallet.Sign") ||
+    nodes.some((node) => field(node, "name") === "RejectedSignatureError"),
+  LOCKED_WALLET: (nodes) =>
+    nodes.some((node) => {
+      const name = field(node, "name");
+      return typeof name === "string" && LOCKED_NAMES.has(name);
+    }) || matchesMessage(nodes, LOCKED_MESSAGE),
+  WRONG_NETWORK: (nodes) =>
+    nodes.some((node) => field(node, "name") === "WrongNetworkError") ||
+    matchesMessage(nodes, NETWORK_MESSAGE),
+};
+
+const SUBCLASSES: Record<
+  MidnightClientErrorCode,
+  new (
+    message: string,
+    detail: D,
+  ) => MidnightClientError
+> = {
+  REJECTED_SIGNATURE: RejectedSignatureError,
+  LOCKED_WALLET: LockedWalletError,
+  WRONG_NETWORK: WrongNetworkError,
+  INSUFFICIENT_DUST: InsufficientDustError,
+};
+
+const CLASSIFY_ORDER: readonly MidnightClientErrorCode[] = [
+  "WRONG_NETWORK",
+  "INSUFFICIENT_DUST",
+  "REJECTED_SIGNATURE",
+  "LOCKED_WALLET",
+];
+
+function probe(code: MidnightClientErrorCode, error: unknown): boolean {
+  return PROBES[code](walkErrorGraph(error));
 }
 
-/**
- * Signature / approval refusal. Wallet.Sign is the wallet-sdk signing failure
- * tag (packages/integration/src/diagnostics.mjs). A bare Fail whose cause is a
- * RejectedSignatureError also matches.
- */
-export function isRejectedSignatureError(error: unknown): boolean {
-  if (error instanceof RejectedSignatureError) return true;
-  const nodes = walkErrorGraph(error);
-  if (hasTag(nodes, "Wallet.Sign")) return true;
-  return nodes.some((node) => {
-    try {
-      const name = (node as Record<string, unknown>).name;
-      return name === "RejectedSignatureError";
-    } catch {
-      return false;
-    }
-  });
-}
+export const isInsufficientDustError = (error: unknown): boolean =>
+  error instanceof InsufficientDustError || probe("INSUFFICIENT_DUST", error);
+export const isRejectedSignatureError = (error: unknown): boolean =>
+  error instanceof RejectedSignatureError || probe("REJECTED_SIGNATURE", error);
+export const isLockedWalletError = (error: unknown): boolean =>
+  error instanceof LockedWalletError || probe("LOCKED_WALLET", error);
+export const isWrongNetworkError = (error: unknown): boolean =>
+  error instanceof WrongNetworkError || probe("WRONG_NETWORK", error);
 
-/**
- * Locked / disconnected wallet. Covers the connector's not-connected throws
- * and the ConnectionError name the diagnostics sink already lists.
- */
-export function isLockedWalletError(error: unknown): boolean {
-  if (error instanceof LockedWalletError) return true;
-  const nodes = walkErrorGraph(error);
-  return nodes.some((node) => {
-    try {
-      const record = node as Record<string, unknown>;
-      const name = record.name;
-      const message = record.message;
-      if (name === "LockedWalletError" || name === "ConnectionError") {
-        return true;
-      }
-      return (
-        typeof message === "string" &&
-        /wallet is not connected|locked or not connected/i.test(message)
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
-export function isWrongNetworkError(error: unknown): boolean {
-  if (error instanceof WrongNetworkError) return true;
-  const nodes = walkErrorGraph(error);
-  return nodes.some((node) => {
-    try {
-      const record = node as Record<string, unknown>;
-      if (record.name === "WrongNetworkError") return true;
-      const message = record.message;
-      return (
-        typeof message === "string" &&
-        /unsupported midnight network|network guard|only preprod/i.test(message)
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
-/**
- * Fold a wallet/SDK error into one taxonomy code, or null when it matches
- * none. Prefer constructing the subclass at the throw site; use this when
- * re-throwing an upstream error through the client boundary.
- */
 export function classifyMidnightClientError(
   error: unknown,
 ): MidnightClientErrorCode | null {
   if (isMidnightClientError(error)) return error.code;
-  if (isWrongNetworkError(error)) return "WRONG_NETWORK";
-  if (isInsufficientDustError(error)) return "INSUFFICIENT_DUST";
-  if (isRejectedSignatureError(error)) return "REJECTED_SIGNATURE";
-  if (isLockedWalletError(error)) return "LOCKED_WALLET";
+  const nodes = walkErrorGraph(error);
+  for (const code of CLASSIFY_ORDER) {
+    if (PROBES[code](nodes)) return code;
+  }
   return null;
 }
 
-/**
- * Re-throw `error` as the matching taxonomy subclass. Non-matching errors are
- * re-thrown unchanged so unknown failures stay visible.
- */
 export function rethrowAsMidnightClientError(
   error: unknown,
   fallbackMessage: string,
 ): never {
   const code = classifyMidnightClientError(error);
+  if (!code) throw error;
   const message =
     error instanceof Error && error.message ? error.message : fallbackMessage;
-  const detail = {
+  throw new SUBCLASSES[code](message, {
     causeName: error instanceof Error ? error.name : undefined,
     causeTag: firstTag(walkErrorGraph(error)),
-  };
-  switch (code) {
-    case "WRONG_NETWORK":
-      throw new WrongNetworkError(message, detail);
-    case "INSUFFICIENT_DUST":
-      throw new InsufficientDustError(message, detail);
-    case "REJECTED_SIGNATURE":
-      throw new RejectedSignatureError(message, detail);
-    case "LOCKED_WALLET":
-      throw new LockedWalletError(message, detail);
-    default:
-      throw error;
-  }
+  });
 }

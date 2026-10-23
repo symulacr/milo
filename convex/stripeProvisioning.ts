@@ -23,22 +23,21 @@ type Snapshot = {
     | null;
 } | null;
 
+const BEGIN = makeFunctionReference<"mutation", JobInput, Snapshot>(
+  "provisioning:begin",
+);
+const FINISH = makeFunctionReference<"mutation">("provisioning:finish");
+
 export const run = internalActionGeneric({
   args: { jobId: v.id("paymentJobs"), generation: v.number() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const snapshot = await ctx.runMutation(
-      makeFunctionReference<"mutation", JobInput, Snapshot>(
-        "provisioning:begin",
-      ),
-      args,
-    );
+    const snapshot = await ctx.runMutation(BEGIN, args);
     if (!snapshot) return null;
-    const finish = makeFunctionReference<"mutation">("provisioning:finish");
     try {
       if (!snapshot.payment) {
         if (snapshot.job.mode === "observe") {
-          await ctx.runMutation(finish, args);
+          await ctx.runMutation(FINISH, args);
           return null;
         }
         const stripePaymentIntentId = await provisionTestIntent({
@@ -48,13 +47,13 @@ export const run = internalActionGeneric({
           stripeAccountId: snapshot.job.stripeAccountId,
           stripeCustomerId: snapshot.job.stripeCustomerId,
         });
-        await ctx.runMutation(finish, { ...args, stripePaymentIntentId });
+        await ctx.runMutation(FINISH, { ...args, stripePaymentIntentId });
       } else {
         const observation = await observeTestPayment({
           ...snapshot.payment,
           id: snapshot.payment._id,
         });
-        await ctx.runMutation(finish, {
+        await ctx.runMutation(FINISH, {
           ...args,
           ...(observation.kind === "observed"
             ? { authorization: observation.authorization }
@@ -62,8 +61,7 @@ export const run = internalActionGeneric({
         });
       }
     } catch {
-      // Redact provider payloads; durable job and fixed idempotency key support safe retry.
-      await ctx.runMutation(finish, args);
+      await ctx.runMutation(FINISH, args);
     }
     return null;
   },

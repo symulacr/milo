@@ -7,6 +7,20 @@ import { useWorkspace } from "../workspace/model";
 
 export function Receipt() {
   const { state, quote, money, exportReceipt } = useWorkspace();
+  const rows = [
+    ["Order phase", phaseFrame(state.phase, state.role).heading],
+    ["Payment observation", paymentLine(state.payment)],
+    ["Agreed amount", `${money} USD`],
+    [
+      "Sample file bytes",
+      state.filesVerified
+        ? "Locally checked"
+        : "Not checked in this actor context",
+    ],
+    ["Network / transaction", "None · simulator only"],
+    ["Observation freshness", "Simulator: state is instantaneous"],
+    ["Sample revision", String(state.revision)],
+  ];
   return (
     <>
       <PageTitle title="Sample receipt" />
@@ -16,38 +30,12 @@ export function Receipt() {
         </div>
         <h2>{quote.name}</h2>
         <dl className="detail-grid">
-          <div>
-            <dt>Order phase</dt>
-            <dd>{phaseFrame(state.phase, state.role).heading}</dd>
-          </div>
-          <div>
-            <dt>Payment observation</dt>
-            <dd>{paymentLine(state.payment)}</dd>
-          </div>
-          <div>
-            <dt>Agreed amount</dt>
-            <dd>{money} USD</dd>
-          </div>
-          <div>
-            <dt>Sample file bytes</dt>
-            <dd>
-              {state.filesVerified
-                ? "Locally checked"
-                : "Not checked in this actor context"}
-            </dd>
-          </div>
-          <div>
-            <dt>Network / transaction</dt>
-            <dd>None · simulator only</dd>
-          </div>
-          <div>
-            <dt>Observation freshness</dt>
-            <dd>Simulator: state is instantaneous</dd>
-          </div>
-          <div>
-            <dt>Sample revision</dt>
-            <dd>{state.revision}</dd>
-          </div>
+          {rows.map(([term, value]) => (
+            <div key={term}>
+              <dt>{term}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
         </dl>
         <h3>Manifest SHA-256 digests (3 files)</h3>
         <dl className="detail-grid">

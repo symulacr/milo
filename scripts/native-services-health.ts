@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { ownNativeProcess, stopNativeProcess } from "./native-processes";
 
-async function unusedPort() {
+export async function unusedPort() {
   const server = createServer();
   await new Promise<void>((done, reject) => {
     server.once("error", reject);
@@ -15,6 +15,25 @@ async function unusedPort() {
     server.close((error) => (error ? reject(error) : done())),
   );
   return address.port;
+}
+
+export async function poll<T>(
+  timeoutMs: number,
+  probe: () => Promise<T | null>,
+  alive: () => boolean,
+  swallow = false,
+): Promise<T | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && alive()) {
+    try {
+      const value = await probe();
+      if (value !== null) return value;
+    } catch (error) {
+      if (!swallow) throw error;
+    }
+    await Bun.sleep(1000);
+  }
+  return null;
 }
 
 export type NativeEndpoints = {
@@ -47,6 +66,7 @@ export async function verifyNativeServices(
   assert.notEqual(indexerPort, proverPort);
   const environment = { PATH: process.env.PATH, HOME: resolve(directory) };
   const processes: Bun.Subprocess[] = [];
+  const alive = () => processes.every((p) => p.exitCode === null);
   try {
     processes.push(
       ownNativeProcess(
@@ -81,7 +101,6 @@ export async function verifyNativeServices(
         ),
       ),
     );
-    // This upstream executable binds all sandbox interfaces; never publish a Preview for it.
     processes.push(
       ownNativeProcess(
         Bun.spawn(
@@ -109,58 +128,45 @@ export async function verifyNativeServices(
       ["indexer", indexerPort],
       ["prover", proverPort],
     ] as const) {
-      let ready = false;
-      const deadline = Date.now() + 240_000;
-      while (
-        Date.now() < deadline &&
-        processes.every((p) => p.exitCode === null)
-      ) {
-        try {
+      const ready = await poll(
+        240_000,
+        async () => {
           const response = await fetch(`http://127.0.0.1:${port}/ready`, {
             signal: AbortSignal.timeout(2000),
           });
-          if (
-            response.ok &&
-            (name === "indexer" || (await response.json()).status === "ok")
-          ) {
-            ready = true;
-            break;
-          }
-        } catch {
-          /* Startup and parameter downloads may still be in progress. */
-        }
-        await Bun.sleep(1000);
-      }
+          if (!response.ok) return null;
+          if (name === "indexer") return true;
+          return (await response.json()).status === "ok" ? true : null;
+        },
+        alive,
+        true,
+      );
       assert(
         ready,
         `${name} not ready; inspect private logs under ${directory}`,
       );
     }
-    let block: { height: number; hash: string } | null = null;
-    const observationDeadline = Date.now() + 120_000;
-    while (
-      Date.now() < observationDeadline &&
-      processes.every((p) => p.exitCode === null)
-    ) {
-      const indexedResponse = await fetch(
-        `http://127.0.0.1:${indexerPort}/api/v4/graphql`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            query: "query { block(offset: {height: 1}) { height hash } }",
-          }),
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      assert(indexedResponse.ok);
-      const indexed = await indexedResponse.json();
-      assert.equal(indexed.errors, undefined);
-      block = indexed.data?.block ?? null;
-      if (block) break;
-      // Readiness allows a small lag; require the actual indexed block separately.
-      await Bun.sleep(1000);
-    }
+    const block = await poll<{ height: number; hash: string }>(
+      120_000,
+      async () => {
+        const indexedResponse = await fetch(
+          `http://127.0.0.1:${indexerPort}/api/v4/graphql`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              query: "query { block(offset: {height: 1}) { height hash } }",
+            }),
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+        assert(indexedResponse.ok);
+        const indexed = await indexedResponse.json();
+        assert.equal(indexed.errors, undefined);
+        return indexed.data?.block ?? null;
+      },
+      alive,
+    );
     assert(block, "Block 1 was not indexed before the observation deadline");
     assert.equal(block.height, 1);
     const normalize = (hash: string) => hash.toLowerCase().replace(/^0x/, "");
