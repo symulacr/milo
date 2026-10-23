@@ -18,17 +18,20 @@ fi
 # run through the system loader rather than directly.
 "$LOADER" "$PROVER" --port 6300 --num-workers "${MIDNIGHT_PROOF_SERVER_NUM_WORKERS:-1}" &
 PROVER_PID=$!
+JOB_PID=
 
-# If the prover dies, stop the job rather than letting it prove against nothing.
-trap 'kill "$PROVER_PID" 2>/dev/null || true' EXIT INT TERM
+# Forward the stop to both children. `exec` would replace this shell, which
+# discards the trap and leaves the job unsignalled; as PID 1 the shell must
+# forward explicitly or the runtime waits out its full stop timeout.
+trap 'kill "${PROVER_PID:-}" "${JOB_PID:-}" 2>/dev/null || true' EXIT INT TERM
 
 ready=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 1200); do
   if curl -fsS -o /dev/null "http://127.0.0.1:6300/health" 2>/dev/null; then
     ready=1
     break
   fi
-  sleep 2
+  sleep 0.1
 done
 if [ "$ready" -ne 1 ]; then
   echo "proof server did not become healthy within 120s" >&2
@@ -39,6 +42,8 @@ echo "proof server healthy"
 # The stress job. Bounds come from the environment so a run cannot outlive its
 # budget: operations, instances, wall clock, and the concurrency ceiling, which
 # the harness clamps to the wallet's unlocked DUST UTXOs.
-exec node \
-  --env-file=/app/.env.preprod \
-  packages/integration/src/preprod-lane.mjs --stress
+node \
+  --env-file-if-exists=/app/.env.preprod \
+  packages/integration/src/preprod-lane.mjs --stress &
+JOB_PID=$!
+wait "$JOB_PID"

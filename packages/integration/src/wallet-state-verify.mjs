@@ -255,11 +255,15 @@ export async function repairSdkVersions(snapshotDir) {
     );
   const after = {};
   for (const name of SDK_PACKAGES) after[name] = inspection.current[name];
+  // `drifted` belongs here: the lane's rejection hint tells the operator to run
+  // --repair-state to clear a version drift, and without this the repair reports
+  // "already-complete" and rewrites nothing, so the hint is a dead end.
   const needsRepair =
     !inspection.exists ||
     inspection.parseError !== null ||
     inspection.empty ||
-    inspection.missingKeys.length > 0;
+    inspection.missingKeys.length > 0 ||
+    inspection.drifted.length > 0;
   if (!needsRepair)
     return {
       repaired: false,
@@ -662,7 +666,7 @@ function walletConfiguration(ledger, sdk, endpoints) {
       bufferSize: 20_000,
       resumeThreshold: 200,
     },
-    batchUpdates: { size: 500, timeout: 2, spacing: 0 },
+    batchUpdates: { size: 5000, timeout: 1, spacing: 4 },
     provingServerUrl: new URL(PROOF_SERVER),
     relayURL: new URL(endpoints.nodeWS),
     txHistoryStorage: new sdk.NoOpTransactionHistoryStorage(),
@@ -759,6 +763,63 @@ async function checkVersionPin(checks, snapshotDir) {
     },
   );
   return inspection;
+}
+
+/** G12: the snapshot belongs to the wallet this run derived keys for. A snapshot records
+ * the public keys of the wallet it was taken from and nothing else that identifies its
+ * owner, so restoring one from a different seed yields a wallet whose own public key is the
+ * snapshot's while every address the lane reports comes from the seed. Balances, receipts
+ * and the audit trail then describe two different wallets, and every other gate passes:
+ * the version pin matches because the SDK is the same, the indexer marker matches because
+ * the indexer is the same, the shape checks pass because the file is valid, and the chain
+ * cross-checks pass because the foreign snapshot agrees with the chain for its own address.
+ * Only an identity comparison against the derived keys can catch it.
+ *
+ * The decision is a pure function so it can be tested without a seed or a network: it takes
+ * the snapshot texts and the public keys the caller derived, never the seed itself.
+ * A role whose snapshot cannot be read is skipped here; the shape gate owns that failure. */
+export function snapshotOwnerVerdict(loaded, derived) {
+  const read = (role, pick) => {
+    try {
+      const value = pick(JSON.parse(loaded[role]));
+      return value === undefined || value === null ? null : String(value);
+    } catch {
+      return null;
+    }
+  };
+  const owner = {
+    unshielded: read("unshielded", (s) => s.publicKey?.addressHex),
+    dust: read("dust", (s) => s.publicKey?.publicKey),
+    shielded: read("shielded", (s) => s.publicKeys?.coinPublicKey),
+  };
+  const mismatched = [];
+  const compared = [];
+  for (const role of ["unshielded", "dust", "shielded"]) {
+    if (owner[role] === null || derived[role] === undefined) continue;
+    compared.push(role);
+    if (owner[role] !== String(derived[role]))
+      mismatched.push({ role, snapshot: owner[role] });
+  }
+  if (compared.length === 0)
+    return {
+      status: "UNEXERCISED",
+      requires:
+        "a readable snapshot public key and the derived key for the same role",
+    };
+  if (mismatched.length > 0)
+    return {
+      status: "FAIL",
+      expected: `snapshot public keys == the keys derived from this run's seed (${compared.join(", ")})`,
+      observed: mismatched.map((m) => `${m.role}=${m.snapshot}`).join(", "),
+      mismatched,
+      remedy:
+        "The snapshot was taken from a different seed. Do NOT restore it: the lane would report this seed's addresses beside another wallet's balances. Point MIDNIGHT_PREPROD_RUN_DIR at a directory this seed created, or take a fresh from-seed sync.",
+    };
+  return {
+    status: "PASS",
+    expected: `snapshot public keys == the keys derived from this run's seed (${compared.join(", ")})`,
+    observed: compared.join(", "),
+  };
 }
 
 /** G11: the snapshot was written against the indexer currently in use. Saved sync state is
@@ -1484,6 +1545,11 @@ export const GATE_DEFINITION = Object.freeze({
       id: "G11",
       check: "indexer-marker",
       text: "the snapshot records the indexer host that produced it, and that host matches the indexer in use. Saved sync state is not portable between indexers (event and transaction ids differ), so a snapshot with no marker or one from a different indexer refuses the fast path. The lane then seeds the DUST trees from the current collapsed update so the dust sync starts at the tip; shielded and unshielded replay their own history. The refusal never restores a stale cursor and never shifts one by hand.",
+    },
+    {
+      id: "G12",
+      check: "snapshot-owner",
+      text: "the snapshot's recorded public keys equal the keys derived from the seed this run uses. A snapshot carries only the public keys of the wallet it was taken from, so a snapshot from a different seed restores into a wallet whose own public key is the snapshot's while the lane reports the seed's addresses: balances and receipts then describe two different wallets. Every other gate passes on such a snapshot, because the SDK, the indexer, the file shape and the chain all agree with it for its own address. Only this identity comparison catches it.",
     },
   ],
   onFailure:

@@ -116,6 +116,7 @@ import {
   inspectSdkVersions,
   repairSdkVersions,
   resolveSdkVersions,
+  snapshotOwnerVerdict,
   verifyWalletState,
   WALLET_STATE_FILES,
   walletStateDir,
@@ -183,15 +184,31 @@ function preprodConfig(env) {
     runDir: env.MIDNIGHT_PREPROD_RUN_DIR ?? defaultRunDir(),
     // Durable progress cadence; bounded so a bad value cannot flood the trail or disable it.
     progressIntervalMs: progressIntervalMs(env),
+    checkpointIntervalMs: checkpointIntervalMs(env),
     // Derived, never hardcoded: 16+ characters with three character classes.
     privateStatePassword: `Milo1!${hash(env.MIDNIGHT_PREPROD_SEED).slice(0, 20)}`,
   };
 }
 
+/** One `mkdir` per run directory, not one per event: the directory is created on the first
+ * append and the resolved promise is reused after that. A failed attempt is dropped from the
+ * cache so a later event retries rather than inheriting the failure. */
+const ensuredRunDirs = new Map();
+function ensureRunDir(runDir) {
+  const hit = ensuredRunDirs.get(runDir);
+  if (hit) return hit;
+  const pending = mkdir(runDir, { recursive: true }).catch((error) => {
+    ensuredRunDirs.delete(runDir);
+    throw error;
+  });
+  ensuredRunDirs.set(runDir, pending);
+  return pending;
+}
+
 /** Append one event to the run trail. Console first, file second: a progress line must be
  * visible even when the run directory is unusable. */
 async function appendEvent(runDir, event) {
-  await mkdir(runDir, { recursive: true });
+  await ensureRunDir(runDir);
   await writeFile(
     resolve(runDir, "transactions.jsonl"),
     `${JSON.stringify(event)}\n`,
@@ -327,9 +344,9 @@ async function clearRunMarker(config) {
 // cap. A fresh Preprod wallet instead replays full genesis history, where the injected
 // spacing is pure overhead.
 const SYNC_TUNING = Object.freeze({
-  batchUpdates: Object.freeze({ size: 500, timeout: 2, spacing: 0 }),
+  batchUpdates: Object.freeze({ size: 5000, timeout: 1000, spacing: 0 }),
   bufferSize: 20_000,
-  resumeThreshold: 200,
+  resumeThreshold: 19_000,
 });
 
 // Durable progress. A full sync runs for hours, so a progress line that exists only in the
@@ -352,6 +369,24 @@ function progressIntervalMs(env) {
   );
 }
 
+// Snapshot cadence during a sync. A DUST replay is hours on Preprod, and the snapshot used to
+// be written only after the sync completed, so a killed run lost every event it had applied.
+// The floor is deliberately higher than the receipt floor: each checkpoint serializes all
+// three sub-wallets (the dust state alone is tens of MB once the trees are deep) and writes
+// it to disk, so a tight cadence would spend real time on I/O instead of replay. Five
+// minutes bounds the loss to five minutes of a multi-hour run.
+const CHECKPOINT_INTERVAL_DEFAULT_MS = 300_000;
+const CHECKPOINT_INTERVAL_MIN_MS = 60_000;
+const CHECKPOINT_INTERVAL_MAX_MS = 3_600_000;
+function checkpointIntervalMs(env) {
+  const raw = Number(env.MIDNIGHT_PREPROD_CHECKPOINT_INTERVAL_MS);
+  if (!Number.isFinite(raw)) return CHECKPOINT_INTERVAL_DEFAULT_MS;
+  return Math.min(
+    CHECKPOINT_INTERVAL_MAX_MS,
+    Math.max(CHECKPOINT_INTERVAL_MIN_MS, Math.trunc(raw)),
+  );
+}
+
 // Written at the start of a run and removed only on a clean exit, so its presence in the run
 // directory means a predecessor did not finish. Visibility only: it is not a checkpoint and
 // nothing reads it to resume a sync (see the durability note in the file header).
@@ -363,11 +398,27 @@ const RUN_MARKER_FILE = "sync-inflight.json";
 // require() of the specifier throws ERR_PACKAGE_PATH_NOT_EXPORTED and an empty matrix
 // would silently disable the version gate.
 
+/** A snapshot belongs to exactly one wallet. Restoring one taken from a different seed
+ * produces a wallet whose own public key is the snapshot's while every address the lane
+ * reports is derived from the seed, so balances and receipts describe two different
+ * wallets and no existing gate notices: the version pin, the indexer marker, the shape
+ * checks and the chain cross-checks all pass on a foreign snapshot. The comparison itself
+ * lives in wallet-state-verify.mjs beside the other gates; this passes it the public keys
+ * this run derived, never the seed. */
+function snapshotBelongsToSeed(loaded, keys) {
+  return snapshotOwnerVerdict(loaded, {
+    unshielded: String(keys.unshieldedKeystore.getAddress()),
+    dust: String(keys.dustSecretKey.publicKey),
+    shielded: String(keys.shieldedSecretKeys.coinPublicKey),
+  });
+}
+
 /** Restored snapshots make every run after the first cheap: the wallet resumes at its
  * recorded applied index instead of replaying genesis. Any missing role, an incomplete or
- * drifted version recording, or a failed chain verification means a fresh from-seed sync
- * rather than a partially restored wallet. Every rejection is emitted by name. */
-async function loadWalletState(config) {
+ * drifted version recording, a snapshot taken from a different wallet, or a failed chain
+ * verification means a fresh from-seed sync rather than a partially restored wallet. Every
+ * rejection is emitted by name. */
+async function loadWalletState(config, keys) {
   const dir = walletStateDir(config.runDir);
   const loaded = {};
   try {
@@ -375,6 +426,19 @@ async function loadWalletState(config) {
       loaded[role] = await readFile(resolve(dir, file), "utf8");
   } catch {
     // First run, or a partial snapshot: there is no restorable state, so a full sync follows.
+    return null;
+  }
+
+  // Ownership first: every later gate can pass on a snapshot that belongs to another
+  // wallet, so the identity comparison has to precede them.
+  const ownership = snapshotBelongsToSeed(loaded, keys);
+  if (ownership.status === "FAIL") {
+    await emit(config.runDir, {
+      event: "wallet-state-rejected",
+      reason: "snapshot-wallet-mismatch",
+      mismatched: ownership.mismatched,
+      hint: ownership.remedy,
+    });
     return null;
   }
 
@@ -447,15 +511,66 @@ async function loadWalletState(config) {
   return loaded;
 }
 
+/** The chain tip and the two dust tree end-indexes, for a checkpoint receipt.
+ *
+ * The dust event cursor the snapshot stores is an indexer-internal counter with no block
+ * reference: `DustLedgerEvent` exposes only id/raw/maxId/protocolVersion, and a block's
+ * `transactions` list does not include the dust ledger events, so an offset cannot be
+ * resolved to a height after the fact. Reading the tip at checkpoint time is what keeps
+ * the cursor and the height comparable. Bounded and fail-soft: a checkpoint whose height
+ * could not be read is still a valid checkpoint. */
+async function readChainTip(config, timeoutMs = 15_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(config.indexer, {
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query:
+          "{ block { height hash protocolVersion dustCommitmentEndIndex dustGenerationEndIndex } }",
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`indexer HTTP ${response.status}`);
+    const body = await response.json();
+    if (body?.errors)
+      throw new Error(`indexer error: ${body.errors[0]?.message}`);
+    const block = body?.data?.block;
+    if (!block) throw new Error("indexer returned no block");
+    return {
+      height: block.height,
+      hash: block.hash,
+      protocolVersion: block.protocolVersion,
+      dustCommitmentEndIndex: block.dustCommitmentEndIndex,
+      dustGenerationEndIndex: block.dustGenerationEndIndex,
+      readAt: new Date().toISOString(),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function saveWalletState(config, wallet) {
   const dir = walletStateDir(config.runDir);
   await mkdir(dir, { recursive: true });
   const bytes = {};
+  // Each role is written temp-then-renamed. A checkpoint now runs mid-sync, so a kill can
+  // land between two roles: writing in place would leave a torn snapshot (a new shielded
+  // beside an old dust) that the version gate cannot detect, because every file parses and
+  // every offset is still within the chain's high-water marks. Rename is atomic within a
+  // filesystem, so each file is either fully old or fully new. The roles are still written
+  // one after another, so a kill can leave roles from different checkpoints; that is
+  // recoverable (each role resumes from its own cursor) and is what the per-role verify
+  // gate already checks, whereas a half-written file is not.
   for (const role of Object.keys(WALLET_STATE_FILES)) {
     const serialized = await wallet[role].serializeState();
     const path = resolve(dir, WALLET_STATE_FILES[role]);
-    await writeFile(path, serialized, { mode: 0o600 });
-    await chmod(path, 0o600);
+    const temp = `${path}.${process.pid}.tmp`;
+    await writeFile(temp, serialized, { mode: 0o600 });
+    await chmod(temp, 0o600);
+    await rename(temp, path);
     bytes[role] = serialized.length;
   }
   await writeFile(
@@ -673,25 +788,14 @@ function memoizeZkConfig(provider) {
     cache.set(key, pending);
     return pending;
   };
-  return {
-    getProverKey: (circuitId) =>
-      once("prover", circuitId, () => provider.getProverKey(circuitId)),
-    getVerifierKey: (circuitId) =>
-      once("verifier", circuitId, () => provider.getVerifierKey(circuitId)),
-    getZKIR: (circuitId) =>
-      once("zkir", circuitId, () => provider.getZKIR(circuitId)),
-    // The interface returns [circuitId, key] pairs, not a bare key list, so the
-    // shape has to be rebuilt from the cached per-circuit reads rather than
-    // returned as a plain array.
-    getVerifierKeys: (circuitIds) =>
-      Promise.all(
-        circuitIds.map((id) =>
-          once("verifier", id, () => provider.getVerifierKey(id)).then(
-            (key) => [id, key],
-          ),
-        ),
-      ),
-  };
+  const memo = Object.create(provider);
+  memo.getProverKey = (circuitId) =>
+    once("prover", circuitId, () => provider.getProverKey(circuitId));
+  memo.getVerifierKey = (circuitId) =>
+    once("verifier", circuitId, () => provider.getVerifierKey(circuitId));
+  memo.getZKIR = (circuitId) =>
+    once("zkir", circuitId, () => provider.getZKIR(circuitId));
+  return memo;
 }
 
 /** Load and configure the wallet SDK once. The network id is process-global, so this runs
@@ -798,7 +902,7 @@ async function buildSession(config, options = {}) {
   // written, and its output carries no stored event cursor, so it is portable across
   // indexers. Shielded and unshielded still start fresh: the Blockfrost schema exposes no
   // zswap collapsed update, so there is no late-start mechanism for them.
-  const restored = await loadWalletState(config);
+  const restored = await loadWalletState(config, keys);
   let dustSnapshot = options.dustSnapshot ?? null;
   let dustSeedOutcome = options.dustSeedOutcome ?? "not-attempted";
   if (
@@ -1021,17 +1125,26 @@ async function balances(session, ledger, timeoutMs = 120_000) {
 // appended to the durable run trail (one line per interval) so a reboot that kills an
 // unattended sync leaves a record of how far it got, not just a stale stdout buffer.
 function syncProgressFields(s, session, startedAt) {
+  const shielded = s.shielded.state.progress;
+  const unshielded = s.unshielded.state.progress;
+  const dust = s.dust.state.progress;
   return {
     restored: session.restored,
     dustSeeded: session.dustSeeded,
     dustSeedOutcome: session.dustSeedOutcome,
     synced: s.isSynced === true,
-    shieldedConnected: s.shielded.state.progress.isConnected,
-    unshieldedConnected: s.unshielded.state.progress.isConnected,
-    dustConnected: s.dust.state.progress.isConnected,
-    shieldedApplied: String(s.shielded.state.progress.appliedIndex ?? 0n),
-    unshieldedApplied: String(s.unshielded.state.progress.appliedId ?? 0n),
-    dustApplied: String(s.dust.state.progress.appliedIndex ?? 0n),
+    shieldedConnected: shielded.isConnected,
+    unshieldedConnected: unshielded.isConnected,
+    dustConnected: dust.isConnected,
+    shieldedApplied: String(shielded.appliedIndex ?? 0n),
+    shieldedTarget: String(shielded.highestRelevantWalletIndex ?? 0n),
+    shieldedComplete: shielded.isStrictlyComplete(),
+    unshieldedApplied: String(unshielded.appliedId ?? 0n),
+    unshieldedTarget: String(unshielded.highestTransactionId ?? 0n),
+    unshieldedComplete: unshielded.isStrictlyComplete(),
+    dustApplied: String(dust.appliedIndex ?? 0n),
+    dustTarget: String(dust.highestRelevantWalletIndex ?? 0n),
+    dustComplete: dust.isStrictlyComplete(),
     elapsedMs: Date.now() - startedAt,
   };
 }
@@ -1094,6 +1207,58 @@ async function awaitSync(config, session) {
   // first interval leaves the durable record of where it restarted from.
   writeReceipt();
   const receiptTimer = setInterval(writeReceipt, config.progressIntervalMs);
+  // Mid-flight snapshots. The snapshot was written only after waitForSyncedState resolved, so
+  // a sync killed at hour three of a four-hour replay lost all of it: the next run restarted
+  // from the same cursor. A DUST replay is hours on Preprod, so the checkpoint cadence is the
+  // difference between losing minutes and losing the whole run. Serialized on the same queue
+  // as the receipts so two writers never interleave, and a failed checkpoint is reported but
+  // never aborts a sync that is still making progress.
+  let checkpointQueue = Promise.resolve();
+  const writeCheckpoint = () => {
+    checkpointQueue = checkpointQueue
+      .then(async () => {
+        const bytes = await saveWalletState(config, session.wallet);
+        // Record the chain tip beside the cursor. The dust event id is an indexer-internal
+        // counter with no block reference: the indexer's DustLedgerEvent exposes only
+        // id/raw/maxId/protocolVersion, and a block's transactions do not include the dust
+        // ledger events, so an offset cannot be resolved to a height after the fact. Asking
+        // the tip at checkpoint time is the only way to keep the two comparable, and it is
+        // one ~0.75 s request per interval. A failure here is not fatal: the snapshot is
+        // already durable, so the height is recorded as null rather than losing the
+        // checkpoint.
+        let chain = null;
+        try {
+          chain = await readChainTip(config);
+        } catch (error) {
+          await emitBestEffort(config.runDir, {
+            event: "sync-checkpoint-height-failed",
+            message: String(error?.message ?? error).slice(0, 300),
+          });
+        }
+        await emit(config.runDir, {
+          event: "sync-checkpoint",
+          address: session.address,
+          restored: session.restored,
+          dustSeeded: session.dustSeeded,
+          dustSeedOutcome: session.dustSeedOutcome,
+          bytes,
+          chain,
+          elapsedMs: Date.now() - startedAt,
+        });
+      })
+      .catch((error) =>
+        console.error(
+          JSON.stringify({
+            event: "sync-checkpoint-failed",
+            message: String(error?.message ?? error),
+          }),
+        ),
+      );
+  };
+  const checkpointTimer = setInterval(
+    writeCheckpoint,
+    config.checkpointIntervalMs,
+  );
   let state;
   // Bounded sync. This await had NO deadline, and a dropped subscription left a silent live
   // process forever: preprod-actions.mjs already imports the watchdog for exactly this failure,
@@ -1125,7 +1290,9 @@ async function awaitSync(config, session) {
     if (syncTimer) clearTimeout(syncTimer);
     clearInterval(ticker);
     clearInterval(receiptTimer);
+    clearInterval(checkpointTimer);
     await receiptQueue;
+    await checkpointQueue;
   }
   const bytes = await saveWalletState(config, session.wallet);
   await emit(config.runDir, {

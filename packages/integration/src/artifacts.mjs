@@ -156,7 +156,14 @@ export async function validateCohort() {
     ),
     "@midnight-ntwrk/compact-runtime": TOOLCHAIN.runtime,
     "@midnight-ntwrk/onchain-runtime-v3": "3.1.2",
-    "@midnight-ntwrk/ledger-v8": "8.1.2",
+    // 8.1.3 is the security patch that rejects non-canonical transcript encodings
+    // (GHSA-wr7g-rr4v-jmj8) and the version the official Preprod matrix pairs with
+    // onchain-runtime 3.1.2 and ZKIR 2.1.1.
+    "@midnight-ntwrk/ledger-v8": "8.1.3",
+    // Pinned to the matrix's ZKIR for ledger 8.1.3. It is transitive (testkit-js and
+    // wallet-sdk-capabilities both pull it), so it is an explicit dependency solely so
+    // the overrides entry can reference it and hold every copy to one version.
+    "@midnight-ntwrk/zkir-v2": "2.1.1",
     "@midnight-ntwrk/wallet-sdk": "1.2.0",
     "@polkadot/api": "16.5.6",
     rxjs: "7.8.2",

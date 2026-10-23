@@ -743,14 +743,13 @@ async function stress({
     // Release this instance before the next one starts. `records` above already
     // copied the per-operation results, so dropping the handles loses no evidence.
     //
-    // Measured, not assumed: this is a small win, not the fix for the OOM kill. The
-    // handles themselves are cheap — the compiled contract is shared and immutable,
-    // and 200 instances moved heapUsed by 0.7 MB, all collectable. What actually
-    // ratchets RSS is proving-key material read from disk per proof, which the ZK
-    // cache in preprod-lane.mjs now avoids, plus glibc's mmap threshold, which the
-    // container pins. `global.gc` is undefined without `--expose-gc`, and with the
-    // flag it measured identical to no-gc, so this collect is kept only as a cheap
-    // tidiness step between instances.
+    // The handle tree itself is cheap: the compiled contract is shared and immutable,
+    // and 200 instances moved heapUsed by 0.7 MB, all collectable. What this collect
+    // actually bounds is the external `arrayBuffers` a dropped proving payload leaves
+    // behind. Measured over 10 sequential 9.97 MB payloads: with the flag
+    // `arrayBuffers` holds at 0.1 MB, without it the figure swings between 19 and
+    // 57 MB. The Dockerfile therefore sets `--expose-gc`; without that flag this call
+    // is dead code and the swing returns.
     actors = undefined;
     await new Promise((done) => setImmediate(done));
     if (typeof globalThis.gc === "function") globalThis.gc();
