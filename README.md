@@ -16,25 +16,21 @@ stay private; only the phase, the revision and commitments are public.
 
 | Layer | State | Where |
 | --- | --- | --- |
-| Compact contract | Compiles (compactc 0.31.1); proof and semantic-guard tests pass; local 14-circuit sweep | `packages/contract/` |
-| Midnight client | Provider factory, typed errors, Preprod network guard, Lace dapp-connector v4; reserve and accept preparation fails closed and stops before signing | `packages/midnight-client/` |
-| Convex backend | Canonical admission, chain-observation ingest, order projection, Stripe settlement inbox | `convex/` |
+| Compact contract | Compiles (compactc 0.31.1); 2 staged 14-circuit contracts deployed on Preprod; `reserve` and `accept` proved on Preprod; 14/14 local circuit sweep | `packages/contract/` |
+| Midnight client | Provider factory, typed errors, Preprod network guard, Lace dapp-connector v4 `WalletProvider` adapter (`getShieldedAddresses` + `balanceUnsealedTransaction`) | `packages/midnight-client/`, `apps/web/src/connector-wallet-provider.ts` |
+| Convex backend | Canonical admission, finality-gated chain observer, order projection, Stripe settlement inbox and sweep crons | `convex/` |
 | Identity | Better Auth session verified by Convex (`customJwt`, RS256); legacy `did:privy` subjects still accepted | `apps/web/src/auth-client.ts`, `convex/auth.config.ts` |
 | Payments | Stripe test mode only; capture on `APPROVED`, void on `CANCELLED`; signed webhooks | `convex/http.ts`, `convex/settlement.ts` |
-| Browser workspace | Full order lifecycle runs in an **in-memory simulator**; Lace, Convex session, order record and payment monitor are real but read-only | `apps/web/` |
+| Browser workspace | Interactive order lifecycle simulator with dark mode, 3-slot digest strip, recovery-kit verification gates, and live Lace/Convex status panels | `apps/web/` |
 
-Not done yet: a wallet-signed reserve from the browser, chain data driving the workspace, and a
-circuit *call* on Preprod. Acceptance is published as **0/6 provider** and **0/14 operation**
-until those land.
-
-The contract **is deployed on Preprod**: `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb`
-at block 3095269, staged 7+7 (seven keys deployed, seven installed by one signed maintenance
-update), all fourteen operation names read back from chain state with `ledger-v8`. Deployment
-is not execution: no circuit has been called there, so execution remains 0/14 on Preprod and
-the 14/14 proof evidence still comes from local runs. Earlier deploy attempts failed on DUST
-balancing; that was a real blocker, and the failure after it was a reporting bug
-(`publicReceipt` rejected the unprefixed transaction id `submitTxAsync` returns), not a chain
-rejection. See `RECEIPTS.md`.
+The contract **is deployed on Preprod** at
+`09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (block 3095269) and
+`6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee`, staged 7+7 (seven keys
+deployed, seven installed by one signed maintenance update), with all fourteen operation names
+read back from chain state on `ledger-v8`. On Preprod, `reserve` (block 3095493) and `accept`
+(block 3095499) have executed with real proofs, and all 14/14 circuits are proved on the local
+Midnight network. Browser-signed end-to-end Preprod reserve and hosted Better Auth deployment
+remain open; see `docs/RECEIPTS.md`.
 
 ## The contract
 
@@ -363,7 +359,7 @@ read-only panels on `/connections`. The workspace runs without them.
 
 ## Testing
 
-- `npm run test:unit`: 696 tests across 63 files (contract, domain, backend, web, midnight-client,
+- `npm run test:unit`: 759 tests across 67 files (contract, domain, backend, web, midnight-client,
   convex, e2e, scripts).
 - `npm run test:integration`: provisions the pinned Node runtime and runs the
   `packages/integration` tests.
