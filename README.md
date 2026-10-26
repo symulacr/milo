@@ -7,8 +7,8 @@ fixed price for a pack of three images. A Midnight Compact contract enforces the
 handles payment off chain. The brief, the price, the participants' secrets and the delivered files
 stay private; only the phase, the revision and commitments are public.
 
-[Demo video](https://youtu.be/nyB9qJ1OL-4) · [Live workspace](https://milo-xkq.vercel.app) ·
-[Slide deck](https://milo-xkq.vercel.app/milo-wave2-deck.pdf)
+[Demo video](https://youtu.be/nyB9qJ1OL-4) · [Live workspace](https://milo-nine-delta.vercel.app) ·
+[Project status (PDF)](docs/media/milo-status.pdf)
 
 ![Milo showreel](docs/media/showreel.gif)
 
