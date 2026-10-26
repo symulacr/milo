@@ -12,7 +12,8 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["bun-types", "node"],
-    "noImplicitOverride": true
+    "noImplicitOverride": true,
+    "paths": { "@/*": ["./apps/web/src/*"] }
   },
   "include": [
     "apps/**/*.ts",

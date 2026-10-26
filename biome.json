@@ -8,7 +8,7 @@
       "convex/**",
       "*.json",
       "!packages/contract/generated",
-      "!apps/web/public/qa-build",
+      "!convex/_generated",
       "!scripts/gates/*.json",
       "!gates"
     ]
@@ -18,10 +18,25 @@
     "indentStyle": "space",
     "indentWidth": 2
   },
+  "css": { "parser": { "tailwindDirectives": true } },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/components/ui/input.tsx"],
+      "linter": { "rules": { "a11y": { "noLabelWithoutControl": "off" } } }
+    }
+  ],
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": {
+            "inputComponents": ["Input", "NativeSelect", "Textarea"]
+          }
+        }
+      }
     }
   }
 }

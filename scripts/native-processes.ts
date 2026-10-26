@@ -39,3 +39,16 @@ export function installNativeSignalCleanup() {
     process.off("SIGINT", int);
   };
 }
+
+/**
+ * The preamble every provisioning script needs: signal cleanup when run
+ * directly, and a hard stop on any platform other than the pinned one.
+ */
+export function provisioningPreamble() {
+  const removeSignalHandlers = import.meta.main
+    ? installNativeSignalCleanup()
+    : () => {};
+  if (process.platform !== "linux" || process.arch !== "x64")
+    throw new Error("provisioning runs on linux x64 only");
+  return removeSignalHandlers;
+}

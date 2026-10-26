@@ -9,6 +9,19 @@ const compactEntry = require.resolve("@midnight-ntwrk/compact-runtime");
 const onchainEntry = require.resolve("@midnight-ntwrk/onchain-runtime-v3");
 const fromCompact = createRequire(compactEntry);
 
+/** The vendored compiler, resolved from the repo root so the check does not depend
+ * on the caller's cwd. */
+const COMPILER = join(
+  import.meta.dir,
+  "..",
+  ".tools/compact/compiler/compactc",
+);
+const CONTRACT_SOURCE = join(
+  import.meta.dir,
+  "..",
+  "packages/contract/src/order.compact",
+);
+
 assert.equal(
   fromCompact.resolve("@midnight-ntwrk/onchain-runtime-v3"),
   onchainEntry,
@@ -37,10 +50,43 @@ const EXPECTED_VERSIONS = [
   ["--ledger-version", "ledger-8.0.2"],
 ] as const;
 
+const reported = new Map<string, string>();
 for (const [flag, expected] of EXPECTED_VERSIONS) {
-  const result = Bun.spawnSync([".tools/compact/compiler/compactc", flag]);
+  const result = Bun.spawnSync([COMPILER, flag]);
   assert.equal(result.exitCode, 0, `Compiler ${flag} failed`);
-  assert.equal(result.stdout.toString().trim(), expected, flag);
+  const actual = result.stdout.toString().trim();
+  reported.set(flag, actual);
+  assert.equal(actual, expected, flag);
 }
+
+// A bare `compact update` installs the newest toolchain and makes it the default;
+// toolchains 0.34/0.35 target ledger 9 and cannot deploy to a ledger-8 network
+// (docs.midnight.network/relnotes/support-matrix, 2026-10-23). The version flags
+// above catch that only if this exact binary is the one that runs, so two more
+// assertions close the gap the flags cannot:
+//
+// 1. No shadowing compiler. A toolchain manager puts its own `compactc` on PATH,
+//    and a build that resolved that one instead would report ledger 9 while this
+//    file kept asserting the vendored path.
+const shadow = Bun.which("compactc");
+assert.ok(
+  shadow === null || shadow === COMPILER,
+  `PATH resolves compactc to ${shadow}, not the pinned ${COMPILER}`,
+);
+
+// 2. The source pragma agrees with the compiler's language version. This is the
+//    silent-switch detector: a newer default toolchain requires a newer pragma, so
+//    a stale pragma means the two have diverged. Compared as major.minor because
+//    the pragma is written `0.23` and the compiler reports `0.23.0`.
+const pragma = (await Bun.file(CONTRACT_SOURCE).text()).match(
+  /^\s*pragma\s+language_version\s+([0-9]+\.[0-9]+)/m,
+);
+assert.ok(pragma, `No pragma language_version in ${CONTRACT_SOURCE}`);
+const language = reported.get("--language-version") ?? "";
+assert.equal(
+  pragma[1],
+  language.split(".").slice(0, 2).join("."),
+  `pragma ${pragma[1]} does not match compiler language ${language}`,
+);
 
 console.log("Compact cohort verified:", versions);

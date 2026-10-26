@@ -17,11 +17,11 @@ stay private; only the phase, the revision and commitments are public.
 | Layer | State | Where |
 | --- | --- | --- |
 | Compact contract | Compiles (compactc 0.31.1); 2 staged 14-circuit contracts deployed on Preprod; `reserve` and `accept` proved on Preprod; 14/14 local circuit sweep | `packages/contract/` |
-| Midnight client | Provider factory, typed errors, Preprod network guard, Lace dapp-connector v4 `WalletProvider` adapter (`getShieldedAddresses` + `balanceUnsealedTransaction`) | `packages/midnight-client/`, `apps/web/src/connector-wallet-provider.ts` |
+| Midnight client | Provider factory, typed errors, Preprod network guard, Lace dapp-connector v4 `WalletProvider` adapter (`getShieldedAddresses` + `balanceUnsealedTransaction`) | `packages/midnight-client/src/provider-factory.ts`, `apps/web/src/chain/providers.ts` |
 | Convex backend | Canonical admission, finality-gated chain observer, order projection, Stripe settlement inbox and sweep crons | `convex/` |
 | Identity | Better Auth session verified by Convex (`customJwt`, RS256); legacy `did:privy` subjects still accepted | `apps/web/src/auth-client.ts`, `convex/auth.config.ts` |
 | Payments | Stripe test mode only; capture on `APPROVED`, void on `CANCELLED`; signed webhooks | `convex/http.ts`, `convex/settlement.ts` |
-| Browser workspace | Interactive order lifecycle simulator with dark mode, 3-slot digest strip, recovery-kit verification gates, and live Lace/Convex status panels | `apps/web/` |
+| Browser workspace | Order lifecycle: quote, card hold, delivery, in-browser SHA-256 check of the three files, approval in Lace | `apps/web/` |
 
 The contract **is deployed on Preprod** at
 `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (block 3095269) and
@@ -347,27 +347,33 @@ Bun and does not use it.
 ```sh
 sh scripts/setup.sh
 npm run contract:compile   # compile before typecheck or tests
-npm run dev                # http://localhost:3000 (try /demo and /orders/sample-001)
-npm run typecheck
-npm run lint
-npm run test:unit
-npm run build              # static output in dist/, public settings in dist/api/public-config
+npm run dev                # http://localhost:3000
 ```
 
-Copy `.env.example` to `.env.local` and set `CONVEX_URL` and `BETTER_AUTH_URL` to enable the live
-read-only panels on `/connections`. The workspace runs without them.
+Copy `.env.example` to `.env.local`. A Preprod run reads these variables (names only): `CONVEX_URL`,
+`BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`MILO_PREPROD_GENESIS_HASH`, `MILO_OPERATOR_EMAILS`. The landing and the legal pages need none of them.
 
 ## Testing
 
-- `npm run test:unit`: 759 tests across 67 files (contract, domain, backend, web, midnight-client,
-  convex, e2e, scripts).
-- `npm run test:integration`: provisions the pinned Node runtime and runs the
-  `packages/integration` tests.
-- `npm run test:native-network`: local Midnight node lane (see the
-  [integration README](packages/integration/README.md)).
-- Accessibility: axe reports 0 serious or critical issues on every public and workspace route at
-  desktop and mobile widths (34 page/viewport combinations, served over HTTP).
+The gates, in CI order: `bun run lint`, `bun run typecheck`, `bun run test:unit`, `bun run build`
+(static output in `dist/`).
 
+- `bun run test:unit`: 1,332 tests, run with `--parallel`.
+- `bun run test:integration`: provisions the pinned Node runtime and runs the
+  `packages/integration` tests.
+- `bun run test:native-network`: local Midnight node lane (see the
+  [integration README](packages/integration/README.md)).
+
+The strict unused-symbol pass must also report zero errors:
+
+```sh
+sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters
+```
+
+Signed-in pages need a session, so the taste inspector cannot reach them from a cold browser. Start
+`PORT=3100 scripts/dev.ts` and stub `/api/public-config` plus the Convex and Better Auth responses in
+the browser's network layer; that harness stays outside the repository. Keep every probe under 60 s.
 ```bash verify
 test -f package.json
 test -f packages/contract/src/order.compact

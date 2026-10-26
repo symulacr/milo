@@ -13,6 +13,8 @@
 !/tsconfig.json
 !/biome.json
 !/bun.lock
+!/bunfig.toml
+!/components.json
 
 # Source, docs and CI
 !/.github/

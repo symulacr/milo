@@ -2,6 +2,7 @@ import app from "../apps/web/app.html";
 import landing from "../apps/web/index.html";
 import publicApp from "../apps/web/public-app.html";
 import {
+  legacyRedirects,
   publicAppPrefixes,
   publicAppRoutes,
   workspaceAppPrefixes,
@@ -16,11 +17,24 @@ const browserConfig = publicConfig(process.env);
 
 const publicDirectory = "apps/web/public";
 
+const zkDirectory = "packages/contract/generated";
+
 const publicRoutes = Object.fromEntries(
   Array.from(new Bun.Glob("**/*").scanSync(publicDirectory)).map((path) => [
     `/${path}`,
     Bun.file(`${publicDirectory}/${path}`),
   ]),
+);
+
+const zkRoutes = Object.fromEntries(
+  (["keys", "zkir"] as const).flatMap((directory) =>
+    Array.from(new Bun.Glob("*").scanSync(`${zkDirectory}/${directory}`)).map(
+      (path) => [
+        `/zk/${directory}/${path}`,
+        Bun.file(`${zkDirectory}/${directory}/${path}`),
+      ],
+    ),
+  ),
 );
 
 const byRoute = (routes: readonly string[], value: unknown) =>
@@ -29,12 +43,29 @@ const byRoute = (routes: readonly string[], value: unknown) =>
 const byPrefix = (prefixes: readonly string[], value: unknown) =>
   Object.fromEntries(prefixes.map((prefix) => [`${prefix}/*`, value]));
 
+const legacy = Object.fromEntries(
+  legacyRedirects.map(([from, to]) => [
+    from,
+    (request: Request & { params?: Record<string, string> }) => {
+      const url = new URL(request.url);
+      let path: string = to;
+      for (const [key, value] of Object.entries(request.params ?? {}))
+        path = path.replace(`:${key}`, value);
+      const target = new URL(path, url);
+      for (const [key, value] of url.searchParams)
+        if (!target.searchParams.has(key)) target.searchParams.set(key, value);
+      return Response.redirect(target.toString(), 301);
+    },
+  ]),
+);
+
 Bun.serve({
   hostname: "0.0.0.0",
-  port: 3000,
+  port: Number(process.env.PORT) || 3000,
   development: true,
   routes: {
     ...publicRoutes,
+    ...zkRoutes,
     "/": landing,
     "/api/public-config": (request) =>
       publicConfigResponse(request, browserConfig),
@@ -42,9 +73,7 @@ Bun.serve({
     ...byRoute(workspaceAppRoutes, app),
     ...byPrefix(publicAppPrefixes, publicApp),
     ...byPrefix(workspaceAppPrefixes, app),
-    "/__qa/axe.js": new Response(Bun.file("node_modules/axe-core/axe.min.js"), {
-      headers: { "Content-Type": "text/javascript" },
-    }),
+    ...legacy,
     "/*": app,
   },
 });

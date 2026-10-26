@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { statSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { sha256File } from "./sha256-file";
 import "./verify-compact-cohort";
@@ -30,6 +31,46 @@ const artifactPaths = (name: string): string[] => [
   `keys/${name}.prover`,
   `keys/${name}.verifier`,
 ];
+
+// The compiler is the slowest step in the repo (~2.5 min for 14 circuits) and
+// its output tree already carries a receipt naming the source hash, the
+// compiler version and every artifact hash. So an unchanged source is proved
+// current by re-hashing the artifacts (~0.2 s) instead of recompiling. The
+// receipt is written by this script, so trusting it is not a new assumption;
+// a missing, extra or altered artifact invalidates the cache, and `--force`
+// recompiles regardless.
+const receiptPath = `${destination}/compile-receipt.json`;
+const cached = async (): Promise<boolean> => {
+  const receipt = await Bun.file(receiptPath)
+    .json()
+    .catch(() => undefined);
+  const artifacts: Record<string, string> | undefined = receipt?.artifacts;
+  if (
+    !artifacts ||
+    receipt.compiler !== COMPILER_VERSION ||
+    receipt.runtime !== "0.16.0" ||
+    receipt.sourceSha256 !== sourceHash
+  )
+    return false;
+  // `scanSync` yields directories as well as files, so compare file sets only:
+  // an extra file means the tree is not the one the receipt describes.
+  const found = [...new Bun.Glob("**/*").scanSync(destination)].filter((path) =>
+    statSync(`${destination}/${path}`).isFile(),
+  );
+  const expected = [...Object.keys(artifacts), "compile-receipt.json"];
+  if (found.length !== expected.length) return false;
+  if (found.some((path) => !expected.includes(path))) return false;
+  for (const [path, hash] of Object.entries(artifacts))
+    if ((await sha256File(`${destination}/${path}`)) !== hash) return false;
+  return true;
+};
+
+if (!process.argv.includes("--force") && (await cached())) {
+  console.log(
+    `Cached: ${CIRCUITS.length} protocol circuits match ${sourceHash.slice(0, 12)}.`,
+  );
+  process.exit(0);
+}
 
 await mkdir(".tools", { recursive: true });
 const temporary = await mkdtemp(".tools/contract-build-");

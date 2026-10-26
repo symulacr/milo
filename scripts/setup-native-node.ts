@@ -1,42 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdir, rename, rm } from "node:fs/promises";
-import {
-  installNativeSignalCleanup,
-  ownNativeProcess,
-} from "./native-processes";
-import { sha256File } from "./sha256-file";
+import { mkdir } from "node:fs/promises";
+import { ownNativeProcess, provisioningPreamble } from "./native-processes";
+import { fetchVerified } from "./sha256-file";
 
-const removeSignalHandlers = import.meta.main
-  ? installNativeSignalCleanup()
-  : () => {};
-
-assert.equal(process.platform, "linux");
-assert.equal(process.arch, "x64");
+const removeSignalHandlers = provisioningPreamble();
 const directory = ".tools/native-midnight";
 const archive = `${directory}/downloads/node.tar.gz`;
-await mkdir(`${directory}/downloads`, { recursive: true });
 await mkdir(`${directory}/node`, { recursive: true });
 const expected =
   "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf";
 const checksum = "Native release checksum mismatch";
-if (
-  !(await Bun.file(archive).exists()) ||
-  (await sha256File(archive)) !== expected
-) {
-  const response = await fetch(
-    "https://github.com/midnightntwrk/midnight-node/releases/download/node-1.0.0/midnight-node-1.0.0-linux-amd64.tar.gz",
-  );
-  assert(response.ok, `Native node download failed: ${response.status}`);
-  const temporary = `${archive}.${crypto.randomUUID()}.part`;
-  try {
-    await Bun.write(temporary, response);
-    assert.equal(await sha256File(temporary), expected, checksum);
-    await rename(temporary, archive);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-assert.equal(await sha256File(archive), expected, checksum);
+await fetchVerified(
+  "https://github.com/midnightntwrk/midnight-node/releases/download/node-1.0.0/midnight-node-1.0.0-linux-amd64.tar.gz",
+  archive,
+  expected,
+  checksum,
+);
 const extraction = ownNativeProcess(
   Bun.spawn(["tar", "-xzf", archive, "-C", `${directory}/node`]),
 );
