@@ -8,69 +8,29 @@
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
-import { errorDiagnostics } from "./diagnostics.mjs";
 import { installFeeMath, localFixedFeeConfig } from "./fee-math.mjs";
+import { bytes32, createHarness, graphql } from "./harness.mjs";
 import { intentExpiry } from "./tx.mjs";
 
 const TRAIL = "/tmp/d2a-happy-trail.jsonl";
-mkdirSync("/tmp/d2a-happy-run", { recursive: true });
-const trail = (event, fields = {}) => {
-  const line = JSON.stringify({ event, at: Date.now(), ...fields });
-  appendFileSync(TRAIL, `${line}\n`);
-  process.stdout.write(`${line}\n`);
-};
-
-let stage = "configuration";
-const emit = (event, fields = {}) => trail(event, { stage, ...fields });
-const fail = (error) => {
-  emit("failed", {
-    ...errorDiagnostics(error),
-    message: error?.message || String(error),
-    stack: error?.stack?.split("\n").slice(0, 8).join(" | ") ?? null,
-  });
-  process.exit(1);
-};
-process.on("uncaughtException", fail);
-process.on("unhandledRejection", fail);
-
-const bytes32 = () => new Uint8Array(randomBytes(32));
-
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      emit("step-timeout", { label, ms });
-      reject(new Error(`timeout after ${ms}ms: ${label}`));
-    }, ms);
-  });
-  return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
-}
-
-async function graphql(env, query, variables) {
-  const response = await fetch(env.indexer, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  assert(response.ok, `indexer HTTP ${response.status}`);
-  const body = await response.json();
-  assert(!body.errors, JSON.stringify(body.errors));
-  return body.data;
-}
+const harness = createHarness({
+  trailPath: TRAIL,
+  runDir: "/tmp/d2a-happy-run",
+});
+const { emit, fail, withTimeout } = harness;
 
 async function main() {
   const env = localConfig(process.env);
   const expiresAt = Date.now() + env.timeoutMs;
   setTimeout(() => {
-    emit("timeout", { stage });
+    emit("timeout", { stage: harness.stage });
     process.exit(1);
   }, env.timeoutMs).unref?.();
   const step = (name) => {
-    stage = name;
+    harness.setStage(name);
     emit("stage");
   };
   const rpc = async (method, params) => {

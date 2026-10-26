@@ -61,9 +61,7 @@ export class InsufficientDustError extends MidnightClientError {
   }
 }
 
-export function isMidnightClientError(
-  value: unknown,
-): value is MidnightClientError {
+function isMidnightClientError(value: unknown): value is MidnightClientError {
   return value instanceof MidnightClientError;
 }
 

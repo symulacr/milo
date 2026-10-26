@@ -3,14 +3,25 @@
 // while a lane mode is working in the background.
 //
 //   node packages/integration/src/preprod-status.mjs
+//
+// Bounded: every request goes through the package's one GraphQL helper with the
+// whole chain section's 45 s budget as its deadline. Without the budget the
+// per-address and per-landing lookups run sequentially, so a slow indexer
+// multiplied 15 s by the number of addresses in the trail. Past the budget the
+// chain section reports what it has and stops, rather than holding a shell open.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { blockfrostPreprodEndpoints } from "./blockfrost.mjs";
+import { graphql } from "./harness.mjs";
 
 const RUN_DIR = new URL("../../../.hoplite/artifacts/preprod", import.meta.url)
   .pathname;
 const RECEIPTS = resolve(RUN_DIR, "transactions.jsonl");
+
+/** The whole probe must finish inside a minute, so the chain section gets 45 s. */
+const CHAIN_BUDGET_MS = 45_000;
+const chainDeadline = Date.now() + CHAIN_BUDGET_MS;
 
 // Resolve the Blockfrost Preprod indexer (token appended) at call time. A read-only progress
 // probe must not throw at import when no token is present; it reports the failure instead.
@@ -28,6 +39,7 @@ function processState() {
   try {
     const out = execFileSync("pgrep", ["-af", "preprod-lane.mjs"], {
       encoding: "utf8",
+      timeout: 5_000,
     });
     const lines = out
       .split("\n")
@@ -53,33 +65,32 @@ function receipts() {
     .filter(Boolean);
 }
 
-async function graphql(query, variables) {
+/** One indexer POST through the package's single GraphQL helper, with this
+ * probe's 45 s chain budget as the deadline so no single request outlives it. */
+async function gql(query, variables) {
   const endpoint = indexerEndpoint();
   if (typeof endpoint !== "string")
     throw new Error(`indexer endpoint unavailable: ${endpoint.error}`);
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
+  return graphql({ indexer: endpoint }, query, variables, {
+    deadline: chainDeadline,
   });
-  if (!response.ok) throw new Error(`indexer ${response.status}`);
-  const body = await response.json();
-  if (body.errors)
-    throw new Error(body.errors.map((e) => e.message).join("; "));
-  return body.data;
 }
 
 async function chainState(events) {
-  const tip = await graphql(`query { block { height hash } }`);
+  const tip = await gql(`query { block { height hash } }`);
   const deployed = events.filter((event) => event.event === "preprod-deployed");
   const addresses = [...new Set(deployed.map((event) => event.address))];
   const landings = [];
+  const truncated = { landings: false, contractStates: false };
   for (const event of events
     .filter((e) => e.event === "call-finalized")
     .slice(-5)) {
     if (!event.txId) continue;
-    const result = await graphql(
+    if (Date.now() >= chainDeadline) {
+      truncated.landings = true;
+      break;
+    }
+    const result = await gql(
       `query ($hash: String!) { transactions(offset: { hash: $hash }) { hash block { height } } }`,
       { hash: event.txId },
     ).catch(() => null);
@@ -91,7 +102,11 @@ async function chainState(events) {
   }
   const contractStates = [];
   for (const address of addresses) {
-    const result = await graphql(
+    if (Date.now() >= chainDeadline) {
+      truncated.contractStates = true;
+      break;
+    }
+    const result = await gql(
       `query ($address: String!) { contractAction(address: $address) { address state } }`,
       { address },
     ).catch(() => null);
@@ -101,7 +116,13 @@ async function chainState(events) {
       stateBytes: result?.contractAction?.state?.length ?? 0,
     });
   }
-  return { tip: tip?.block, landings, contractStates };
+  return {
+    tip: tip?.block,
+    landings,
+    contractStates,
+    truncated,
+    budgetMs: CHAIN_BUDGET_MS,
+  };
 }
 
 const events = receipts();

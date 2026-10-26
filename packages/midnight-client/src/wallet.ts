@@ -2,7 +2,7 @@ import type {
   ConnectedAPI,
   InitialAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import { LockedWalletError } from "./errors.ts";
+import { LockedWalletError, WrongNetworkError } from "./errors.ts";
 import {
   assertSupportedNetwork,
   SUPPORTED_MIDNIGHT_NETWORK,
@@ -25,64 +25,142 @@ export type WalletConnectionState =
     }
   | { readonly status: "error"; readonly message: string };
 
-export type StatusAPI = Pick<
+type StatusAPI = Pick<
   ConnectedAPI,
   "getConnectionStatus" | "getConfiguration" | "getUnshieldedAddress"
 >;
 
-const UNSUPPORTED_WALLET =
-  "No compatible Midnight wallet (API v4) was found. Install or unlock the extension, then retry.";
-const REJECTED_CONNECTION =
-  "Connection not established. Permission may have been declined, the wallet may be unavailable, or its network is not PREPROD. Mainnet is blocked.";
-const REJECTED_REFRESH =
-  "Lace is disconnected, unavailable, or no longer on PREPROD. Reconnect after checking the extension.";
+export const UNSUPPORTED_WALLET =
+  "No compatible Midnight wallet (API v4) was found. Install the extension or open it, then retry.";
+export const REJECTED_CONNECTION =
+  "Connection not established. The request may have been declined, the wallet may be unavailable, or its network is not PREPROD. Mainnet is blocked.";
+export const REJECTED_REFRESH =
+  "The wallet is disconnected, unavailable, or no longer on PREPROD. Reconnect after checking the extension.";
+export const WRONG_NETWORK_MESSAGE =
+  "Set your wallet to Midnight Preprod. Milo does not use other networks.";
 
-export function discoverWallets(registry: WalletRegistry): InitialAPI[] {
+/** The connector major this app implements. */
+const SUPPORTED_API_MAJOR = 4;
+
+export type WalletChoice = {
+  readonly rdns: string;
+  readonly name: string;
+  readonly icon: string;
+  readonly api: InitialAPI;
+  /** True when more than one injection claims this rdns. */
+  readonly duplicate: boolean;
+};
+
+/** Compare two dotted versions numerically, component by component. */
+const compareVersions = (left: string, right: string) => {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+};
+
+/** Wallets whose reported apiVersion is in the range this app implements. */
+const supported = (wallet: InitialAPI) =>
+  typeof wallet.connect === "function" &&
+  typeof wallet.apiVersion === "string" &&
+  Number.parseInt(wallet.apiVersion, 10) === SUPPORTED_API_MAJOR;
+
+/**
+ * One row per rdns, highest supported apiVersion first. Keys are not stable
+ * (a wallet may use a fresh key per page load), so identity is the rdns.
+ */
+export function walletChoices(registry: WalletRegistry): WalletChoice[] {
   if (!registry) return [];
-  return Object.values(registry).filter(
-    (wallet): wallet is InitialAPI =>
-      !!wallet &&
-      typeof wallet.connect === "function" &&
-      typeof wallet.apiVersion === "string" &&
-      /^4\./.test(wallet.apiVersion),
-  );
+  const byRdns = new Map<string, InitialAPI[]>();
+  for (const wallet of Object.values(registry)) {
+    if (!wallet || !supported(wallet)) continue;
+    const group = byRdns.get(wallet.rdns) ?? [];
+    group.push(wallet);
+    byRdns.set(wallet.rdns, group);
+  }
+  return [...byRdns]
+    .map(([rdns, group]) => {
+      const api = [...group].sort((left, right) =>
+        compareVersions(right.apiVersion, left.apiVersion),
+      )[0] as InitialAPI;
+      return {
+        rdns,
+        name: api.name,
+        icon: api.icon,
+        api,
+        duplicate: group.length > 1,
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export async function verifyPreprodConnection(api: StatusAPI): Promise<void> {
+export type WatchWalletsOptions = {
+  readonly intervalMs?: number;
+  readonly timeoutMs?: number;
+  readonly now?: () => number;
+};
+
+export function watchWallets(
+  read: () => WalletRegistry,
+  onChange: (wallets: InitialAPI[]) => void,
+  options: WatchWalletsOptions = {},
+): () => void {
+  const intervalMs = options.intervalMs ?? 250;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const now = options.now ?? Date.now;
+  const started = now();
+  let seen: string | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const tick = () => {
+    const wallets = walletChoices(read()).map((choice) => choice.api);
+    const signature = wallets.map((wallet) => wallet.rdns).join(",");
+    if (signature !== seen) {
+      seen = signature;
+      onChange(wallets);
+    }
+    if (wallets.length > 0 || now() - started >= timeoutMs) return stop();
+    timer = setTimeout(tick, intervalMs);
+  };
+  tick();
+  return stop;
+}
+
+/** The preprod check every connect and refresh runs, returning the account it read.
+ * Both the status and the configuration carry a network id, and a wallet can report
+ * them inconsistently, so both are reconciled. */
+export async function verifyPreprodConnection(
+  api: StatusAPI,
+): Promise<WalletAccount> {
   const status = await api.getConnectionStatus();
-  if (status.status !== "connected") {
+  if (status.status !== "connected")
     throw new LockedWalletError("Wallet is not connected");
-  }
   assertSupportedNetwork(status.networkId);
-  const configuration = await api.getConfiguration();
-  assertSupportedNetwork(configuration.networkId);
-}
-
-async function readAccount(api: StatusAPI): Promise<WalletAccount> {
+  assertSupportedNetwork((await api.getConfiguration()).networkId);
   const { unshieldedAddress } = await api.getUnshieldedAddress();
-  if (typeof unshieldedAddress !== "string" || unshieldedAddress.length === 0) {
+  if (typeof unshieldedAddress !== "string" || unshieldedAddress.length === 0)
     throw new LockedWalletError("Wallet returned no unshielded address");
-  }
   return { unshieldedAddress };
 }
 
-export type WalletConnector<Handle = InitialAPI> = {
-  readonly state: WalletConnectionState;
-  connect(handle: Handle | undefined): Promise<WalletConnectionState>;
-  refresh(): Promise<WalletConnectionState>;
-  disconnect(notify?: boolean): void;
-};
+/** The connected state both connect and refresh end in. */
+const connected = (account: WalletAccount): WalletConnectionState => ({
+  status: "connected",
+  networkId: SUPPORTED_MIDNIGHT_NETWORK,
+  account,
+});
 
-export abstract class WalletConnectorBase<Handle>
-  implements WalletConnector<Handle>
-{
+/** Any wallet that implements the DApp connector. */
+export class DappWalletConnector {
   private api: StatusAPI | undefined;
   private current: WalletConnectionState = { status: "disconnected" };
   private revision = 0;
-
-  protected abstract readonly unsupportedMessage: string;
-  protected abstract readonly rejectedMessage: string;
-  protected abstract readonly refreshMessage: string;
 
   constructor(
     private readonly onState: (state: WalletConnectionState) => void = () => {},
@@ -92,43 +170,54 @@ export abstract class WalletConnectorBase<Handle>
     return this.current;
   }
 
-  protected abstract open(handle: Handle): Promise<StatusAPI>;
-
-  protected hint(_api: StatusAPI): Promise<void> {
-    return Promise.resolve();
+  connectedApi(): ConnectedAPI | undefined {
+    return this.api as ConnectedAPI | undefined;
   }
 
-  protected update(next: WalletConnectionState): WalletConnectionState {
+  private update(next: WalletConnectionState): WalletConnectionState {
     this.current = next;
     this.onState(next);
     return next;
   }
 
-  async connect(handle: Handle | undefined): Promise<WalletConnectionState> {
+  async connect(
+    handle: InitialAPI | undefined,
+  ): Promise<WalletConnectionState> {
     const revision = ++this.revision;
     this.api = undefined;
-    if (!handle) {
-      return this.update({ status: "error", message: this.unsupportedMessage });
-    }
+    if (!handle)
+      return this.update({ status: "error", message: UNSUPPORTED_WALLET });
     this.update({ status: "connecting" });
     try {
-      const api = await this.open(handle);
+      const api = await handle.connect(SUPPORTED_MIDNIGHT_NETWORK);
       if (revision !== this.revision) return this.current;
-      await verifyPreprodConnection(api);
+      const account = await verifyPreprodConnection(api);
       if (revision !== this.revision) return this.current;
-      await this.hint(api);
-      if (revision !== this.revision) return this.current;
-      const account = await readAccount(api);
+      // Lace 2.4.3 registers hintUsage but the method throws "Method not
+      // implemented." synchronously (lace#2270), and an optional call does not
+      // catch a synchronous throw: `x.m?.(...).catch(...)` still propagates it.
+      // A typeof guard plus try/catch is the only shape that survives both a
+      // missing method and a throwing one. A hint is advisory, so neither is fatal.
+      const hint = (api as ConnectedAPI).hintUsage;
+      if (typeof hint === "function") {
+        try {
+          await hint.call(api, ["getConnectionStatus", "getConfiguration"]);
+        } catch {
+          // A wallet that cannot take a hint is still connected.
+        }
+      }
       if (revision !== this.revision) return this.current;
       this.api = api;
-      return this.update({
-        status: "connected",
-        networkId: SUPPORTED_MIDNIGHT_NETWORK,
-        account,
-      });
-    } catch {
+      return this.update(connected(account));
+    } catch (error) {
       if (revision !== this.revision) return this.current;
-      return this.update({ status: "error", message: this.rejectedMessage });
+      return this.update({
+        status: "error",
+        message:
+          error instanceof WrongNetworkError
+            ? WRONG_NETWORK_MESSAGE
+            : REJECTED_CONNECTION,
+      });
     }
   }
 
@@ -137,19 +226,22 @@ export abstract class WalletConnectorBase<Handle>
     if (!api) return this.current;
     const revision = this.revision;
     try {
-      await verifyPreprodConnection(api);
-      const account = await readAccount(api);
+      const account = await verifyPreprodConnection(api);
       if (revision !== this.revision) return this.current;
-      return this.update({
-        status: "connected",
-        networkId: SUPPORTED_MIDNIGHT_NETWORK,
-        account,
-      });
-    } catch {
+      return this.update(connected(account));
+    } catch (error) {
       if (revision !== this.revision) return this.current;
       this.api = undefined;
       ++this.revision;
-      return this.update({ status: "error", message: this.refreshMessage });
+      // A wallet switched to another network mid-flow is the common case here, and it
+      // has its own fix ("set it to Preprod"), so it must not read as a dropped link.
+      return this.update({
+        status: "error",
+        message:
+          error instanceof WrongNetworkError
+            ? WRONG_NETWORK_MESSAGE
+            : REJECTED_REFRESH,
+      });
     }
   }
 
@@ -158,28 +250,6 @@ export abstract class WalletConnectorBase<Handle>
     this.api = undefined;
     this.current = { status: "disconnected" };
     if (notify) this.update(this.current);
-  }
-}
-
-export class LaceWalletConnector extends WalletConnectorBase<InitialAPI> {
-  protected readonly unsupportedMessage = UNSUPPORTED_WALLET;
-  protected readonly rejectedMessage = REJECTED_CONNECTION;
-  protected readonly refreshMessage = REJECTED_REFRESH;
-
-  protected override open(wallet: InitialAPI): Promise<StatusAPI> {
-    return wallet.connect(SUPPORTED_MIDNIGHT_NETWORK);
-  }
-
-  protected override async hint(api: StatusAPI): Promise<void> {
-    try {
-      await (api as ConnectedAPI).hintUsage?.([
-        "getConnectionStatus",
-        "getConfiguration",
-        "getUnshieldedAddress",
-      ]);
-    } catch {
-      return;
-    }
   }
 }
 

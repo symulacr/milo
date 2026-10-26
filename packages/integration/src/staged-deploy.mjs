@@ -50,7 +50,7 @@
 // skips the deploy, re-ties the recorded address to that plan through the
 // observed ledger data and signer, and inserts only the missing circuits.
 import assert from "node:assert/strict";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -105,63 +105,6 @@ function operationNames(state) {
     .sort();
 }
 
-/** A public constructor configuration for the lane. The network bytes come from
- * the lane's network id, so the deployed configuration names the network it is
- * deployed on; this mirrors what the monolithic preprod deploy built. Kept here
- * so the lane's interception stays thin and the receipt can persist and restore
- * exactly the configuration that produced the address. */
-export function preprodConfiguration(contract, networkId) {
-  assert(contract?.pureCircuits && contract?.Role, "Contract module required");
-  assert.equal(typeof networkId, "string");
-  const network = new Uint8Array(32);
-  const encoded = new TextEncoder().encode(networkId);
-  assert(encoded.length <= 32 && encoded.length > 0, "Invalid network id");
-  network.set(encoded);
-  const bytes = () => new Uint8Array(randomBytes(32));
-  const terms = {
-    serviceVersion: 1n,
-    packQuantity: 1n,
-    outputCount: 3n,
-    unitPrice: 36_000n,
-    total: 36_000n,
-    currency: new TextEncoder().encode("USD"),
-    scopeDigest: bytes(),
-    rightsDigest: bytes(),
-    paymentPolicy: bytes(),
-    salt: bytes(),
-  };
-  const { pureCircuits, Role } = contract;
-  const now = BigInt(Math.floor(Date.now() / 1000));
-  const nonce = bytes();
-  return {
-    network,
-    orderNonce: nonce,
-    termsCommitment: pureCircuits.hashTerms(network, nonce, terms),
-    buyerCommitment: pureCircuits.hashCapability(
-      network,
-      nonce,
-      Role.BUYER,
-      bytes(),
-    ),
-    merchantCommitment: pureCircuits.hashCapability(
-      network,
-      nonce,
-      Role.MERCHANT,
-      bytes(),
-    ),
-    operatorCommitment: pureCircuits.hashCapability(
-      network,
-      nonce,
-      Role.OPERATOR,
-      bytes(),
-    ),
-    acceptanceDeadline: now + 3_600n,
-    deliveryDeadline: now + 7_200n,
-    reviewDeadline: now + 10_800n,
-    resolutionDeadline: now + 14_400n,
-  };
-}
-
 /** Serialize a public configuration for the durable receipt. No secret material. */
 export function encodeConfiguration(configuration) {
   const encoded = {};
@@ -178,7 +121,7 @@ export function encodeConfiguration(configuration) {
   return encoded;
 }
 
-export function decodeConfiguration(encoded) {
+function decodeConfiguration(encoded) {
   assert(
     encoded && typeof encoded === "object",
     "Missing encoded configuration",
@@ -226,7 +169,7 @@ export async function loadOrCreateMaintenanceKey(runDir) {
  * network-agnostic counterpart of bootstrapMaintenance's insert branch: the
  * counter is the contract's observed authority counter, the version is v3, and
  * the update is signed by the maintenance signer that authored the deploy. */
-export function stagedDeployInsert({
+function stagedDeployInsert({
   address,
   plan,
   names,

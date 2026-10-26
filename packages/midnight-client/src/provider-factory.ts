@@ -138,7 +138,7 @@ function failWith(
   rethrowAsMidnightClientError(error, fallbackMessage);
 }
 
-export function buildWalletProvider(
+function buildWalletProvider(
   actor: WalletActor,
   options: WalletBuildOptions = {},
 ): WalletProviderSlot {
@@ -195,7 +195,7 @@ export function buildWalletProvider(
   };
 }
 
-export function buildProofProvider(
+function buildProofProvider(
   proof: ProofRuntime,
   options: { onEvent?: FactoryEvent } = {},
 ): ProofProviderSlot {
@@ -220,7 +220,7 @@ export function buildProofProvider(
   };
 }
 
-export function buildMidnightProvider(
+function buildMidnightProvider(
   actor: WalletActor,
   options: MidnightBuildOptions = {},
 ): MidnightProviderSlot {
@@ -275,20 +275,19 @@ export function assembleProviderFactory<M extends NetworkGuardMode>(
     },
   };
 }
-export const REQUIRED_PROVIDER_SLOTS = [
-  "privateStateProvider",
-  "publicDataProvider",
-  "zkConfigProvider",
-  "proofProvider",
-  "walletProvider",
-  "midnightProvider",
-] as const;
 export function missingProviderSlots(
   slots: Partial<MidnightProviderSlots>,
 ): (keyof MidnightProviderSlots)[] {
-  return REQUIRED_PROVIDER_SLOTS.filter(
-    (slot) => slots[slot] === undefined || slots[slot] === null,
-  );
+  return (
+    [
+      "privateStateProvider",
+      "publicDataProvider",
+      "zkConfigProvider",
+      "proofProvider",
+      "walletProvider",
+      "midnightProvider",
+    ] as const
+  ).filter((slot) => slots[slot] === undefined || slots[slot] === null);
 }
 export function assembleProvidersFromSlots<M extends NetworkGuardMode>(input: {
   guard: M;

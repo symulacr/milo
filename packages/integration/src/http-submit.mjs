@@ -35,7 +35,7 @@ import { resolve } from "node:path";
 import { ledgerTransactionId } from "./submit-tracking.mjs";
 
 /** Submit over the node's WebSocket as a plain request. Any payload size. */
-export async function submitExtrinsicOverSocket(
+async function submitExtrinsicOverSocket(
   config,
   extrinsicHex,
   { WebSocketImpl, timeoutMs = 120_000 } = {},
@@ -108,7 +108,7 @@ export async function submitExtrinsicOverSocket(
 }
 
 /** HTTPS fallback. Works for small payloads only; the load balancer 403s large ones. */
-export async function submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl) {
+async function submitExtrinsicOverHttp(config, extrinsicHex, fetchImpl) {
   const response = await fetchImpl(config.node, {
     method: "POST",
     headers: { "content-type": "application/json" },

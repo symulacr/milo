@@ -16,7 +16,6 @@
 // omitted key samples a random one), so --freeze empty uses the same lower-level
 // ledger MaintenanceUpdate route bootstrap.mjs uses.
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { getNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
@@ -28,6 +27,7 @@ import {
   watchMethods,
 } from "./await-watchdog.mjs";
 import { publicReceipt } from "./config.mjs";
+import { bytes32 } from "./harness.mjs";
 import { witnesses } from "./order.mjs";
 import {
   concurrentCeiling,
@@ -42,8 +42,6 @@ import {
 import { intentExpiry, maintenanceTx } from "./tx.mjs";
 
 const GENERATED = resolve("packages/contract/generated");
-
-const bytes32 = () => new Uint8Array(randomBytes(32));
 
 /** A preprod-flavoured order with one private state per actor. Exported so the staged deploy
  * can build the SAME order the drills will drive: if the constructor gets one order and the
@@ -315,7 +313,7 @@ const INSTRUMENTED = Symbol.for("milo.await-watchdog.instrumented");
  *
  * @returns {() => void} an undo function restoring the original provider methods.
  */
-export function instrumentProviders(providers, watchdog) {
+function instrumentProviders(providers, watchdog) {
   if (providers[INSTRUMENTED]) return () => {};
   const undo = [
     watchMethods(providers.proofProvider, { proveTx: "prove" }, watchdog),

@@ -31,6 +31,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { blockfrostHost, blockfrostPreprodEndpoints } from "./blockfrost.mjs";
+import { graphql } from "./harness.mjs";
 
 export const NETWORK_ID = "preprod";
 // The Preprod indexer and node RPC moved to Blockfrost, and every request needs a
@@ -445,24 +446,18 @@ function compareUtxoSet(left, right) {
 // --------------------------------------------------------------------------------------
 // Chain-side reads (independent of the wallet and of the snapshot)
 // --------------------------------------------------------------------------------------
+/** One indexer POST through the package's single GraphQL helper.
+ *
+ * The helper asserts; this module reports a failed read as a thrown Error that
+ * its checks catch and turn into a FAIL with the observed message, so the
+ * assertion is converted rather than propagated as an AssertionError. */
 async function gqlHttp(endpoint, query, variables) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
   try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, variables }),
-      signal: controller.signal,
+    return await graphql({ indexer: endpoint }, query, variables, {
+      timeoutMs: 20_000,
     });
-    const body = await res.json();
-    if (!res.ok || body.errors)
-      throw new Error(
-        `indexer HTTP ${res.status}: ${JSON.stringify(body.errors ?? body).slice(0, 300)}`,
-      );
-    return body.data;
-  } finally {
-    clearTimeout(timer);
+  } catch (error) {
+    throw new Error(String(error?.message ?? error));
   }
 }
 
@@ -880,6 +875,79 @@ async function checkIndexerMarker(checks, snapshotDir, endpoints) {
   return marker;
 }
 
+/** G13: the receipt on disk describes the snapshot on disk.
+ *
+ * Every other check re-derives its answer from the files in front of it, so a receipt
+ * written for a DIFFERENT snapshot is invisible to them: the gate passes on the old
+ * receipt's evidence and the lane then restores the new, unverified files. That is not
+ * hypothetical. The receipt in `.hoplite/artifacts/preprod` records shielded.json at
+ * 4006 bytes and dust.json at 7893 bytes with `safeForFastPath: true`; the files beside
+ * it are 3542 and 14473807 bytes, written a day later. The receipt's own sha256 fields
+ * are the fix: compare them against the files that are about to be restored, and refuse
+ * when they disagree.
+ *
+ * A receipt that is absent is UNEXERCISED, not a failure: the first run of a fresh
+ * snapshot has none, and `--verify` writes one. */
+async function checkReceiptFreshness(checks, opts, hashes) {
+  const path = opts.receiptPath;
+  if (!existsSync(path)) {
+    checks.add(
+      "receipt-freshness",
+      "the receipt on disk was written for the snapshot on disk",
+      "UNEXERCISED",
+      {
+        requires: path,
+        detail:
+          "no receipt yet; the first verification of a snapshot writes one. Nothing is trusted from a receipt that does not exist.",
+      },
+    );
+    return;
+  }
+  let receipt;
+  try {
+    receipt = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    checks.add(
+      "receipt-freshness",
+      "the receipt on disk was written for the snapshot on disk",
+      "FAIL",
+      {
+        observed: `unreadable receipt: ${String(error?.message ?? error)}`,
+        remedy:
+          "Delete the receipt and re-run --verify; an unreadable receipt cannot vouch for anything.",
+      },
+    );
+    return;
+  }
+  const recorded = receipt?.snapshotFiles ?? {};
+  const drift = [];
+  for (const role of Object.keys(WALLET_STATE_FILES)) {
+    const was = recorded[role];
+    const now = hashes[role];
+    if (!was || !now) continue;
+    if (was.sha256 !== now.sha256) {
+      drift.push(
+        `${role}: receipt ${String(was.sha256).slice(0, 12)}…/${was.bytes}B vs disk ${String(now.sha256).slice(0, 12)}…/${now.bytes}B`,
+      );
+    }
+  }
+  checks.add(
+    "receipt-freshness",
+    "the receipt on disk was written for the snapshot on disk",
+    drift.length === 0 ? "PASS" : "FAIL",
+    {
+      expected:
+        "every role's sha256 in the receipt equals the file about to be restored",
+      observed:
+        drift.length === 0
+          ? `all recorded roles match (${Object.keys(recorded).length} recorded)`
+          : drift.join("; "),
+      remedy:
+        "The receipt describes a different snapshot, so its PASS verdict says nothing about these files. Re-run --verify to write a receipt for the files on disk; do not restore on the old receipt.",
+    },
+  );
+}
+
 /** G2: all three snapshot files present, parse, are preprod, and carry no pending state. */
 async function checkSnapshotShape(checks, snapshotDir) {
   const texts = {};
@@ -1017,15 +1085,22 @@ async function checkChain(checks, parsed, opts, endpoints) {
   return chain;
 }
 
+/** A snapshot offset as a BigInt, or null when it is absent or not a decimal
+ * integer. `BigInt(undefined)` throws, and a malformed snapshot must be reported
+ * as a FAIL by the gate, never crash the verifier that is deciding the verdict. */
+function offsetOrNull(value) {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isSafeInteger(value))
+    return BigInt(value);
+  if (typeof value === "string" && /^\d+$/.test(value)) return BigInt(value);
+  return null;
+}
+
 /** G7/G8: dust and shielded applied indices positive, within their own high-water marks,
  * and within the block tip. */
 function checkLedgerIndices(checks, parsed, chain) {
-  const dustOff =
-    parsed?.dust?.offset !== undefined ? BigInt(parsed.dust.offset) : null;
-  const shieldedOff =
-    parsed?.shielded?.appliedIndex !== undefined
-      ? BigInt(parsed.shielded.appliedIndex)
-      : null;
+  const dustOff = offsetOrNull(parsed?.dust?.offset);
+  const shieldedOff = offsetOrNull(parsed?.shielded?.appliedIndex);
   if (dustOff === null || shieldedOff === null) {
     checks.add(
       "ledger-index-crosscheck",
@@ -1037,7 +1112,10 @@ function checkLedgerIndices(checks, parsed, chain) {
           "both snapshot files are needed to bound both index spaces; missing one leaves the check unexercised",
       },
     );
-  } else if (chain.dustHighWater === null || chain.zswapHighWater === null) {
+  } else if (
+    offsetOrNull(chain.dustHighWater) === null ||
+    offsetOrNull(chain.zswapHighWater) === null
+  ) {
     checks.add(
       "ledger-index-crosscheck",
       "dust/shielded applied indices are positive and within their chain high-water marks",
@@ -1050,9 +1128,9 @@ function checkLedgerIndices(checks, parsed, chain) {
       },
     );
   } else {
-    const dustOk = dustOff > 0n && dustOff <= BigInt(chain.dustHighWater);
+    const dustOk = dustOff > 0n && dustOff <= offsetOrNull(chain.dustHighWater);
     const shieldedOk =
-      shieldedOff > 0n && shieldedOff <= BigInt(chain.zswapHighWater);
+      shieldedOff > 0n && shieldedOff <= offsetOrNull(chain.zswapHighWater);
     checks.add(
       "ledger-index-crosscheck",
       "dust/shielded applied indices are positive and within their chain high-water marks",
@@ -1066,8 +1144,8 @@ function checkLedgerIndices(checks, parsed, chain) {
     );
   }
 
-  if (chain.tip !== null && dustOff !== null && shieldedOff !== null) {
-    const ceiling = BigInt(chain.tip.height);
+  const ceiling = offsetOrNull(chain.tip?.height);
+  if (ceiling !== null && dustOff !== null && shieldedOff !== null) {
     const ok =
       dustOff > 0n &&
       dustOff <= ceiling &&
@@ -1551,6 +1629,11 @@ export const GATE_DEFINITION = Object.freeze({
       check: "snapshot-owner",
       text: "the snapshot's recorded public keys equal the keys derived from the seed this run uses. A snapshot carries only the public keys of the wallet it was taken from, so a snapshot from a different seed restores into a wallet whose own public key is the snapshot's while the lane reports the seed's addresses: balances and receipts then describe two different wallets. Every other gate passes on such a snapshot, because the SDK, the indexer, the file shape and the chain all agree with it for its own address. Only this identity comparison catches it.",
     },
+    {
+      id: "G13",
+      check: "receipt-freshness",
+      text: "the receipt on disk describes the snapshot on disk: every role's recorded sha256 equals the file about to be restored. Without this, a PASS verdict written for an older snapshot is read as evidence about new files that were never verified, because every other check re-derives its answer from whatever is on disk now. An absent receipt is UNEXERCISED (the first run of a snapshot has none); a mismatched one is FAIL and refuses the fast path.",
+    },
   ],
   onFailure:
     "Write the receipt with FAIL and the observed value, refuse the fast path, and take the lane's restore:false path: seed the dust trees from the current collapsed update (dust starts at the tip) and let shielded/unshielded replay from their own start. Never restore a partial or stale state.",
@@ -1606,6 +1689,7 @@ export async function verifyWalletState(snapshotDir, options = {}) {
   await checkIndexerMarker(checks, snapshotDir, opts.endpoints);
   const shape = await checkSnapshotShape(checks, snapshotDir);
   receipt.snapshotFiles = shape.hashes;
+  await checkReceiptFreshness(checks, opts, shape.hashes);
   const chain = await checkChain(checks, shape.parsed, opts, opts.endpoints);
   receipt.chain = {
     tip: chain.tip,

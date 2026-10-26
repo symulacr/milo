@@ -1,6 +1,13 @@
 /** The one lowercase 64-hex (32-byte) digest/address guard for this package. */
 export const HEX64 = /^[a-f0-9]{64}$/;
 
+/**
+ * Every probe must finish inside a minute. The old 900 s default let a wedged
+ * wallet sync hold a shell for fifteen minutes; the ceiling is now the same
+ * minute so no environment override can exceed it either.
+ */
+export const PROBE_TIMEOUT_MS = 60_000;
+
 /** One loopback guard: an endpoint must be an explicit local address. */
 export function isLoopbackHostname(hostname) {
   return ["127.0.0.1", "[::1]"].includes(hostname);
@@ -29,7 +36,7 @@ export function localConfig(env) {
   if (!/^0x[0-9a-f]{64}$/.test(env.MILO_LOCAL_GENESIS_HASH ?? "")) {
     throw new Error("An independently observed local genesis hash is required");
   }
-  const timeoutMs = Number(env.MILO_LOCAL_TIMEOUT_MS ?? 900_000);
+  const timeoutMs = Number(env.MILO_LOCAL_TIMEOUT_MS ?? PROBE_TIMEOUT_MS);
   const bootstrapMode = env.MILO_LOCAL_BOOTSTRAP_MODE ?? "full";
   if (!["full", "staged"].includes(bootstrapMode)) {
     throw new Error("Unsupported local bootstrap mode");
@@ -54,10 +61,10 @@ export function localConfig(env) {
   if (
     !Number.isSafeInteger(timeoutMs) ||
     timeoutMs < 10_000 ||
-    timeoutMs > 1_800_000
+    timeoutMs > PROBE_TIMEOUT_MS
   ) {
     throw new Error(
-      "Local timeout must be between 10000 and 1800000 milliseconds",
+      `Local timeout must be between 10000 and ${PROBE_TIMEOUT_MS} milliseconds`,
     );
   }
   return {

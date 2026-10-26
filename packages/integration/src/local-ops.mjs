@@ -8,50 +8,25 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
-import { errorDiagnostics } from "./diagnostics.mjs";
 import { balanceWithDustReadiness } from "./dust.mjs";
+import { bytes32, createHarness, graphql } from "./harness.mjs";
 import { intentExpiry } from "./tx.mjs";
 
-let stage = "configuration";
-const emit = (event, fields = {}) =>
-  process.stdout.write(`${JSON.stringify({ event, ...fields })}\n`);
-const fail = (error) => {
-  emit("failed", {
-    stage,
-    ...errorDiagnostics(error),
-    immutableOrderAdmission: false,
-    r1Complete: false,
-  });
-  process.exit(1);
-};
-process.on("uncaughtException", fail);
-process.on("unhandledRejection", fail);
-
-const bytes32 = () => new Uint8Array(randomBytes(32));
-
-async function graphql(env, query, variables) {
-  const response = await fetch(env.indexer, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  assert(response.ok, `indexer HTTP ${response.status}`);
-  const body = await response.json();
-  assert(!body.errors, JSON.stringify(body.errors));
-  return body.data;
-}
+const harness = createHarness({
+  failFields: { immutableOrderAdmission: false, r1Complete: false },
+});
+const { emit, fail } = harness;
 
 async function main() {
   const env = localConfig(process.env);
   const expiresAt = Date.now() + env.timeoutMs;
   const deadline = setTimeout(() => {
-    emit("timeout", { stage });
+    emit("timeout", { stage: harness.stage });
     process.exit(1);
   }, env.timeoutMs);
   const step = (name) => {
-    stage = name;
-    emit("stage", { stage });
+    harness.setStage(name);
+    emit("stage", { stage: harness.stage });
   };
   const rpc = async (method, params) => {
     const response = await fetch(env.node, {
@@ -229,7 +204,7 @@ async function main() {
     const fundingId = await funder.submitTx(
       await funder.wallet.finalizeRecipe(signed),
     );
-    emit("submitted", { stage, txId: fundingId });
+    emit("submitted", { txId: fundingId });
     emit(
       "funding-finalized",
       publicReceipt(await publicDataProvider.watchForTxData(fundingId)),
@@ -248,7 +223,7 @@ async function main() {
       proofProvider: {
         async proveTx(...args) {
           const result = await proof.proveTx(...args);
-          emit("proof-provider-completed", { stage });
+          emit("proof-provider-completed");
           return result;
         },
       },
@@ -266,7 +241,7 @@ async function main() {
             {
               ttl,
               deadline: expiresAt,
-              emit: (event, fields) => emit(event, { stage, ...fields }),
+              emit,
             },
           );
           const signed = await buyer.wallet.signRecipe(recipe, (payload) =>
@@ -278,7 +253,7 @@ async function main() {
       midnightProvider: {
         async submitTx(tx) {
           const txId = await buyer.submitTx(tx);
-          emit("submitted", { stage, txId });
+          emit("submitted", { txId });
           return txId;
         },
       },
@@ -293,7 +268,7 @@ async function main() {
     const { path: keyPath, key: signingKey } =
       await loadOrCreateMaintenanceKey("/tmp/d2a-ops-run");
     const stagedEmit = async (event, fields = {}) => {
-      emit(event, { stage, ...fields });
+      emit(event, fields);
     };
     const receiptPath = "/tmp/d2a-ops-run/staged-deploy-local.json";
     const receipt = await runStagedDeploy({

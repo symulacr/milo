@@ -122,11 +122,13 @@ const circuits: {
 
 class Harness {
   state;
-  constructor(config = configFor()) {
-    this.state = contract.initialState(
-      createConstructorContext<PrivateState>({}, "00".repeat(32)),
-      config,
-    ).currentContractState.data;
+  constructor(config = configFor(), state?: ChargedState) {
+    this.state =
+      state ??
+      contract.initialState(
+        createConstructorContext<PrivateState>({}, "00".repeat(32)),
+        config,
+      ).currentContractState.data;
   }
   get public() {
     return ledger(this.state);
@@ -153,17 +155,30 @@ class Harness {
   }
 }
 function at(phase: Phase): Harness {
+  // Building a phase replays the lifecycle from DEPLOYED, and `reserve` is the
+  // most expensive circuit in the artifact. Every test that needs the same
+  // phase would replay the same circuits, so the state reached for each phase
+  // is computed once and cloned. `ChargedState` wraps an immutable `StateValue`,
+  // so sharing the value is safe; `injectCell` replaces `h.state` on the clone
+  // rather than mutating the cached one.
+  const cached = phaseCache.get(phase);
+  if (cached) return new Harness(undefined, cached);
   const h = new Harness();
-  if (phase === Phase.DEPLOYED) return h;
-  h.call("reserve", "buyer", 50, [0n]);
-  if (phase === Phase.RESERVED) return h;
-  h.call("accept", "merchant", 60, [1n]);
-  if (phase === Phase.ACCEPTED) return h;
-  h.call("submitDelivery", "merchant", 150, [2n, delivery]);
-  if (phase === Phase.SUBMITTED) return h;
-  h.call("disputeBuyer", "buyer", 250, [3n, evidence]);
-  return h;
+  if (phase !== Phase.DEPLOYED) {
+    h.call("reserve", "buyer", 50, [0n]);
+    if (phase !== Phase.RESERVED) {
+      h.call("accept", "merchant", 60, [1n]);
+      if (phase !== Phase.ACCEPTED) {
+        h.call("submitDelivery", "merchant", 150, [2n, delivery]);
+        if (phase !== Phase.SUBMITTED)
+          h.call("disputeBuyer", "buyer", 250, [3n, evidence]);
+      }
+    }
+  }
+  phaseCache.set(phase, h.state);
+  return new Harness(undefined, h.state);
 }
+const phaseCache = new Map<Phase, ChargedState>();
 
 const b32 = new CompactTypeBytes(32);
 const u64 = new CompactTypeUnsignedInteger((1n << 64n) - 1n, 8);

@@ -23,11 +23,11 @@ export const NETWORK_GUARD_ALLOWED: Readonly<
   "undeployed-only": new Set([LOCAL_DISPOSABLE_NETWORK]),
 };
 
-export const NETWORK_LABEL_BYTES = 32;
+const NETWORK_LABEL_BYTES = 32;
 
 const ENCODER = new TextEncoder();
 
-export function isNetworkGuardMode(value: unknown): value is NetworkGuardMode {
+function isNetworkGuardMode(value: unknown): value is NetworkGuardMode {
   return (
     typeof value === "string" &&
     (NETWORK_GUARD_MODES as readonly string[]).includes(value)
@@ -51,10 +51,19 @@ export function assertNetworkGuard<M extends NetworkGuardMode>(
     );
 }
 
+/**
+ * Wallets report network ids they define themselves, so casing is theirs; only
+ * `mainnet` is connector-standard. Reconcile to the one id Milo signs under and
+ * refuse anything else: the ledger embeds these bytes in every transaction.
+ */
 export function assertSupportedNetwork(
   network: string,
 ): asserts network is SupportedMidnightNetwork {
-  assertNetworkGuard(network, "preprod-only");
+  if (network.trim().toLowerCase() !== SUPPORTED_MIDNIGHT_NETWORK)
+    throw new WrongNetworkError(
+      `Only PREPROD is enabled. This wallet reports "${network}".`,
+      { network },
+    );
 }
 
 export function assertLocalDisposableNetwork(

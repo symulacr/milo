@@ -19,55 +19,18 @@
  * Lane lock: flock on .locks/local-circuit-sweep.lock (run script wraps this).
  */
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import {
-  appendFileSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
-import { errorDiagnostics } from "./diagnostics.mjs";
 import { installFeeMath, localFixedFeeConfig } from "./fee-math.mjs";
+import { bytes32, createHarness } from "./harness.mjs";
 import { intentExpiry } from "./tx.mjs";
 
 const RUN_DIR = process.env.MILO_SWEEP_RUN_DIR || "/tmp/m2-circuit-sweep";
 const TRAIL =
   process.env.MILO_SWEEP_TRAIL || "/tmp/m2-circuit-sweep-trail.jsonl";
-mkdirSync(RUN_DIR, { recursive: true });
-const trail = (event, fields = {}) => {
-  const line = JSON.stringify({ event, at: Date.now(), ...fields });
-  appendFileSync(TRAIL, `${line}\n`);
-  process.stdout.write(`${line}\n`);
-};
-
-let stage = "configuration";
-const emit = (event, fields = {}) => trail(event, { stage, ...fields });
-const fail = (error) => {
-  emit("failed", {
-    ...errorDiagnostics(error),
-    message: error?.message || String(error),
-    stack: error?.stack?.split("\n").slice(0, 8).join(" | ") ?? null,
-  });
-  process.exit(1);
-};
-process.on("uncaughtException", fail);
-process.on("unhandledRejection", fail);
-
-const bytes32 = () => new Uint8Array(randomBytes(32));
-
-function withTimeout(promise, ms, label) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      emit("step-timeout", { label, ms });
-      reject(new Error(`timeout after ${ms}ms: ${label}`));
-    }, ms);
-  });
-  return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
-}
+const harness = createHarness({ trailPath: TRAIL, runDir: RUN_DIR });
+const { emit, fail, withTimeout } = harness;
 
 /** Short offsets: expiry circuits need a passed deadline, not a 15-minute wait. */
 const SCENARIOS = [
@@ -340,11 +303,11 @@ async function main() {
   assert.equal(env.networkId, "undeployed", "sweep is local-only");
   const expiresAt = Date.now() + env.timeoutMs;
   setTimeout(() => {
-    emit("timeout", { stage });
+    emit("timeout", { stage: harness.stage });
     process.exit(1);
   }, env.timeoutMs).unref?.();
   const step = (name) => {
-    stage = name;
+    harness.setStage(name);
     emit("stage");
   };
   const rpc = async (method, params) => {

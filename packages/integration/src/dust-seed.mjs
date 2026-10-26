@@ -160,7 +160,7 @@ export function encodeMerkleRoot(value) {
 }
 
 /** Normalize a chain-published root string for comparison. */
-export function normalizeChainRoot(root) {
+function normalizeChainRoot(root) {
   if (typeof root !== "string") return "";
   const hex =
     root.startsWith("0x") || root.startsWith("0X") ? root.slice(2) : root;
