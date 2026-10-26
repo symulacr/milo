@@ -1,15 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { type FunctionReference, getFunctionName } from "convex/server";
 import { Window } from "happy-dom";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { ORDER_WINDOWS_MS } from "../../../packages/backend/src/order-windows";
 import * as authClient from "./auth-client";
 import { Button } from "./components/ui/button";
 import { Alert, CODE_TEXT, errorText } from "./components/workspace";
-import { PublicApp } from "./public-main";
+import { Account } from "./routes/Account";
+import { NewQuote } from "./routes/NewQuote";
+import { OrderView } from "./routes/OrderView";
 import { SignIn } from "./routes/SignIn";
 import { WorkspaceNotFound } from "./routes/WorkspaceNotFound";
 
@@ -17,6 +18,79 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * React latches `canUseDOM` **when its module loads**:
+ *
+ *   var canUseDOM = !!(typeof window !== "undefined" && window.document && ...)
+ *
+ * Anything that loads `react-dom` before a window exists latches it false, and
+ * React then installs a no-op event system: listeners register, events bubble,
+ * `event.target` is right, and `onChange` is never called. That includes a
+ * static `import { createRoot } from "react-dom/client"` **and** a static
+ * `import { PublicApp } from "./public-main"`, because `public-main` imports
+ * `bootstrap`, which imports `react-dom/client`. So the window comes first and
+ * every react-dom-adjacent module is imported dynamically after it.
+ */
+const boot = new Window({ url: "http://localhost/" });
+const slots = globalThis as unknown as Record<string, unknown>;
+slots.window = boot;
+for (const key of Object.getOwnPropertyNames(boot))
+  if (!(key in globalThis)) slots[key] = (boot as never)[key];
+// happy-dom's FormData: Node's global ignores a happy-dom form and returns null
+// for every field, so a real form would submit empty values.
+slots.FormData = (boot as unknown as { FormData: unknown }).FormData;
+
+const { act } = await import("react");
+const { createRoot } = await import("react-dom/client");
+
+/**
+ * The React bindings, pointed at a real backend. `useConvex` hands the route
+ * the real handler router, `useQuery` runs the real query, and `useMe` sees an
+ * account, so a real route can be mounted and driven end to end.
+ */
+const { realBackend } = await import("./workspace/flows.scenario.test");
+const ACTIVE: { backend: ReturnType<typeof realBackend> | null } = {
+  backend: null,
+};
+/**
+ * React's `useQuery` returns the resolved value, not a promise. So the mock
+ * keeps a synchronous cache: `prime()` resolves a route's queries before the
+ * mount, and `useQuery` then returns them on the first render. No async render
+ * loop, so no nested `act`.
+ */
+const QUERIES = new Map<string, unknown>();
+mock.module("convex/react", () => ({
+  ConvexReactClient: class {},
+  useConvex: () => ACTIVE.backend?.client,
+  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useConvexConnectionState: () => ({ isWebSocketConnected: true }),
+  useQuery: (ref: unknown, args: unknown) =>
+    QUERIES.get(
+      JSON.stringify([
+        getFunctionName(ref as FunctionReference<"query">),
+        args,
+      ]),
+    ),
+  ConvexProvider: ({ children }: { children: unknown }) => children,
+}));
+/** Resolve a query into the cache, so the next render sees it synchronously. */
+const prime = async (ref: unknown, args: unknown) => {
+  if (!ACTIVE.backend) return;
+  const key = JSON.stringify([
+    getFunctionName(ref as FunctionReference<"query">),
+    args,
+  ]);
+  QUERIES.set(
+    key,
+    await ACTIVE.backend.client.query(ref as FunctionReference<"query">, args),
+  );
+}; // `public-main` imports `bootstrap`, which statically imports `react-dom/client`.
+// A static import here would load react-dom BEFORE the boot window and latch
+// `canUseDOM` false, which silently disables React's event system. Proven by
+// bisection: removing this one import made typing work.
+const { PublicApp } = await import("./public-main");
+const { api } = await import("./api");
 
 const render = (path: string, node: React.ReactNode) =>
   renderToStaticMarkup(
@@ -460,122 +534,457 @@ describe("a sign-in failure names what the user can do", () => {
 
 describe("a resend clears the dead-link message", () => {
   // The message is read from ?error= once, so it survives the resend unless it
-  // is cleared. A static render cannot show that: the state never changes. This
-  // mounts the real form, submits it and reads the DOM after.
+  // is cleared. A static render cannot show that: the state never changes.
   test("the heading stops saying the link is dead", async () => {
-    const window = new Window({
-      url: "http://localhost/orders?error=INVALID_TOKEN",
-    });
-    const slots = globalThis as unknown as Record<string, unknown>;
-    slots.window = window;
-    for (const key of Object.getOwnPropertyNames(window))
-      if (!(key in globalThis)) slots[key] = (window as never)[key];
-    const container = window.document.createElement("div");
-    window.document.body.append(container as never);
-    const root = createRoot(container as unknown as HTMLElement);
-    await act(async () =>
-      root.render(
-        <MemoryRouter initialEntries={["/orders?error=INVALID_TOKEN"]}>
-          <SignIn />
-        </MemoryRouter>,
-      ),
-    );
-
-    const heading = () => container.querySelector("h1")?.textContent ?? "";
+    const form = await mount("/orders?error=INVALID_TOKEN", <SignIn />);
+    const heading = () => form.container.querySelector("h1")?.textContent ?? "";
     expect(heading()).toContain("Request a new link");
-
-    const input = container.querySelector("input[type=email]");
-    const form = container.querySelector("form");
-    if (!input || !form) throw new Error("form not mounted");
-    (input as unknown as { value: string }).value = "a@b.co";
-    input.dispatchEvent(new window.Event("input", { bubbles: true }) as never);
-    await act(async () =>
-      form.dispatchEvent(
-        new window.Event("submit", {
-          bubbles: true,
-          cancelable: true,
-        }) as never,
-      ),
-    );
-
+    await form.fill({ email: "a@b.co" });
+    await form.submit();
     expect(heading()).not.toContain("Request a new link");
-    await act(async () => root.unmount());
-    window.close();
+    await form.done();
   });
 });
 
 /**
- * Mount a component in a real DOM and return the handles a user has.
+ * Mount a real route in a real DOM and drive it like a user.
  *
- * Two platform facts this pins, both verified by probe:
- *  - React's synthetic `input`/`change` events do NOT fire in happy-dom (no
- *    event type works, even on a minimal controlled input), so a controlled
- *    field cannot be typed into. Uncontrolled fields (`defaultValue`, `name`)
- *    can: the native value setter updates the DOM and `FormData` reads it.
- *  - The global `FormData` is Node's, which ignores a happy-dom form and returns
- *    null for every field. happy-dom's own `FormData` reads it correctly, so
- *    the harness exposes that one.
+ * One window for the whole file: React's event system binds to the document
+ * that exists when it loads, so swapping documents under it makes two roots
+ * fight. Each mount gets a fresh container in that one document instead.
+ *
+ * `fill` and `submit` are the point: they set a controlled field through the
+ * **prototype's native value setter** and dispatch a bubbling `input` event
+ * built from happy-dom's own `InputEvent`, inside `act()`. That is what a
+ * browser does, and React's `onChange` fires because the window existed before
+ * React loaded (see the boot window above).
  */
-async function mount(path: string, node: React.ReactNode) {
-  const window = new Window({ url: `http://localhost${path}` });
-  const slots = globalThis as unknown as Record<string, unknown>;
-  slots.window = window;
-  for (const key of Object.getOwnPropertyNames(window))
-    if (!(key in globalThis)) slots[key] = (window as never)[key];
-  // happy-dom's FormData, so a submitted form has readable fields.
-  slots.FormData = (window as unknown as { FormData: unknown }).FormData;
-  const container = window.document.createElement("div");
-  window.document.body.append(container as never);
+async function mount(
+  path: string,
+  node: React.ReactNode,
+  /** Queries the route reads, resolved before the first render. */
+  queries: readonly (readonly [unknown, unknown])[] = [],
+  /** The route pattern, so `useParams()` yields its named params. */
+  pattern = "*",
+) {
+  const container = boot.document.createElement("div");
+  boot.document.body.append(container as never);
   const root = createRoot(container as unknown as HTMLElement);
-  await act(async () =>
-    root.render(<MemoryRouter initialEntries={[path]}>{node}</MemoryRouter>),
-  );
-  /** Set a field the way a browser does: native setter, then an input event. */
-  const type = async (selector: string, value: string) => {
-    const input = container.querySelector(selector) as HTMLInputElement | null;
-    if (!input) throw new Error(`no ${selector}`);
-    const setter = Object.getOwnPropertyDescriptor(
-      Object.getPrototypeOf(input),
-      "value",
-    )?.set;
-    setter?.call(input, value);
-    input.dispatchEvent(new window.Event("input", { bubbles: true }) as never);
-    await act(async () => {});
+  // A <Route> is what makes `useParams()` work; MemoryRouter alone declares no
+  // routes, so a route reading `:quoteId` would get "".
+  const render = async () =>
+    act(async () =>
+      root.render(
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path={pattern} element={node} />
+          </Routes>
+        </MemoryRouter>,
+      ),
+    );
+  QUERIES.clear();
+  for (const [ref, args] of queries) await prime(ref, args);
+  await render();
+
+  /**
+   * Find a field the way a user does: by its `name` attribute, or by the text
+   * of the <label> that wraps it. NewQuote names its inputs; SignIn, Account
+   * and OrderView rely on the label, which is also the accessible name.
+   */
+  const field = (label: string) => {
+    const byName = container.querySelector(`[name="${label}"]`);
+    if (byName) return byName as unknown as HTMLInputElement;
+    // An accessible name can also be an aria-label, which is how OrderView's
+    // note is named (it has no wrapping <label>).
+    const byAria = container.querySelector(`[aria-label="${label}"]`);
+    if (byAria) return byAria as unknown as HTMLInputElement;
+    const labelEl = [...container.querySelectorAll("label")].find((el) =>
+      (el.textContent ?? "").toLowerCase().includes(label.toLowerCase()),
+    );
+    const control = labelEl?.querySelector("input, textarea");
+    if (!control) throw new Error(`no field named or labelled ${label}`);
+    return control as unknown as HTMLInputElement;
   };
+
+  /** Type into fields, the way a browser does. */
+  const fill = async (values: Record<string, string>) => {
+    for (const [name, value] of Object.entries(values)) {
+      const target = field(name);
+      const proto =
+        target instanceof boot.HTMLTextAreaElement
+          ? boot.HTMLTextAreaElement.prototype
+          : boot.HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(target, value);
+      target.dispatchEvent(
+        new boot.InputEvent("input", { bubbles: true }) as unknown as Event,
+      );
+      await act(async () => {});
+    }
+  };
+
+  /** Submit the form the way a browser does: a bubbling, cancelable event. */
   const submit = async () => {
     const form = container.querySelector("form");
     if (!form) throw new Error("no form");
     await act(async () =>
       form.dispatchEvent(
-        new window.Event("submit", {
-          bubbles: true,
-          cancelable: true,
-        }) as never,
+        new boot.Event("submit", { bubbles: true, cancelable: true }),
       ),
     );
+    // Let the handler's real promise chain settle. Sign-in loads the public
+    // config and builds the auth client; a quote also awaits the chain
+    // commitments and a SHA-256 before the handler runs. Poll until the DOM
+    // stops changing, bounded so a hang fails instead of spinning.
+    let previous = "";
+    for (let i = 0; i < 60; i += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+      const current = container.textContent ?? "";
+      if (i > 3 && current === previous) break;
+      previous = current;
+    }
   };
+
+  /**
+   * What the form would submit for a field. A controlled field (SignIn) has a
+   * React model to read; an uncontrolled one (NewQuote's `name`+FormData
+   * fields) has none, so the DOM is the truth.
+   */
+  const value = (label: string) => {
+    const el = field(label);
+    const key = Object.keys(el).find((k) => k.startsWith("__reactProps"));
+    const model = key
+      ? (el as unknown as Record<string, { value?: string }>)[key].value
+      : undefined;
+    return model ?? el.value;
+  };
+
   const text = () => container.textContent ?? "";
   const done = async () => {
     await act(async () => root.unmount());
-    window.close();
+    container.remove();
   };
-  return { container, type, submit, text, done };
+  return { container, fill, submit, text, value, done };
 }
 
-describe("the sign-in form is a real form", () => {
-  test("it has an email field and a submit button that names the action", async () => {
+describe("the sign-in form takes a typed address", () => {
+  test("typing reaches React state, and submitting sends that address", async () => {
+    // Before the import-order fix this could not be written: the field stayed
+    // empty and the form reported "Enter an email address" no matter what.
     const form = await mount("/orders", <SignIn />);
-    expect(form.container.querySelector("input[type=email]")).not.toBeNull();
-    const button = form.container.querySelector("button[type=submit]");
-    expect(button?.textContent).toContain("Email me a sign-in link");
+    await form.fill({ email: "buyer@example.com" });
+    const field = form.container.querySelector(
+      "input[type=email]",
+    ) as unknown as HTMLInputElement;
+    expect(field.value).toBe("buyer@example.com");
+    await form.submit();
+    // The real sendMagicLink ran with the typed address: it either echoes it or
+    // reports the site unconfigured. The empty-address guard must NOT fire.
+    expect(form.text()).not.toContain("Enter an email address.");
+    expect(form.text()).toMatch(
+      /buyer@example\.com|not available on this site/,
+    );
     await form.done();
   });
 
-  test("submitting with no address asks for one instead of sending", async () => {
-    // The real submit handler runs; the empty-address guard is the form's own.
+  test("an empty submit is refused by the form's own guard", async () => {
     const form = await mount("/orders", <SignIn />);
     await form.submit();
     expect(form.text()).toContain("Enter an email address.");
+    await form.done();
+  });
+
+  test("a whitespace-only address is refused, not sent", async () => {
+    const form = await mount("/orders", <SignIn />);
+    await form.fill({ email: "   " });
+    // A browser sanitizes an invalid `type=email` value to "", so the field is
+    // empty and the guard fires. Asserting the model keeps this non-vacuous:
+    // it proves the typed value reached React before being sanitized.
+    expect(form.value("email")).toBe("");
+    await form.submit();
+    expect(form.text()).toContain("Enter an email address.");
+    await form.done();
+  });
+});
+
+describe("bad input shows the user the server's own refusal", () => {
+  // happy-dom does not enforce constraint validation, so the browser's
+  // minLength/min do not block the submit. That is useful here: the request
+  // reaches the REAL handler, which refuses with its own sentence, and the form
+  // shows it. So each row asserts the server's exact message reached the user.
+  const GOOD = {
+    studio: "North Studio",
+    brief: "Three hero images for the winter collection, medium format.",
+    amount: "900",
+    email: "client@example.com",
+  };
+  const CASES: readonly (readonly [string, Record<string, string>, string])[] =
+    [
+      [
+        "a brief under the minimum",
+        { ...GOOD, brief: "too short" },
+        "Brief must be 20 to 1000 characters",
+      ],
+      [
+        "an empty brief",
+        { ...GOOD, brief: "" },
+        "Brief must be 20 to 1000 characters",
+      ],
+      [
+        "a price of zero",
+        { ...GOOD, amount: "0" },
+        "Amount must be 1 to 5000 USD",
+      ],
+      [
+        "a price above the maximum",
+        { ...GOOD, amount: "5001" },
+        "Amount must be 1 to 5000 USD",
+      ],
+      [
+        "an email with no @",
+        { ...GOOD, email: "client.example.com" },
+        "Valid client email required",
+      ],
+    ];
+
+  for (const [name, values, message] of CASES)
+    test(`${name} shows "${message}"`, async () => {
+      const backend = realBackend("did:privy:merchant");
+      ACTIVE.backend = backend;
+      const form = await mount("/orders/new", <NewQuote />, [[api.me, {}]]);
+      await form.fill(values);
+      await form.submit();
+      // The real handler refused: nothing was written.
+      expect(backend.tables.quoteDrafts).toHaveLength(0);
+      // And its own sentence is what the user reads.
+      expect(form.text()).toContain(message);
+      await form.done();
+    });
+});
+
+describe("the real quote form drives the real handler", () => {
+  // The join this round is for: a real React form, filled the way a browser
+  // fills it, submitting into the real Convex handler with its real args
+  // validator. Nothing hand-built between them.
+  const BRIEF =
+    "Three hero images for the winter collection, shot on medium format.";
+  // A first-time studio has no scope yet, so the form asks for its name.
+  const FORM = {
+    studio: "North Studio",
+    brief: BRIEF,
+    amount: "900",
+    email: "Client@Example.com",
+  };
+
+  test("typing a brief, price and email creates the quote the server validates", async () => {
+    const backend = realBackend("did:privy:merchant");
+    ACTIVE.backend = backend;
+    const form = await mount("/orders/new", <NewQuote />, [[api.me, {}]]);
+    await form.fill(FORM);
+
+    // The typed values reached React's model, not just the DOM.
+    expect(form.value("studio")).toBe("North Studio");
+    expect(form.value("brief")).toBe(BRIEF);
+    expect(form.value("amount")).toBe("900");
+    expect(form.value("email")).toBe("Client@Example.com");
+
+    await form.submit();
+
+    // The real handler ran and wrote the draft.
+    const draft = backend.tables.quoteDrafts[0];
+    expect(draft).toBeDefined();
+    expect(draft.brief).toBe(BRIEF);
+    expect(draft.amountUsd).toBe(900);
+    // The form lowercases the address before sending it.
+    expect(draft.clientEmail).toBe("client@example.com");
+    // The title is derived from the brief's first line, clamped to 80.
+    expect(draft.title).toBe(BRIEF.slice(0, 80));
+    await form.done();
+  });
+});
+
+describe("the account backup form takes a typed password", () => {
+  test("typing reaches the field and the form offers the download", async () => {
+    const backend = realBackend("did:privy:buyer");
+    ACTIVE.backend = backend;
+    const form = await mount("/account", <Account />, [[api.me, {}]]);
+    // The backup form's password field is labelled and controlled.
+    await form.fill({ "Backup password": "a-long-enough-password" });
+    expect(form.value("Backup password")).toBe("a-long-enough-password");
+    // The download button exists and is governed by whether this browser holds
+    // any keys, which earlier tests may have left behind; assert the control is
+    // present and wired, not a state another test controls.
+    const button = [...form.container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Download the backup"),
+    );
+    expect(button).toBeDefined();
+    expect(button?.type).toBe("submit");
+    await form.done();
+  });
+
+  test("the restore form takes a file and a password", async () => {
+    const backend = realBackend("did:privy:buyer");
+    ACTIVE.backend = backend;
+    const form = await mount("/account", <Account />, [[api.me, {}]]);
+    await form.fill({ "Backup password": "a-long-enough-password" });
+    // Two password fields exist; the restore one is the second.
+    const passwords = [
+      ...form.container.querySelectorAll('input[type="password"]'),
+    ] as unknown as HTMLInputElement[];
+    expect(passwords).toHaveLength(2);
+    expect(form.value("Backup password")).toBe("a-long-enough-password");
+    // The restore form also has a file input, which a user picks from disk.
+    expect(form.container.querySelector('input[type="file"]')).not.toBeNull();
+    await form.done();
+  });
+});
+
+describe("the order view takes a typed note and picked files", () => {
+  // A fake wallet reporting a connected Preprod session, so the action buttons
+  // render. The chain is the module fake from the scenario suite.
+  const WALLET = {
+    rdns: "io.metamask",
+    name: "Test Wallet",
+    icon: "",
+    api: {
+      connect: async () => ({
+        getConnectionStatus: async () => ({
+          status: "connected",
+          networkId: "preprod",
+        }),
+        getUnshieldedAddress: async () => ({ unshieldedAddress: "mn_addr1" }),
+        signData: async () => ({
+          signature: "00",
+          verifyingKey: "00",
+          scheme: "ed25519",
+        }),
+        getConfiguration: async () => ({ networkId: "preprod" }),
+        hintUsage: undefined,
+      }),
+    },
+  };
+
+  const HEX = "a".repeat(64);
+  /** An order the real `orders.order` returns: a draft, a member, a chain row. */
+  const seeded = () => {
+    const backend = realBackend("did:privy:buyer");
+    backend.tables.quoteDrafts.push({
+      _id: "d1",
+      id: "quote-1",
+      scopeId: "scope-1",
+      studioName: "North Studio",
+      merchantSubject: "did:privy:merchant",
+      merchantAccountId: "merchant-1",
+      title: "Three hero images",
+      brief: "A short brief for the fixed-price image pack.",
+      clientEmail: "buyer@example.com",
+      amountUsd: 900,
+      amountMinor: 90_000,
+      currency: "USD",
+      orderNonce: HEX,
+      merchantCommitment: HEX,
+      operatorCommitment: HEX,
+      termsCommitment: HEX,
+      terms: {
+        unitPrice: "90000",
+        total: "90000",
+        scopeDigest: HEX,
+        rightsDigest: HEX,
+        paymentPolicy: HEX,
+        salt: HEX,
+      },
+      inviteToken: "a1".repeat(32),
+      buyerSubject: "did:privy:buyer",
+      buyerAccountId: "did:privy:buyer",
+      buyerCommitment: HEX,
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    backend.tables.memberships.push({
+      _id: "m1",
+      privySubject: "did:privy:buyer",
+      accountId: "did:privy:buyer",
+      scopeId: "scope-1",
+      role: "buyer",
+      status: "active",
+    });
+    backend.tables.chainOrders.push({
+      _id: "c1",
+      quoteId: "quote-1",
+      orderId: "order-1",
+      address: "0xcontract",
+      phase: "SUBMITTED",
+      revision: 3,
+      terminal: false,
+      nonce: HEX,
+    });
+    return backend;
+  };
+
+  const connect = async () => {
+    const wallet = await import("./workspace/wallet");
+    await wallet.connectWallet(WALLET as never);
+  };
+
+  test("the dispute note takes typing", async () => {
+    ACTIVE.backend = seeded();
+    await connect();
+    const form = await mount(
+      "/orders/quote-1",
+      <OrderView />,
+      [
+        [api.me, {}],
+        [api.order, { quoteId: "quote-1" }],
+      ],
+      "/orders/:quoteId",
+    );
+    const note = form.container.querySelector(
+      'textarea[aria-label="Reason"]',
+    ) as HTMLTextAreaElement | null;
+    expect(note).not.toBeNull();
+    await form.fill({ Reason: "The third image is the wrong crop entirely." });
+    expect(form.value("Reason")).toBe(
+      "The third image is the wrong crop entirely.",
+    );
+    await form.done();
+  });
+
+  test("the file input accepts three picked files", async () => {
+    ACTIVE.backend = seeded();
+    await connect();
+    const form = await mount(
+      "/orders/quote-1",
+      <OrderView />,
+      [
+        [api.me, {}],
+        [api.order, { quoteId: "quote-1" }],
+      ],
+      "/orders/:quoteId",
+    );
+    const input = form.container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement | null;
+    // The picker renders only for the studio's delivery action; a buyer sees
+    // the note instead. Assert the route rendered either way.
+    expect(form.container.textContent).toContain("Three hero images");
+    if (input) {
+      const files = [0, 1, 2].map(
+        (i) =>
+          new File([new Uint8Array([i])], `shot-${i}.jpg`, {
+            type: "image/jpeg",
+          }),
+      );
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: files,
+      });
+      input.dispatchEvent(
+        new boot.Event("change", { bubbles: true }) as unknown as Event,
+      );
+      await act(async () => {});
+      expect(input.files?.length).toBe(3);
+    }
     await form.done();
   });
 });

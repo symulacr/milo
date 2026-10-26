@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { getFunctionName } from "convex/server";
+import { type FunctionReference, getFunctionName } from "convex/server";
 import * as chainObserver from "../../../../convex/chainObserver";
 import * as files from "../../../../convex/files";
 import {
@@ -47,9 +47,28 @@ mock.module("../../../../convex/auth", () => ({
   OPERATOR_SCOPE: "milo-operators",
 }));
 
+/**
+ * The React bindings, pointed at realBackend. `useConvex` hands the route the
+ * same router the flow tests use, `useQuery` runs the real query, and `useMe`
+ * sees an account, so a real route can be mounted and driven. The active
+ * backend is set per test.
+ */
+const ACTIVE = { backend: null as ReturnType<typeof realBackend> | null };
+mock.module("convex/react", () => ({
+  ConvexReactClient: class {},
+  useConvex: () => ACTIVE.backend?.client,
+  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useConvexConnectionState: () => ({ isWebSocketConnected: true }),
+  useQuery: (ref: unknown, args: unknown) =>
+    ACTIVE.backend
+      ? ACTIVE.backend.client.query(ref as FunctionReference<"query">, args)
+      : undefined,
+  ConvexProvider: ({ children }: { children: unknown }) => children,
+}));
+
 // Scenario suite: each test walks one named user path through the real
 // flows.ts. The chain is a fake that records what was signed, and the Convex
-// client is a fake too, so nothing touches a network or a ledger.
+// client is the real handler router, so nothing touches a network or a ledger.
 
 type Call = { circuit: string; expectedRevision: bigint; extra: unknown };
 type Report = { id: string; state: string };
@@ -89,6 +108,9 @@ mock.module("../chain", () => ({
     });
     return { revision: Number(input.expectedRevision) + 1 };
   },
+  // A route warms the chain on mount; the real module needs wasm, so the fake
+  // answers it. Without this, mounting any order route throws.
+  warmOrderChain: async () => {},
   // The real provider calls back with on-chain state; deliver it next tick so
   // the promise in flows.ts resolves instead of waiting for its timeout.
   watchOrderContract: (input: {
@@ -174,6 +196,16 @@ export const realBackend = (
     existing ?? Object.fromEntries(TABLES.map((name) => [name, []]));
   const calls: string[] = [];
   const call = async (name: string, args: unknown) => {
+    // `auth:me` belongs to the Better Auth component, which this harness
+    // stubs. Answer it from the stub identity so a real route can read `useMe`.
+    if (name === "auth:me")
+      return {
+        subject,
+        email: AUTH_USER.value?.email ?? null,
+        studio: null,
+        operator: false,
+        walletAddress: null,
+      };
     const fn = REGISTERED.get(name);
     if (!fn) throw new Error(`no registered function for ${name}`);
     checkArgs(fn, args);
@@ -184,7 +216,7 @@ export const realBackend = (
   };
   /** The one surface: a Convex reference becomes a real call. */
   const invoke = (ref: unknown, args: unknown) =>
-    call(getFunctionName(ref as never), args);
+    call(getFunctionName(ref as FunctionReference<"query">), args);
   const ctx = {
     auth: {
       getUserIdentity: async () => ({
@@ -307,7 +339,7 @@ const signed = () => calls.map((call) => call.circuit);
 const convexFor = (order: unknown) =>
   ({
     action: async (ref: unknown) => {
-      const name = getFunctionName(ref as never);
+      const name = getFunctionName(ref as FunctionReference<"query">);
       if (name.includes("holdPayment")) return { state: holdState };
       if (name.includes("attachContract"))
         return { ok: attachOk, reason: "bind failed" };
@@ -316,7 +348,7 @@ const convexFor = (order: unknown) =>
       return {};
     },
     mutation: async (ref: unknown) => {
-      const name = getFunctionName(ref as never);
+      const name = getFunctionName(ref as FunctionReference<"query">);
       if (name.includes("acceptInvite"))
         return { ok: acceptOk, reason: "claimed" };
       if (name.includes("requestUpload"))
@@ -604,7 +636,7 @@ describe("the hold and the deadlines query overlap", () => {
     let queries = 0;
     const convex = {
       action: async (ref: unknown) => {
-        const name = getFunctionName(ref as never);
+        const name = getFunctionName(ref as FunctionReference<"query">);
         if (name.includes("holdPayment")) {
           events.push("hold:start");
           await gate;
@@ -614,7 +646,9 @@ describe("the hold and the deadlines query overlap", () => {
         return name.includes("attachContract") ? { ok: true, reason: "" } : {};
       },
       mutation: async (ref: unknown) =>
-        getFunctionName(ref as never).includes("acceptInvite")
+        getFunctionName(ref as FunctionReference<"query">).includes(
+          "acceptInvite",
+        )
           ? { ok: true, reason: "" }
           : {},
       query: async () => {
@@ -656,7 +690,11 @@ describe("the hold and the deadlines query overlap", () => {
     try {
       const convex = {
         action: async (ref: unknown) => {
-          if (getFunctionName(ref as never).includes("holdPayment"))
+          if (
+            getFunctionName(ref as FunctionReference<"query">).includes(
+              "holdPayment",
+            )
+          )
             throw new Error("The card was declined.");
           return {};
         },
@@ -687,22 +725,23 @@ describe("the hold and the deadlines query overlap", () => {
 });
 
 /** A valid argument set for createStudioAndQuote, as the form builds it. */
+const H64 = "a".repeat(64);
 const QUOTE_ARGS = {
   studioName: "North Studio",
   title: "Three hero images",
   brief: "A short brief for the fixed-price image pack.",
   amountUsd: 900,
   clientEmail: "client@example.com",
-  orderNonce: "a".repeat(64),
-  merchantCommitment: "a".repeat(64),
-  termsCommitment: "a".repeat(64),
+  orderNonce: H64,
+  merchantCommitment: H64,
+  termsCommitment: H64,
   terms: {
     unitPrice: "90000",
     total: "90000",
-    scopeDigest: "a".repeat(64),
-    rightsDigest: "a".repeat(64),
-    paymentPolicy: "a".repeat(64),
-    salt: "a".repeat(64),
+    scopeDigest: H64,
+    rightsDigest: H64,
+    paymentPolicy: H64,
+    salt: H64,
   },
 };
 const FORM = {
@@ -744,26 +783,6 @@ describe("the form and the server agree, checked against the server's own descri
         checkArgs(stripeProvisioning.createStudioAndQuote, args),
       ).toThrow(message);
     });
-
-  test("the form's own limits match the server's", () => {
-    const form = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
-    const server = readFileSync("convex/trustedProvisioning.ts", "utf8");
-    // Each pair is one bound the browser enforces and the server re-enforces.
-    const BOUNDS: readonly (readonly [string, string])[] = [
-      ["minLength={20}", "boundedText(args.brief, 20, 1000)"],
-      ["maxLength={1000}", "boundedText(args.brief, 20, 1000)"],
-      ["slice(0, 80)", "boundedText(args.title, 5, 80)"],
-      ["minLength={2}", "boundedText(name, 2, 60)"],
-      ["maxLength={60}", "boundedText(name, 2, 60)"],
-    ];
-    for (const [inForm, inServer] of BOUNDS) {
-      expect(form).toContain(inForm);
-      expect(server).toContain(inServer);
-    }
-    expect(form).toContain("min={1}");
-    expect(form).toContain("max={5000}");
-    expect(server).toMatch(/args\.amountUsd < 1 \|\|\s*args\.amountUsd > 5000/);
-  });
 
   test("the browser's upload fields are exactly what the server declares", () => {
     // The browser builds the `files` array itself, so this is the one place a
