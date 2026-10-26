@@ -1,48 +1,44 @@
-import { bytesToHex } from "../../../packages/backend/src/encoding";
+const sha256Hex = async (data: string | ArrayBuffer) =>
+  new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      typeof data === "string" ? new TextEncoder().encode(data) : data,
+    ),
+  ).toHex();
 
 export const sampleFiles = [
   {
-    id: "01",
-    name: "01-still-hero.webp",
     title: "The hero",
-    note: "Product portrait · studio composition",
     src: "/images/hero.webp",
     hash: "a70f248e5504aeec43e59ac68ebd9516614dd5c839a338635bceabf2cdfa8fda",
   },
   {
-    id: "02",
-    name: "02-still-detail.webp",
     title: "The details",
-    note: "Material study · close composition",
     src: "/images/detail.webp",
     hash: "3a07f69f751b1ec4bee4ffe0fd95dbaed043d7553bf5375f6dba9f3d797cf8bf",
   },
   {
-    id: "03",
-    name: "03-still-collection.webp",
     title: "The collection",
-    note: "Campaign composition · family portrait",
     src: "/images/collection.webp",
     hash: "e994848a179a98868efdf731e761b0560790aaea029626d455e2a5a7fd9ba9a7",
   },
 ] as const;
 
-export async function verifySampleFiles(
-  signal: AbortSignal,
-): Promise<string[]> {
-  return Promise.all(
+export const MISMATCH =
+  "A file does not match its locked digest. You cannot approve this delivery.";
+
+export async function checkSampleFiles(signal: AbortSignal) {
+  const digests = await Promise.all(
     sampleFiles.map(async (file) => {
       const response = await fetch(file.src, { signal, cache: "no-store" });
-      if (!response.ok) throw new Error("File unavailable. Please try again.");
-      const digest = await crypto.subtle.digest(
-        "SHA-256",
-        await response.arrayBuffer(),
-      );
-      if (bytesToHex(new Uint8Array(digest)) !== file.hash)
-        throw new Error(
-          "Cannot verify: sample bytes do not match the expected digest. Approval stays blocked.",
-        );
-      return file.id;
+      if (!response.ok) throw new Error("A file is not available. Try again.");
+      return sha256Hex(await response.arrayBuffer());
     }),
   );
+  const manifest = await sha256Hex(digests.join(""));
+  return {
+    digests,
+    manifest,
+    match: digests.every((value, index) => value === sampleFiles[index]?.hash),
+  };
 }

@@ -3,43 +3,148 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f1ea" />
-    <meta name="theme-color" content="#15130f" media="(prefers-color-scheme: dark)" />
-    <meta name="description" content="Agree creative work privately, review the exact delivery, and keep a clear record of what you approved. Explore a synthetic Milo prototype." />
-    <title>Milo — Private agreements. Clear approvals.</title>
-    <link rel="stylesheet" href="./src/styles.css" />
-    <meta property="og:title" content="Milo — Private agreements. Clear approvals." />
-    <meta property="og:description" content="Agree creative work privately, review the exact delivery, and keep a clear record of what you approved. Explore a synthetic Milo prototype." />
+    <meta name="theme-color" content="#1423b8" />
+    <meta name="description" content="Milo is a private order between a studio and its client. Your browser checks the three final images, then you approve in your Lace wallet on Midnight Preprod." />
+    <title>Milo · Approve the exact files</title>
+    <style>@font-face{font-family:"Schibsted Grotesk";src:url("/fonts/schibsted-grotesk.woff2") format("woff2");font-weight:400 900;font-display:swap;ascent-override:97.66%;descent-override:25.78%;line-gap-override:0%}</style>
+    <link rel="stylesheet" href="./src/app.css" />
+    <script type="module" src="./src/landing.ts"></script>
+    <meta property="og:title" content="Milo · Approve the exact files" />
+    <meta property="og:description" content="A private order for three final images. Your browser checks each file. You approve in your Lace wallet on Midnight Preprod." />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="./public/og-card.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Milo — Private agreements. Clear approvals. Prototype sample. Preprod test network only. No live payments." />
+    <meta property="og:image:alt" content="Milo · private orders and exact approvals for creative work on Midnight." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="./public/og-card.png" />
     <link rel="icon" type="image/svg+xml" href="./public/favicon.svg" />
     <link rel="alternate icon" type="image/png" sizes="32x32" href="./public/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./public/apple-touch-icon.png" />
   </head>
-  <body>
+  <body class="bg-brand text-white">
     <a class="skip-link" href="#main">Skip to content</a>
-    <section class="public-notice" aria-label="Prototype notice">Prototype — orders and artwork are samples. Preprod test network only. No live payments.</section>
-    <header class="public-header"><a href="/" class="wordmark" aria-label="Milo home">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a><nav aria-label="Main navigation"><a href="/how-it-works">How it works</a><a href="/privacy">Privacy</a><a href="/sign-in">Sign in</a><a class="button small" href="/demo">Explore a sample order <span aria-hidden="true">↗</span></a></nav></header>
+    <header class="sticky top-0 z-40 flex flex-wrap items-center gap-x-6 gap-y-3 bg-brand px-4 py-4 sm:px-8">
+      <a href="/" class="wordmark" aria-label="Milo home">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a>
+      <nav aria-label="Main navigation" class="ml-auto flex flex-wrap items-center gap-5 text-sm font-semibold">
+        <a class="hidden hover:text-yellow sm:inline" href="/#how">How it works</a>
+        <a class="cta h-9 px-4 text-sm" href="/orders">Sign in</a>
+      </nav>
+    </header>
     <main id="main">
-      <section class="hero page-width">
-        <div class="hero-copy"><h1>Private agreements.<br /><em>Clear approvals.</em></h1><p class="hero-description">Agree creative work privately, review the exact delivery, and keep a clear record of what you approved.</p><div class="hero-actions"><a class="button" href="/demo">Explore a sample order <span aria-hidden="true">↗</span></a><a class="text-link" href="/pilot">Discuss a merchant pilot <span aria-hidden="true">→</span></a></div><p class="muted micro">No wallet, sign-up or payment needed.</p></div>
-        <div class="hero-art" role="img" aria-label="Illustration of a sample three-image creative order">
-          
-          <div class="sample-stack"><div class="back-card"><img src="./public/images/detail.webp" alt="Sample product photography: detail of an olive ceramic vessel" width="600" height="720" /></div><div class="front-card"><img src="./public/images/hero.webp" alt="Sample product photography: sculptural ceramic vessel on a warm studio plinth" width="600" height="720" fetchpriority="high" /><div class="art-caption"><div><strong>North Studio</strong><p>Three-image product pack for Still Studio</p></div><span class="tag violet">Sample order</span></div></div><div class="order-seal" aria-hidden="true"><b>m</b></div></div>
+      <section aria-labelledby="hero-title" class="px-4 pt-8 pb-16 sm:px-8 lg:pt-12 lg:pb-20">
+        <div class="grid gap-8 lg:grid-cols-12 lg:gap-12">
+          <div class="grid content-start gap-6 lg:col-span-7 lg:row-start-1">
+            <h1 id="hero-title" class="display-xl rise" style="--i:0">Approve the exact files.</h1>
+            <p class="lead rise max-w-[38ch]" style="--i:1">A private order between a studio and its client. Your browser checks the images before you approve.</p>
+            <a class="cta rise" href="/orders/new" style="--i:2">Start an order <span class="arrow" aria-hidden="true">→</span></a>
+          </div>
+          <ul class="rise grid grid-cols-3 gap-2 self-start sm:gap-3 lg:col-span-5 lg:col-start-8 lg:row-start-1" aria-label="The three final images">
+            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/hero.webp" alt="A sculptural ceramic vessel on a warm studio plinth" width="600" height="720" fetchpriority="high" /></li>
+            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/detail.webp" alt="A close study of the olive glaze on the vessel" width="600" height="720" fetchpriority="high" /></li>
+            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/collection.webp" alt="Three finished vessels of the collection on a plaster shelf" width="600" height="720" fetchpriority="high" /></li>
+          </ul>
+        </div>
+        <div class="mt-24 grid gap-6 lg:grid-cols-12 lg:gap-12">
+          <h2 class="heading lg:col-span-3">Time limits</h2>
+          <dl class="rise grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:col-span-8 lg:col-start-5 lg:grid-cols-4" style="--i:3">
+            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">images per order</dt><dd class="display">3</dd></div>
+            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to accept</dt><dd class="display">1 h</dd></div>
+            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to deliver</dt><dd class="display">24 h</dd></div>
+            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to review</dt><dd class="display">48 h</dd></div>
+            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">terms on the public ledger</dt><dd class="display">0</dd></div>
+          </dl>
         </div>
       </section>
-      <section class="process-section page-width" aria-labelledby="process-title"><div class="section-intro"><h2 id="process-title">How Milo works</h2><a class="text-link" href="/how-it-works">See the full process ↗</a></div><div class="process-card"><h3>Agree</h3><p>A fixed scope, the right people, clear deadlines. See exactly what you’re agreeing to before you commit.</p></div><div class="process-card"><h3>Review</h3><p>Three final images, one submitted version. Inspect each file and check that the sample bytes match.</p></div><div class="process-card"><h3>Approve</h3><p>Approval and payment are separate. Know what you approved—and whether payment still needs attention.</p></div></section>
-      <section class="product-strip page-width" aria-labelledby="product-title"><div class="section-intro"><h2 id="product-title">The sample order, illustrated</h2><p>A static preview of the documented journey.</p></div><div class="product-frame" role="img" aria-label="Static preview of the proposed order screen: a delivery of three images, an approve action, and a separate payment summary"><div class="frame-sidebar"><span class="frame-wordmark">milo</span><span class="frame-nav active">Sample order</span><span class="frame-nav">Your orders</span><span class="frame-nav">The agreement</span></div><div class="frame-main"><div class="frame-action"><strong>Review the delivery.</strong><span class="frame-scope">Three-image product pack · fixed $360 USD · review due 10 Sep 2026, 16:00 UTC</span><span class="frame-check">✓ Matches submitted manifest</span><span class="frame-button">Approve delivery ↗</span></div><div class="frame-delivery"><div class="frame-images"><img src="./public/images/hero.webp" alt="" width="600" height="720" loading="lazy" /><img src="./public/images/detail.webp" alt="" width="600" height="720" loading="lazy" /><img src="./public/images/collection.webp" alt="" width="600" height="720" loading="lazy" /></div></div><div class="frame-payment"><strong>$360 <span>USD</span></strong><span class="tag">○ Sample authorized</span></div></div></div><div class="scenario-links"><a class="scenario-link" href="/orders">Open the order console — read-only connection and payment status <span aria-hidden="true">↗</span></a></div></section>
-      <section class="privacy-band"><div class="page-width privacy-inner"><h2>Privacy and boundaries</h2><div><p>The planned protocol protects confidential terms from public observers. Milo, authorized participants and the chosen proving path have different access. A proof is not a quality guarantee.</p><a href="/privacy" class="text-link light-link">Understand who sees what ↗</a></div></div></section>
-      <section class="value-section page-width" aria-labelledby="value-title"><div class="section-intro"><h2 id="value-title">For creative studios</h2><p>Product goals for the pilot — stated as goals until pilot evidence exists.</p></div><div class="value-cards"><div class="value-card"><h3>Fewer ambiguous approvals</h3><p class="value-card-text">The buyer reviews the exact submitted files and approves against the agreed scope, with a record of what was approved.</p></div><div class="value-card"><h3>Clearly bounded work</h3><p class="value-card-text">One fixed price, one fixed delivery of three final images, agreed deadlines and a named resolution path. No open-ended revision rounds.</p></div><div class="value-card"><h3>An exportable record</h3><p class="value-card-text">The confirmed order record can be inspected and exported, so your files and the approval history stay with you.</p></div></div><p class="muted micro">Payment is handled by a separate provider and is never guaranteed by approval. Disputes go to the pre-agreed operator; they are not eliminated.</p></section>
-      <section class="faq-section page-width" aria-labelledby="faq-title"><h2 id="faq-title">Questions, answered plainly</h2><details><summary>What software do I need?</summary><p class="faq-answer">A tested desktop browser and a designated wallet profile, chosen when you prepare an order — never at landing. Compatibility evidence for that profile is still being gathered. Reading a quote needs no wallet; on an unsupported phone you can read everything and resume on a tested desktop after signing in again.</p></details><details><summary>Who pays execution costs?</summary><p class="faq-answer">On the current test profile, each participant covers their own execution capacity; the actual requirement is shown before any action that needs it. Sponsored execution is a deferred experiment with no selected sponsor — there is no “free forever” promise.</p></details><details><summary>What does “private” mean?</summary><p class="faq-answer">Commercial terms stay off the public ledger. Milo, the merchant, the payment provider and the chosen proving path each see the data they actually receive. Private does not mean anonymous, and a proof is not a quality guarantee.</p></details><details><summary>What if I lose my approval capability?</summary><p class="faq-answer">A recovery kit preserves your approval capability and is verified before any payment hold. Without it, an order can become read-only — signing in again cannot recreate it.</p></details><details><summary>How long are the deadlines?</summary><p class="faq-answer">Each order carries agreed delivery and review deadlines, shown with timezone before you consent. The current 24-hour delivery and 12-hour review windows are initial product hypotheses, not validated market requirements.</p></details><details><summary>Which devices are supported?</summary><p class="faq-answer">Tested desktop browsers first. Other devices can read quotes and orders; consequential actions stay on the tested profile.</p></details><details><summary>Can I cancel an order?</summary><p class="faq-answer">The buyer can cancel before the merchant accepts. After acceptance, the pre-agreed operator resolves disputes in full — approval or cancellation, never a partial rewrite of the agreement.</p></details></section>
-      <section class="closing-cta has-photo" style="--cta-photo: url('/images/closing-cta.webp')" aria-labelledby="closing-title"><div class="page-width"><h2 id="closing-title">See the whole order before you believe it.</h2><div class="hero-actions"><a class="button" href="/demo">Explore a sample order <span aria-hidden="true">↗</span></a><a class="text-link light-link" href="/pilot">Discuss a merchant pilot <span aria-hidden="true">→</span></a></div></div></section>
+
+      <section id="how" class="bg-yellow px-4 py-20 text-black sm:px-8 lg:py-28" aria-labelledby="how-title">
+        <div class="grid gap-6 lg:grid-cols-12">
+          <h2 id="how-title" class="display lg:col-span-7">One order, four steps</h2>
+        </div>
+        <ol class="mt-14 grid gap-10">
+          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:0">
+            <h3 class="heading sm:col-span-3">Agree</h3>
+            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">One fixed price, one deadline. You authorize the card within 1 hour.</p>
+            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">1 hour</p>
+          </li>
+          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:1">
+            <h3 class="heading sm:col-span-3">Deliver</h3>
+            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">Three images, locked with each SHA-256 digest.</p>
+            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">24 hours</p>
+          </li>
+          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:2">
+            <h3 class="heading sm:col-span-3">Check</h3>
+            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">Your browser hashes each file. Approve or dispute.</p>
+            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">48 hours</p>
+          </li>
+          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:3">
+            <h3 class="heading sm:col-span-3">Settle</h3>
+            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">You sign in Lace. Milo captures the card separately.</p>
+            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">on approval</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="grid bg-white text-black lg:grid-cols-2" aria-labelledby="check-title">
+        <div class="flex flex-col justify-center gap-8 px-4 py-16 sm:px-8 lg:py-24">
+          <h2 id="check-title" class="display max-w-[12ch]">Check the files yourself</h2>
+          <p class="lead max-w-[34ch]">The same check runs before every approval: your browser hashes each file and compares the three digests with the locked list.</p>
+          <div class="grid gap-4">
+            <button type="button" class="cta cursor-pointer disabled:cursor-progress disabled:opacity-60" data-check>
+              <span class="size-5"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <span>Check the files</span>
+            </button>
+            <p class="max-w-[40ch] text-[15px] empty:hidden" role="status" data-check-status>Hashes three example files in your browser.</p>
+          </div>
+        </div>
+        <div class="flex items-center px-4 pb-16 sm:px-8 lg:py-24">
+          <article class="w-full max-w-[520px] rounded-md bg-muted p-6" data-ui>
+            <h3 class="text-[17px] font-bold">An example delivery</h3>
+            <ul class="mt-5 grid gap-4" aria-label="Files and SHA-256 digests">
+              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
+                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/hero.webp" alt="" width="44" height="55" loading="lazy" />
+                <span class="grid"><span class="font-semibold">The hero</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
+                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
+              </li>
+              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
+                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/detail.webp" alt="" width="44" height="55" loading="lazy" />
+                <span class="grid"><span class="font-semibold">The details</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
+                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
+              </li>
+              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
+                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/collection.webp" alt="" width="44" height="55" loading="lazy" />
+                <span class="grid"><span class="font-semibold">The collection</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
+                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
+              </li>
+            </ul>
+            <p class="mt-5 grid gap-1 text-sm text-muted-foreground"><span>One commitment</span><code class="font-mono text-sm break-all text-foreground" data-manifest>not checked</code></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="faq" class="px-4 py-20 sm:px-8 lg:py-28" aria-labelledby="faq-title">
+        <h2 id="faq-title" class="display">Plain answers</h2>
+        <dl class="mt-14 grid gap-y-12 lg:gap-y-16">
+          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">What does “private” mean?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">The ledger hides the price, brief and files. Not anonymous, and a proof does not judge the work.</dd></div>
+          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Is approval payment?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">No. Capture is separate and can fail.</dd></div>
+          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Wrong delivery?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">Do not approve. Open a dispute: the operator has 48 hours and cannot change the terms.</dd></div>
+          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Lost your key?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">It lives in this browser; Milo cannot replace it. Keep the encrypted backup safe.</dd></div>
+          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">What do I need?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">Chromium and the <a class="underline underline-offset-4 hover:text-yellow" href="https://www.lace.io" rel="noopener">Lace wallet</a> on Preprod, with tDUST for fees. <a class="underline underline-offset-4 hover:text-yellow" href="https://docs.midnight.network/guides/networks-and-environments" rel="noopener">Get tNIGHT</a>, then “Generate tDUST”.</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="close-title" class="grid lg:grid-cols-2">
+        <img class="aspect-[4/3] w-full object-cover lg:aspect-auto lg:h-full" src="./public/images/studio-shelf.webp" alt="A shelf of finished handmade vessels in a ceramics studio" width="1200" height="900" loading="lazy" />
+        <div class="grid content-end gap-6 bg-yellow px-4 py-16 text-black sm:px-8 lg:py-20">
+          <h2 id="close-title" class="display"><a class="inline-flex flex-wrap items-baseline gap-x-4 underline decoration-4 underline-offset-[6px] hover:text-brand" href="/orders/new">Start an order <span class="arrow" aria-hidden="true">→</span></a></h2>
+          <p class="lead max-w-[34ch]">Email link or Lace.</p>
+        </div>
+      </section>
     </main>
-    <footer class="public-footer page-width"><a href="/" class="wordmark">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a><p>Private agreements. Clear approvals.</p><nav aria-label="Footer"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/pilot">Pilot status</a></nav><span class="micro muted">Sample product photography · 2026</span></footer>
+    <footer class="grid gap-10 overflow-hidden bg-pink px-4 pt-16 pb-10 text-black sm:px-8">
+      <nav aria-label="Footer" class="flex flex-wrap gap-5 text-sm font-semibold"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+      <a href="/" class="wordmark text-[clamp(5rem,22vw,20rem)] leading-[0.8]">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a>
+      <p class="text-sm" data-notice>Midnight Preprod. Cards run in Stripe test mode.</p>
+    </footer>
   </body>
 </html>

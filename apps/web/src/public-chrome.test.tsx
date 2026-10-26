@@ -5,22 +5,27 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { demoContexts } from "./demo-fixtures";
-import { REVIEW_DEADLINE } from "./reviewDeadline";
-import { DemoPage } from "./routes/DemoPage";
+import { ORDER_WINDOWS_MS } from "../../../packages/backend/src/order-windows";
+import { sampleFiles } from "./assets";
 import { InfoPage } from "./routes/InfoPage";
 import { PublicShell } from "./shells/PublicShell";
 
-/** The DOM-backed slice of globalThis the tests swap for a happy-dom window. */
 type GlobalSlot = Record<string, unknown>;
 
 declare global {
-  // React's act reads IS_REACT_ACT_ENVIRONMENT to allow act() outside test runners.
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const landing = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const shell = renderToStaticMarkup(
+  <MemoryRouter>
+    <PublicShell />
+  </MemoryRouter>,
+);
+
+/** Both surfaces that must agree: the rendered shell and the landing HTML. */
+const SURFACES = [shell, landing];
 
 function navHrefs(source: string, label: string): string[] {
   const nav = source.match(
@@ -31,151 +36,79 @@ function navHrefs(source: string, label: string): string[] {
 }
 
 describe("public chrome parity", () => {
-  const shell = renderToStaticMarkup(
-    <MemoryRouter>
-      <PublicShell />
-    </MemoryRouter>,
-  );
+  for (const label of ["Main navigation", "Footer"])
+    test(`${label} matches between landing and PublicShell`, () => {
+      expect(navHrefs(shell, label)).toEqual(navHrefs(landing, label));
+    });
 
-  test("main navigation matches between landing and PublicShell", () => {
-    expect(navHrefs(shell, "Main navigation")).toEqual(
-      navHrefs(landing, "Main navigation"),
-    );
-  });
-
-  test("footer navigation matches between landing and PublicShell", () => {
-    expect(navHrefs(shell, "Footer")).toEqual(navHrefs(landing, "Footer"));
+  test("Privacy and Terms appear once, in the footer only", () => {
+    for (const source of SURFACES)
+      expect(source.match(/href="\/(privacy|terms)"/g)).toHaveLength(2);
   });
 
   test("both expose the same wordmark home link", () => {
-    for (const source of [shell, landing]) {
-      const wordmark = source.match(
-        /<a href="\/" class="wordmark"[^>]*>([\s\S]*?)<\/a>/,
+    for (const source of SURFACES)
+      expect(source).toMatch(
+        /<a href="\/" class="wordmark"[^>]*>[\s\S]*?milo[\s\S]*?wordmark-star/,
       );
-      expect(wordmark?.[1]).toContain("milo");
-      expect(wordmark?.[1]).toContain("wordmark-star");
-    }
   });
 
-  test("skip link and prototype notice match between landing and PublicShell", () => {
-    for (const source of [shell, landing]) {
+  test("every order window on the landing matches ORDER_WINDOWS_MS", () => {
+    const hours = (ms: number) => ms / 3_600_000;
+    expect(landing).toContain(`${hours(ORDER_WINDOWS_MS.delivery)} h`);
+    expect(landing).toContain(`${hours(ORDER_WINDOWS_MS.review)} h`);
+    expect(landing).toContain(
+      `within ${hours(ORDER_WINDOWS_MS.acceptance)} hour`,
+    );
+    expect(landing).toContain(
+      `has ${hours(ORDER_WINDOWS_MS.resolution)} hours`,
+    );
+    expect(landing).not.toMatch(/\b12 hours\b|\b12 h\b/);
+  });
+
+  test("the skip link comes before the page content", () => {
+    for (const source of SURFACES) {
       expect(source).toContain('class="skip-link" href="#main"');
-      expect(source).toContain(
-        "Prototype — orders and artwork are samples. Preprod test network only. No live payments.",
-      );
+      expect(source.indexOf("skip-link")).toBeLessThan(source.indexOf("<main"));
     }
-  });
-
-  // The static landing frame cannot import the single sources (no hydration,
-  // 01 §9.1), so this parity assertion is the control (C-A-17 convention).
-  test("static workspace frame facts match the registered carriers", () => {
-    const sc01 = demoContexts.find((context) => context.id === "SC-01");
-    if (!sc01) throw new Error("SC-01 fixture missing");
-    expect(landing).toContain(`review due ${REVIEW_DEADLINE}`);
-    expect(landing).toContain(`fixed ${sc01.amount}`);
-    expect(landing).toContain(sc01.pack);
-    // Mirrors PaymentPanel's neutral ○ glyph + "authorized" copy (A3-03).
-    expect(landing).toContain("○ Sample authorized");
   });
 });
 
-/**
- * WCAG 2.2 SC 2.4.1 (Bypass Blocks): the skip link must be the first
- * focusable element, so the first Tab after a cold load reaches it and not a
- * control inside <main>. The regression this guards: DemoPage focused its
- * page heading on first mount, which moved the browser's sequential-focus
- * starting point past the skip link (e2e/flows/fl-keyboard.mjs).
- */
-describe("public skip link is the first focusable element", () => {
-  async function mountDemoAt(path: string) {
-    const window = new Window({ url: `http://localhost${path}` });
-    (globalThis as GlobalSlot).window = window;
-    for (const key of [
-      "document",
-      "HTMLElement",
-      "HTMLAnchorElement",
-      "Element",
-      "Node",
-      "navigator",
-      "location",
-      "history",
-      "MutationObserver",
-      "getComputedStyle",
-      "requestAnimationFrame",
-      "cancelAnimationFrame",
-      "AbortController",
-      "Blob",
-      "URL",
-      "CustomEvent",
-      "KeyboardEvent",
-      "PointerEvent",
-      "MouseEvent",
-      "Event",
-    ]) {
-      (globalThis as GlobalSlot)[key] =
-        (window as unknown as GlobalSlot)[key] ??
-        (globalThis as GlobalSlot)[key];
-    }
-    const container = window.document.createElement("div");
-    window.document.body.appendChild(container as never);
-    const root = createRoot(container as unknown as HTMLElement);
-    await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route element={<PublicShell />}>
-              <Route path="/demo" element={<DemoPage />} />
-            </Route>
-          </Routes>
-        </MemoryRouter>,
+describe("sample image integrity", () => {
+  for (const file of sampleFiles) {
+    test(`${file.title} has the pinned SHA-256 and WebP 600×720 header`, async () => {
+      const bytes = await Bun.file(`apps/web/public${file.src}`).arrayBuffer();
+      const view = new DataView(bytes);
+      const head = [...new Uint8Array(bytes).slice(0, 16)];
+      expect(head.slice(0, 4)).toEqual([82, 73, 70, 70]);
+      expect(head.slice(8, 12)).toEqual([87, 69, 66, 80]);
+      expect(view.getUint16(26, true) & 0x3fff).toBe(600);
+      expect(view.getUint16(28, true) & 0x3fff).toBe(720);
+      expect(new Bun.CryptoHasher("sha256").update(bytes).digest("hex")).toBe(
+        file.hash,
       );
     });
-    return { window, root };
   }
 
-  test("the skip link precedes the demo heading in the rendered shell", async () => {
-    const { window, root } = await mountDemoAt("/demo");
-    const html = window.document.body.innerHTML;
-    const skipIndex = html.indexOf("skip-link");
-    const headingIndex = html.indexOf("Explore a sample order");
-    expect(skipIndex).toBeGreaterThanOrEqual(0);
-    expect(headingIndex).toBeGreaterThanOrEqual(0);
-    expect(skipIndex).toBeLessThan(headingIndex);
-    await act(async () => root.unmount());
-    window.close();
+  test("three distinct digests commit to one manifest", () => {
+    const manifest = new Bun.CryptoHasher("sha256")
+      .update(sampleFiles.map((file) => file.hash).join(""))
+      .digest("hex");
+    expect(manifest).toMatch(/^[a-f0-9]{64}$/);
+    expect(new Set(sampleFiles.map((file) => file.hash)).size).toBe(3);
   });
+});
 
-  test("a cold load on an info route does not move focus past the skip link", async () => {
-    // PublicPageTitle used to focus its heading on mount, which moved the sequential
-    // focus start past the skip link PublicShell renders first in the DOM (WCAG 2.2
-    // SC 2.4.1 Bypass Blocks). It now focuses only on navigation.
+describe("public skip link keeps focus on a cold load", () => {
+  test("an info route does not move focus past the skip link", async () => {
     const window = new Window({ url: "http://localhost/privacy" });
     (globalThis as GlobalSlot).window = window;
-    for (const key of [
-      "document",
-      "HTMLElement",
-      "HTMLAnchorElement",
-      "Element",
-      "Node",
-      "navigator",
-      "location",
-      "history",
-      "MutationObserver",
-      "getComputedStyle",
-      "requestAnimationFrame",
-      "cancelAnimationFrame",
-      "AbortController",
-      "Blob",
-      "URL",
-      "CustomEvent",
-      "KeyboardEvent",
-      "PointerEvent",
-      "MouseEvent",
-      "Event",
-    ]) {
-      (globalThis as GlobalSlot)[key] =
-        (window as unknown as GlobalSlot)[key] ??
-        (globalThis as GlobalSlot)[key];
+    // Everything the component tree touches comes from the window; copy every
+    // own key rather than naming a subset that drifts.
+    for (const key of Object.getOwnPropertyNames(window)) {
+      if (key in globalThis) continue;
+      const value = (window as unknown as GlobalSlot)[key];
+      if (value !== undefined) (globalThis as GlobalSlot)[key] = value;
     }
     const document = window.document;
     const container = document.createElement("div");
@@ -192,21 +125,7 @@ describe("public skip link is the first focusable element", () => {
         </MemoryRouter>,
       );
     });
-    const active = document.activeElement;
-    expect(active?.tagName ?? "BODY").toBe("BODY");
-    const html = document.body.innerHTML;
-    expect(html.indexOf("skip-link")).toBeLessThan(html.indexOf("<h1"));
-    await act(async () => root.unmount());
-    window.close();
-  });
-  test("a cold load does not move focus into the demo content", async () => {
-    const { window, root } = await mountDemoAt("/demo");
-    // On a cold load nothing is focused, so the first Tab starts at the top of
-    // the document and reaches the skip link. Focusing the heading here would
-    // put activeElement inside <main> and defeat the skip link.
-    const active = window.document.activeElement;
-    expect(active?.className ?? "").not.toContain("demo-title");
-    expect(active?.tagName ?? "BODY").toBe("BODY");
+    expect(document.activeElement?.tagName ?? "BODY").toBe("BODY");
     await act(async () => root.unmount());
     window.close();
   });

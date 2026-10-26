@@ -1,30 +1,29 @@
-export const publicAppRoutes = [
-  "/demo",
-  "/sign-in",
-  "/how-it-works",
-  "/privacy",
-  "/terms",
-  "/pilot",
-];
+export const publicAppRoutes = ["/privacy", "/terms"];
 
-export const workspaceRoutes = [
-  { path: "/orders", title: "Your orders" },
-  { path: "/merchant/orders", title: "Studio queue" },
-  { path: "/merchant/quotes/new", title: "New sample quote" },
-  { path: "/operator/cases", title: "Resolution desk" },
+const workspaceRoutes = [
+  { path: "/orders", title: "Orders" },
   { path: "/account", title: "Account" },
-  { path: "/connections", title: "Connection diagnostics" },
 ] as const;
 
 export const workspaceAppRoutes = workspaceRoutes.map(
   (route): string => route.path,
 );
 
-export const publicAppPrefixes = ["/m"];
+export const publicAppPrefixes: string[] = [];
 
-export const workspaceAppPrefixes = [
-  "/quotes",
-  "/orders",
-  "/merchant",
-  "/operator",
-];
+export const workspaceAppPrefixes = ["/orders"];
+
+export const legacyRedirects = [
+  ["/demo", "/orders"],
+  ["/m/north-studio", "/"],
+  ["/how-it-works", "/#how"],
+  ["/pilot", "/#faq"],
+  ["/sign-in", "/account"],
+  ["/connections", "/account"],
+  ["/merchant/orders", "/orders"],
+  ["/merchant/quotes/new", "/orders/new"],
+  ["/operator/cases", "/orders"],
+  ["/operator/cases/:id", "/orders/:id"],
+  ["/quotes/:id", "/orders/:id"],
+  ["/orders/:id/receipt", "/orders/:id"],
+] as const;

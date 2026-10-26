@@ -29,6 +29,9 @@ import {
   redactUrl,
 } from "./test-jwt-issuer";
 
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
+
 const E2E_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO = join(E2E_DIR, "..");
 const WEB_SRC = join(REPO, "apps", "web", "src");

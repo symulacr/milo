@@ -1,57 +1,87 @@
+import { useQuery } from "convex/react";
+import { CircleDot, Plus } from "lucide";
 import { Link } from "react-router";
-import { sampleFiles } from "../assets";
+import { api, type OrderSummary } from "../api";
 import { PageTitle } from "../components/PageTitle";
-import { Badge } from "../components/ui";
-import { paymentLine, phaseFrame } from "../workspace/framing";
-import { useWorkspace } from "../workspace/model";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Loading, Mark } from "../components/ui/status";
+import { badgeTone, usd, useAgo } from "../lib/format";
+import { useMe } from "../workspace/backend";
+import { STAGE_LABEL, yourTurn } from "../workspace/stages";
 
-export function Orders({ merchant = false }: { merchant?: boolean }) {
-  const { state, quote, money } = useWorkspace();
-  const frame = phaseFrame(state.phase, state.role);
-  const settled = state.phase === "APPROVED" || state.phase === "CANCELLED";
+const ROW =
+  "grid grid-cols-[minmax(0,1fr)] items-center gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_130px_90px_90px] md:gap-y-1";
+
+function OrderRow({ order }: { order: OrderSummary }) {
+  const ago = useAgo(order.updatedAt);
+  const turn = yourTurn(order.role, order.stage);
+  return (
+    <Link to={`/orders/${order.quoteId}`} className={ROW}>
+      <span className="grid min-w-0">
+        <span className="flex min-w-0 items-center gap-2 font-semibold">
+          {turn && (
+            <Mark icon={CircleDot} className="size-3.5 shrink-0 text-brand" />
+          )}
+          <span className="truncate">{order.title}</span>
+        </span>
+      </span>
+      <span className="flex items-center justify-between gap-3 md:block">
+        <Badge variant={badgeTone(order.stage)}>
+          {STAGE_LABEL[order.stage]}
+        </Badge>
+        <span className="font-semibold tabular-nums md:hidden">
+          {usd(order.amountUsd)}
+        </span>
+      </span>
+      <span className="hidden text-right font-semibold tabular-nums md:block">
+        {usd(order.amountUsd)}
+      </span>
+      <span className="text-right text-[13px] text-muted-foreground md:block">
+        {ago}
+      </span>
+    </Link>
+  );
+}
+
+export function Orders() {
+  const { me } = useMe();
+  const orders = useQuery(api.orders, {});
   return (
     <>
-      <PageTitle title={merchant ? "Studio queue" : "Your orders"} />
-      <div className="list-toolbar">
-        <span className="muted">1 sample order · refresh resets</span>
-        {settled && (
-          <Link className="text-link" to="/orders/sample-001/receipt">
-            View sample receipt →
-          </Link>
-        )}
-        {merchant && (
-          <Link className="button small" to="/merchant/quotes/new">
-            Prepare a sample quote ↗
-          </Link>
-        )}
-      </div>
-      <Link
-        to={
-          merchant && state.phase === "DRAFT"
-            ? "/quotes/sample-001"
-            : "/orders/sample-001"
+      <PageTitle
+        title="Orders"
+        actions={
+          <Button asChild>
+            <Link to="/orders/new">
+              <Mark icon={Plus} />
+              New quote
+            </Link>
+          </Button>
         }
-        className="order-list-card"
-      >
-        <img
-          src={sampleFiles[0].src}
-          alt="Sample Still Studio photography"
-          width="104"
-          height="120"
-        />
-        <div>
-          <h2>{quote.name}</h2>
-          <p>
-            North Studio · three-image pack · {money} USD · {frame.next}
-            {frame.due && ` · due ${frame.due} · sample clock`}
-            {` · ${paymentLine(state.payment)}`}
-          </p>
-        </div>
-        <Badge>{frame.heading}</Badge>
-        <span className="list-arrow" aria-hidden="true">
-          ↗
-        </span>
-      </Link>
+      ></PageTitle>
+      <section aria-label="Your orders" className="min-w-0">
+        {orders === undefined ? (
+          <Loading label="Loading orders" />
+        ) : orders.length === 0 ? (
+          <div className="grid gap-2 rounded-lg bg-card p-8">
+            <h2 className="text-lg font-semibold">No orders yet</h2>
+            <p className="text-sm text-muted-foreground">
+              {me?.studio
+                ? "Start with a quote."
+                : "Open the link a studio emailed you."}
+            </p>
+          </div>
+        ) : (
+          <ul className="grid overflow-hidden rounded-lg bg-card">
+            {orders.map((order) => (
+              <li key={order.quoteId}>
+                <OrderRow order={order} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </>
   );
 }

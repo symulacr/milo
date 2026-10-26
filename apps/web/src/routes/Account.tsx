@@ -1,53 +1,159 @@
-import { Link } from "react-router";
+import { Download, KeyRound, LogOut, Upload } from "lucide";
+import { useMemo, useState } from "react";
+import { signOut } from "../auth-client";
 import { PageTitle } from "../components/PageTitle";
-import { Badge, Panel } from "../components/ui";
-import { RecoveryKitPanel } from "../RecoveryKitPanel";
-import { roleNames, useWorkspace } from "../workspace/model";
-
-const BOUNDARIES = [
-  ["Wallet recovery", "Restores only what the wallet backs up."],
-  [
-    "Order capability",
-    "Lives in order-scoped private state — email reset cannot recreate it.",
-  ],
-  [
-    "Application records",
-    "App restore covers records and files, not wallet secrets.",
-  ],
-];
+import { Button } from "../components/ui/button";
+import { Card, CardTitle, Facts } from "../components/ui/card";
+import { ForgetWallet } from "../components/ui/connect";
+import { Field, Input } from "../components/ui/input";
+import { Mark } from "../components/ui/status";
+import { errorText, Outcome } from "../components/workspace";
+import { ROLE_NAME } from "../lib/format";
+import { useMe } from "../workspace/backend";
+import { backupBlob, readKeys, restoreBackup } from "../workspace/keys";
+import { shortAddress, useWallet, walletHint } from "../workspace/wallet";
 
 export function Account() {
-  const { state } = useWorkspace();
+  const { me } = useMe();
+  const wallet = useWallet();
+  const subject = me?.subject ?? "";
+  // Derived, not stored: the ring is the source of truth. `version` only forces
+  // a re-read after a backup or a restore writes to it.
+  const [version, setVersion] = useState(0);
+  // Derived, not stored: the ring is the source of truth. `version` is read
+  // inside so a backup or restore invalidates the memo.
+  const count = useMemo(() => {
+    void version;
+    return Object.keys(readKeys(subject)).length;
+  }, [subject, version]);
+  const [password, setPassword] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [restorePassword, setRestorePassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  if (!me) return null;
   return (
     <>
       <PageTitle title="Account" />
-      <Panel className="reading-panel">
-        <Badge>Sample identity</Badge>
-        <h2>{roleNames[state.role]}</h2>
-        <Link className="button secondary" to="/connections">
-          Open connection diagnostics ↗
-        </Link>
-        <div className="boundary-cards">
-          {BOUNDARIES.map(([title, body]) => (
-            <div key={title}>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </div>
-          ))}
-        </div>
-        <Link
-          className="button secondary"
-          to="/orders/sample-001?scenario=lost-capability&role=buyer"
-        >
-          Explore lost-capability recovery ↗
-        </Link>
-        <details className="evidence-panel">
-          <summary>
-            Local recovery kit vault &amp; 7 recovery operations (sample-001)
-          </summary>
-          <RecoveryKitPanel defaultOrderNonce="sample-001" />
-        </details>
-      </Panel>
+      <div className="grid gap-6">
+        <Card>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle>You</CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => void signOut()}>
+              <Mark icon={LogOut} />
+              Sign out
+            </Button>
+          </div>
+          <Facts
+            rows={[
+              ["Email", me.email ?? "Not set"],
+              [
+                "Wallet",
+                me.walletAddress
+                  ? shortAddress(me.walletAddress)
+                  : walletHint(wallet),
+              ],
+              ["Studio", me.studio?.name ?? "None"],
+              ...(me.operator ? [["Role", ROLE_NAME.operator] as const] : []),
+            ]}
+          />
+          {wallet.status === "connected" && <ForgetWallet />}
+        </Card>
+        <Card>
+          <CardTitle>Order keys</CardTitle>
+          <p className="max-w-[64ch] text-sm text-muted-foreground">
+            Each order has a key that only this browser holds. Clear the browser
+            and it is gone; Milo cannot make a new one. Download a backup.
+          </p>
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <Mark icon={KeyRound} className="size-4 text-muted-foreground" />
+            {count} order {count === 1 ? "key" : "keys"} in this browser
+          </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <form
+              className="grid content-start gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setError("");
+                void backupBlob(subject, password)
+                  .then((blob) => {
+                    const anchor = document.createElement("a");
+                    anchor.href = URL.createObjectURL(blob);
+                    anchor.download = `milo-order-keys-${new Date().toISOString().slice(0, 10)}.json`;
+                    anchor.click();
+                    setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
+                    setPassword("");
+                    setStatus("Saved. Keep it off this computer.");
+                  })
+                  .catch((cause) => setError(errorText(cause)));
+              }}
+            >
+              <Field label="Backup password (10 characters or more)">
+                <Input
+                  type="password"
+                  required
+                  minLength={10}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </Field>
+              <Button
+                type="submit"
+                variant={count ? "default" : "outline"}
+                className="w-fit"
+                disabled={!count}
+              >
+                <Mark icon={Download} />
+                Download the backup
+              </Button>
+            </form>
+            <form
+              className="grid content-start gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!file) return;
+                setError("");
+                void file
+                  .text()
+                  .then((text) => restoreBackup(subject, text, restorePassword))
+                  .then((restored) => {
+                    setVersion((v) => v + 1);
+                    setRestorePassword("");
+                    setStatus(
+                      `${restored} order ${restored === 1 ? "key is" : "keys are"} back in this browser.`,
+                    );
+                  })
+                  .catch((cause) => setError(errorText(cause)));
+              }}
+            >
+              <Field label="Backup file">
+                <Input
+                  type="file"
+                  accept="application/json,.json"
+                  required
+                  className="py-1.5"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
+              </Field>
+              <Field label="Backup password">
+                <Input
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={restorePassword}
+                  onChange={(event) => setRestorePassword(event.target.value)}
+                />
+              </Field>
+              <Button type="submit" variant="outline" className="w-fit">
+                <Mark icon={Upload} />
+                Restore the keys
+              </Button>
+            </form>
+          </div>
+          <Outcome status={status} error={error} />
+        </Card>
+      </div>
     </>
   );
 }

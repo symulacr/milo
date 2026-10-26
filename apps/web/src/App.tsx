@@ -1,76 +1,35 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router";
-import { Connections } from "./Connections";
-import { BoundOrder, RoleRequired } from "./components/gates";
+import { Loading } from "./components/ui/status";
 import { Account } from "./routes/Account";
 import { NewQuote } from "./routes/NewQuote";
-import { OperatorCases } from "./routes/OperatorCases";
 import { Orders } from "./routes/Orders";
-import { OrderView } from "./routes/OrderView";
-import { QuoteView } from "./routes/QuoteView";
-import { Receipt } from "./routes/Receipt";
 import { WorkspaceNotFound } from "./routes/WorkspaceNotFound";
-import { WorkspaceShell } from "./shells/WorkspaceShell";
-import { useModel, WorkspaceContext } from "./workspace/model";
+import { ServiceBoundary, WorkspaceShell } from "./shells/WorkspaceShell";
+import { Backend } from "./workspace/backend";
+
+const OrderView = lazy(() =>
+  import("./routes/OrderView").then(({ OrderView }) => ({
+    default: OrderView,
+  })),
+);
 
 export function App() {
-  const model = useModel();
   return (
-    <WorkspaceContext.Provider value={model}>
-      <Routes>
-        <Route element={<WorkspaceShell />}>
-          <Route path="/orders" element={<Orders />} />
-          <Route
-            path="/orders/:orderId"
-            element={
-              <BoundOrder>
-                <OrderView />
-              </BoundOrder>
-            }
-          />
-          <Route
-            path="/orders/:orderId/receipt"
-            element={
-              <BoundOrder>
-                <Receipt />
-              </BoundOrder>
-            }
-          />
-          <Route
-            path="/quotes/:quoteId"
-            element={
-              <BoundOrder>
-                <QuoteView />
-              </BoundOrder>
-            }
-          />
-          <Route
-            path="/merchant/orders"
-            element={
-              <RoleRequired requiredRole="merchant">
-                <Orders merchant />
-              </RoleRequired>
-            }
-          />
-          <Route path="/merchant/quotes/new" element={<NewQuote />} />
-          <Route path="/operator/cases" element={<OperatorCases />} />
-          <Route
-            path="/operator/cases/:caseId"
-            element={
-              <BoundOrder>
-                <RoleRequired requiredRole="operator">
-                  <OrderView />
-                </RoleRequired>
-              </BoundOrder>
-            }
-          />
-          <Route path="/account" element={<Account />} />
-          <Route
-            path="/connections"
-            element={<Connections headingRef={model.mainHeading} />}
-          />
-          <Route path="*" element={<WorkspaceNotFound />} />
-        </Route>
-      </Routes>
-    </WorkspaceContext.Provider>
+    <Backend>
+      <ServiceBoundary>
+        <Suspense fallback={<Loading label="Loading the order…" />}>
+          <Routes>
+            <Route element={<WorkspaceShell />}>
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/new" element={<NewQuote />} />
+              <Route path="/orders/:quoteId" element={<OrderView />} />
+              <Route path="/account" element={<Account />} />
+              <Route path="*" element={<WorkspaceNotFound />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </ServiceBoundary>
+    </Backend>
   );
 }

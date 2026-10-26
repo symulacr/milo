@@ -1,18 +1,18 @@
 import { Link } from "react-router";
-import { Panel } from "../components/ui";
-import { useWorkspace } from "../workspace/model";
+import { PageTitle } from "../components/PageTitle";
+import { Button } from "../components/ui/button";
 
 export function WorkspaceNotFound() {
-  const { mainHeading } = useWorkspace();
   return (
-    <Panel className="reading-panel">
-      <h1 tabIndex={-1} ref={mainHeading}>
-        Page not found
-      </h1>
-      <p>This sample workspace has no page at this address.</p>
-      <Link className="button" to="/orders">
-        Back to your orders
-      </Link>
-    </Panel>
+    <>
+      <PageTitle title="Page not found">
+        <p className="text-muted-foreground">
+          This address has no page in your workspace.
+        </p>
+      </PageTitle>
+      <Button asChild variant="outline" className="w-fit">
+        <Link to="/orders">Back to your orders</Link>
+      </Button>
+    </>
   );
 }

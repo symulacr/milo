@@ -1,192 +1,125 @@
-import { type CSSProperties, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
-import type { Role, Scenario } from "../../../../packages/domain/src/prototype";
+import { useConvexConnectionState } from "convex/react";
 import {
-  ArrowUpRightIcon,
-  FileIcon,
-  FlagIcon,
-  InboxIcon,
-  PlugIcon,
-  ShieldIcon,
-} from "../components/icons";
-import { OrderDialog } from "../components/OrderDialog";
-import { Badge, Icon } from "../components/ui";
-import { WordmarkStar } from "../components/Wordmark";
-import { roleNames, scenarios, useWorkspace } from "../workspace/model";
-
-const avatarPhoto: Record<Role, string> = {
-  buyer: "/images/avatar-buyer.webp",
-  merchant: "/images/avatar-merchant.webp",
-  operator: "/images/avatar-operator.webp",
-};
+  Component,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
+import { NavLink, Outlet } from "react-router";
+import { ConnectWallet } from "../components/ui/connect";
+import { Loading } from "../components/ui/status";
+import { Wordmark } from "../components/Wordmark";
+import { SignIn } from "../routes/SignIn";
+import { useMe } from "../workspace/backend";
+import { shortAddress, walletConnector } from "../workspace/wallet";
 
 const NAV = [
-  { to: "/orders/sample-001", label: "Sample workspace", Icon: ShieldIcon },
-  { to: "/orders", label: "Your orders", Icon: InboxIcon, end: true },
-  { to: "/quotes/sample-001", label: "The agreement", Icon: FileIcon },
-  { to: "/merchant/orders", label: "Studio queue", Icon: InboxIcon },
-  { to: "/merchant/quotes/new", label: "New quote", Icon: FileIcon },
-  { to: "/operator/cases", label: "Resolution desk", Icon: FlagIcon },
-  { to: "/connections", label: "Connections", Icon: PlugIcon },
+  ["/orders", "Orders"],
+  ["/account", "Account"],
 ] as const;
+const ONLINE = ["online", "offline"] as const;
+const subscribeOnline = (sync: () => void) => {
+  for (const event of ONLINE) addEventListener(event, sync);
+  return () => {
+    for (const event of ONLINE) removeEventListener(event, sync);
+  };
+};
+const isOnline = () => navigator.onLine;
+
+export class ServiceBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  override state = { failed: false };
+  static getDerivedStateFromError = () => ({ failed: true });
+  override render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="mx-auto grid max-w-xl gap-2 p-6">
+        <h1 tabIndex={-1} className="text-2xl font-extrabold tracking-tight">
+          The order service is not available
+        </h1>
+        <p role="alert" className="text-sm text-destructive">
+          Reload the page. If it fails again, try later.
+        </p>
+      </div>
+    );
+  }
+}
 
 export function WorkspaceShell() {
-  const isConnections =
-    useLocation().pathname.replace(/\/+$/, "") === "/connections";
-  const { state, scenario, reset, chooseRole, notice, can, act } =
-    useWorkspace();
-  const [collapsed, setCollapsed] = useState(false);
+  const { me, loading } = useMe();
+  const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
+  const { hasEverConnected, isWebSocketConnected } = useConvexConnectionState();
+  // A ref, not state: "this session existed" must not cost a render, and
+  // writing state during render re-runs the component on every parent commit.
+  const seen = useRef(false);
+  if (me) seen.current = true;
+  const lost = hasEverConnected && !isWebSocketConnected;
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!document.hidden) void walletConnector().refresh();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
   return (
-    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+    <div className="min-h-svh">
       <a className="skip-link" href="#workspace">
         Skip to workspace
       </a>
-      <aside
-        className="sidebar"
-        aria-label="Workspace navigation"
-        style={
-          {
-            "--avatar-photo": `url(${avatarPhoto[state.role]})`,
-          } as CSSProperties
-        }
-      >
-        <div className="sidebar-top">
-          <a className="wordmark" href="/">
-            milo
-            <WordmarkStar />
-          </a>
-          <button
-            type="button"
-            className="sidebar-toggle"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            <span aria-hidden="true">{collapsed ? "»" : "«"}</span>
-          </button>
-        </div>
-        <nav aria-label="Workspace">
-          {NAV.map(({ to, label, Icon: Glyph, ...rest }) => (
-            <NavLink key={to} to={to} aria-label={label} {...rest}>
-              <Icon>
-                <Glyph />
-              </Icon>
-              <span className="nav-text">{label}</span>
-            </NavLink>
-          ))}
-          <NavLink
-            to="/account"
-            className="account-nav-link"
-            aria-label={`Account — ${roleNames[state.role]}`}
-          >
-            <span className="avatar" aria-hidden="true" />
-          </NavLink>
-        </nav>
-        <div className="sidebar-bottom">
-          <a className="text-link" href="/how-it-works">
-            How Milo works <ArrowUpRightIcon />
-          </a>
-          <NavLink to="/account" className="account-link">
-            <span className="avatar" />
-            <span className="nav-text">
-              <strong>{roleNames[state.role]}</strong>
-              <small>Sample {state.role}</small>
-            </span>
-            <span className="nav-text" aria-hidden="true">
-              <ArrowUpRightIcon />
-            </span>
-          </NavLink>
-        </div>
-      </aside>
-      <div className="app-body">
-        <header className="app-topbar">
-          <div>
-            <Badge tone="violet">
-              {isConnections
-                ? "Connection diagnostics"
-                : "Synthetic sample · no wallet, payment or transaction"}
-            </Badge>
-            {!isConnections && (
-              <Badge tone="neutral">Perspective: {roleNames[state.role]}</Badge>
-            )}
-            <a href="/">
-              Back to Milo <ArrowUpRightIcon />
-            </a>
-          </div>
-        </header>
-        {!isConnections && (
-          <details className="prototype-toolbar">
-            <summary>
-              <span>
-                <strong>Sample controls</strong> ·{" "}
-                {scenarios.find((s) => s.value === scenario)?.label} ·{" "}
-                {state.role}
+      {(!online || lost) && (
+        <p
+          role="status"
+          className="bg-warning-soft px-4 py-1.5 text-center text-sm text-warning"
+        >
+          Offline. Milo reconnects on its own.
+        </p>
+      )}
+      <header className="sticky top-0 z-30 bg-white print:hidden">
+        <div className="mx-auto flex max-w-7xl items-center gap-x-4 px-4 py-3 sm:gap-x-6">
+          <Wordmark />
+          {me && (
+            <nav
+              aria-label="Workspace"
+              className="flex gap-5 text-sm font-semibold"
+            >
+              {NAV.map(([to, label]) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === "/account"}
+                  className="text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground"
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {me && (
+              <span className="hidden truncate text-[13px] text-muted-foreground lg:inline">
+                {me.email ?? shortAddress(me.walletAddress ?? me.subject)}
               </span>
-            </summary>
-            <div className="prototype-selects">
-              <label>
-                Scenario
-                <select
-                  value={scenario}
-                  onChange={(event) => reset(event.target.value as Scenario)}
-                >
-                  {scenarios.map((item) => (
-                    <option value={item.value} key={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Perspective
-                <select
-                  value={state.role}
-                  onChange={(event) => chooseRole(event.target.value as Role)}
-                >
-                  <option value="buyer">Buyer</option>
-                  <option value="merchant">Merchant</option>
-                  <option value="operator">Operator</option>
-                </select>
-              </label>
-              <button
-                type="button"
-                className="reset-button"
-                onClick={() => reset(scenario)}
-                aria-label="Reset this sample scenario"
-              >
-                ↺ <span>Reset</span>
-              </button>
-              {can("advance-deadline") && (
-                <button
-                  type="button"
-                  className="reset-button"
-                  onClick={() => act("advance-deadline")}
-                  aria-label="Advance the sample clock"
-                >
-                  → <span>Advance clock</span>
-                </button>
-              )}
-            </div>
-          </details>
-        )}
-        <main id="workspace" className="workspace">
-          <div
-            className={`notice ${notice ? "visible" : ""}`}
-            role="status"
-            aria-live="polite"
-          >
-            {notice}
+            )}
+            {me && <ConnectWallet to="/account" />}
           </div>
-          <Outlet />
-          <footer className="workspace-footer">
-            <span>Private agreements. Clear approvals.</span>
-            <span>
-              {isConnections ? "No admitted orders" : "Synthetic workspace"}
-            </span>
-          </footer>
-        </main>
-      </div>
-      <OrderDialog />
+        </div>
+      </header>
+      <main
+        id="workspace"
+        className="mx-auto grid max-w-7xl gap-8 px-4 pt-8 pb-20 lg:pt-12"
+      >
+        {loading ? (
+          <Loading label="Loading your account" />
+        ) : me ? (
+          <ServiceBoundary>
+            <Outlet />
+          </ServiceBoundary>
+        ) : (
+          <SignIn expired={seen.current} />
+        )}
+      </main>
     </div>
   );
 }

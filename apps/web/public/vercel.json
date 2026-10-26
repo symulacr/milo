@@ -1,15 +1,86 @@
 {
   "rewrites": [
-    { "source": "/m/:path+", "destination": "/public-app.html" },
-    { "source": "/quotes/:path+", "destination": "/orders/index.html" },
-    { "source": "/orders/:path+", "destination": "/orders/index.html" },
-    { "source": "/merchant/:path+", "destination": "/orders/index.html" },
-    { "source": "/operator/:path+", "destination": "/orders/index.html" }
+    { "source": "/orders/:path+", "destination": "/orders/index.html" }
+  ],
+  "redirects": [
+    { "source": "/demo", "destination": "/orders", "permanent": true },
+    { "source": "/m/north-studio", "destination": "/", "permanent": true },
+    { "source": "/how-it-works", "destination": "/#how", "permanent": true },
+    { "source": "/pilot", "destination": "/#faq", "permanent": true },
+    { "source": "/sign-in", "destination": "/account", "permanent": true },
+    { "source": "/connections", "destination": "/account", "permanent": true },
+    {
+      "source": "/merchant/orders",
+      "destination": "/orders",
+      "permanent": true
+    },
+    {
+      "source": "/merchant/quotes/new",
+      "destination": "/orders/new",
+      "permanent": true
+    },
+    {
+      "source": "/operator/cases",
+      "destination": "/orders",
+      "permanent": true
+    },
+    {
+      "source": "/operator/cases/:id",
+      "destination": "/orders/:id",
+      "permanent": true
+    },
+    {
+      "source": "/quotes/:id",
+      "destination": "/orders/:id",
+      "permanent": true
+    },
+    {
+      "source": "/orders/:id/receipt",
+      "destination": "/orders/:id",
+      "permanent": true
+    }
   ],
   "headers": [
     {
       "source": "/api/public-config",
-      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    },
+    {
+      "source": "/(.*).wasm",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        { "key": "Content-Type", "value": "application/wasm" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Reporting-Endpoints",
+          "value": "csp-endpoint=\"https://placeholder.convex.site/csp-report\""
+        },
+        {
+          "key": "Report-To",
+          "value": "{\"group\":\"csp-endpoint\",\"max_age\":10886400,\"endpoints\":[{\"url\":\"https://placeholder.convex.site/csp-report\"}]}"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.convex.cloud wss://*.convex.cloud https://*.convex.site https://midnight-preprod.blockfrost.io wss://midnight-preprod.blockfrost.io https://rpc.midnight-preprod.blockfrost.io wss://rpc.midnight-preprod.blockfrost.io; worker-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; report-to csp-endpoint; report-uri https://placeholder.convex.site/csp-report"
+        }
+      ]
     }
   ]
 }
