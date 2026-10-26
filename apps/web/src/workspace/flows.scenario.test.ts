@@ -1,6 +1,51 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { getFunctionName } from "convex/server";
+import * as chainObserver from "../../../../convex/chainObserver";
+import * as files from "../../../../convex/files";
+import {
+  type Row,
+  readSurface,
+  writeSurface,
+} from "../../../../convex/orderProjection.double";
+import * as orders from "../../../../convex/orders";
+import * as stripeProvisioning from "../../../../convex/stripeProvisioning";
+import * as trustedProvisioning from "../../../../convex/trustedProvisioning";
+import {
+  checkArgs,
+  checkReturns,
+  handlerOf,
+} from "../../../../packages/backend/test/fixtures";
+import { api } from "../api";
 import { installMemoryStorage } from "./test-storage";
+
+// The deployment settings the real handlers read. A real deployment sets these
+// with `convex env set`; the harness stands in for that, so the handlers run
+// their real configuration checks instead of being bypassed.
+process.env.CONVEX_SITE_URL ??= "https://test.convex.site";
+process.env.SITE_URL ??= "https://test.example";
+process.env.MILO_OPERATOR_SECRET ??= "a".repeat(64);
+process.env.STRIPE_SECRET_KEY ??= "sk_test_harness";
+process.env.STRIPE_ACCOUNT_ID ??= "acct_harness";
+process.env.MAIL_FROM ??= "milo@test.example";
+process.env.RESEND_API_KEY ??= "re_harness";
+process.env.RESEND_BASE_URL ??= "https://mail.test";
+
+// The Better Auth component is an external service. Its own function references
+// (`_reference/childComponent/betterAuth/...`) are not ours to run, and its
+// `getAuth` needs a real auth deployment. Stubbing this one module is the same
+// boundary `convex/orders.test.ts` draws; every other handler stays real.
+const AUTH_USER = { value: null as { email: string } | null };
+mock.module("../../../../convex/auth", () => ({
+  authComponent: {
+    safeGetAuthUser: async () => AUTH_USER.value,
+    getAuth: async () => {
+      throw new Error("The auth component is stubbed in this harness.");
+    },
+  },
+  operatorAllowed: () => false,
+  OPERATOR_SCOPE: "milo-operators",
+}));
 
 // Scenario suite: each test walks one named user path through the real
 // flows.ts. The chain is a fake that records what was signed, and the Convex
@@ -59,9 +104,126 @@ mock.module("../chain", () => ({
 
 installMemoryStorage();
 
-const { evidenceBytes, openOrder, reviewDelivery, runAction } = await import(
-  "./flows"
-);
+/**
+ * The real backend, behind the fake client.
+ *
+ * Every `api.*` reference the web code hands to `convex.action/mutation/query`
+ * is resolved to the **real exported Convex function** by its registered name,
+ * its arguments are checked against that function's own `args` validator, the
+ * real `_handler` runs against an in-memory db, and the result is checked
+ * against its own `returns` validator. A form that sends a field the server
+ * never reads, omits one it requires, or reads a result field the server does
+ * not return fails here instead of in production.
+ *
+ * `ctx.runQuery/runMutation/runAction` route the same way, so a handler that
+ * calls another handler (createStudioAndQuote -> writeQuoteDraft) stays real.
+ * Only two things are not: the chain module (W4's boundary, no wasm in a unit
+ * test) and the Better Auth component, which is an external service.
+ */
+const TABLES = [
+  "trustedProvisioning",
+  "trustedProvisioningAudit",
+  "approvedQuotes",
+  "stripeCustomers",
+  "paymentJobs",
+  "frozenQuotes",
+  "paymentMonitors",
+  "deploymentObservations",
+  "paymentObservations",
+  "admissionTimingPolicies",
+  "canonicalBindings",
+  "chainOrders",
+  "chainObservations",
+  "memberships",
+  "quoteDrafts",
+  "orders",
+  "fileGrants",
+  "deliveries",
+  "paymentIntents",
+  "paymentInbox",
+  "settlementOps",
+  "studios",
+] as const;
+
+const MODULES: Record<string, Record<string, unknown>> = {
+  stripeProvisioning: stripeProvisioning as unknown as Record<string, unknown>,
+  trustedProvisioning: trustedProvisioning as unknown as Record<
+    string,
+    unknown
+  >,
+  orders: orders as unknown as Record<string, unknown>,
+  files: files as unknown as Record<string, unknown>,
+  chainObserver: chainObserver as unknown as Record<string, unknown>,
+};
+
+/** `module:export` -> the registered function, which carries both descriptors. */
+const REGISTERED = new Map<string, unknown>();
+for (const [module, exports] of Object.entries(MODULES))
+  for (const [name, value] of Object.entries(exports))
+    if (
+      typeof value === "function" &&
+      typeof (value as { _handler?: unknown })._handler === "function"
+    )
+      REGISTERED.set(`${module}:${name}`, value);
+
+export const realBackend = (
+  subject = "did:privy:buyer",
+  existing?: Record<string, Row[]>,
+) => {
+  const tables: Record<string, Row[]> =
+    existing ?? Object.fromEntries(TABLES.map((name) => [name, []]));
+  const calls: string[] = [];
+  const call = async (name: string, args: unknown) => {
+    const fn = REGISTERED.get(name);
+    if (!fn) throw new Error(`no registered function for ${name}`);
+    checkArgs(fn, args);
+    calls.push(name);
+    const out = await handlerOf(fn)(ctx as never, args as never);
+    checkReturns(fn, out);
+    return out;
+  };
+  /** The one surface: a Convex reference becomes a real call. */
+  const invoke = (ref: unknown, args: unknown) =>
+    call(getFunctionName(ref as never), args);
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({
+        issuer: process.env.CONVEX_SITE_URL,
+        subject,
+      }),
+    },
+    storage: {
+      getMetadata: async () => null,
+      generateUploadUrl: async () => "https://upload.invalid",
+      get: async () => null,
+    },
+    scheduler: { runAfter: async () => null },
+    db: {
+      ...readSurface(tables),
+      ...writeSurface(tables),
+      normalizeId: (table: string, id: string) =>
+        id.startsWith(`${table}-`) ? id : null,
+    },
+    // A handler that calls another handler must reach the real one too.
+    runQuery: invoke,
+    runMutation: invoke,
+    runAction: invoke,
+  } as never;
+  return {
+    tables,
+    calls,
+    ctx,
+    /** The fake client the web code sees; every branch is the same real call. */
+    client: {
+      query: invoke,
+      mutation: invoke,
+      action: invoke,
+    } as unknown as Parameters<typeof createQuote>[0],
+  };
+};
+
+const { createQuote, evidenceBytes, openOrder, reviewDelivery, runAction } =
+  await import("./flows");
 
 const CHAIN = {
   network: hex32(0x00),
@@ -136,6 +298,12 @@ const DONE_START = [
 ];
 const signed = () => calls.map((call) => call.circuit);
 
+/**
+ * A narrow fake for the flow-error tests. These deliberately break one step and
+ * assert the flow stops, so they need a client that returns a chosen value —
+ * not the real handler, which would refuse for its own reasons and make the
+ * assertion pass for the wrong cause.
+ */
 const convexFor = (order: unknown) =>
   ({
     action: async (ref: unknown) => {
@@ -158,6 +326,10 @@ const convexFor = (order: unknown) =>
     },
     query: async () => order,
   }) as never;
+
+/** The real backend, for the tests that assert the server accepts the form. */
+const real = (subject = "did:privy:buyer", tables?: Record<string, Row[]>) =>
+  realBackend(subject, tables);
 
 const action = (over: Record<string, unknown>) =>
   ({ icon: null, label: "Go", weight: "primary", ...over }) as never;
@@ -470,5 +642,267 @@ describe("the hold and the deadlines query overlap", () => {
     release?.();
     await started.catch(() => {});
     expect(events).toContain("hold:end");
+  });
+
+  // The other half of the same race, found by the real-handler harness: the
+  // hold is started concurrently, so it must also be SETTLED before anything
+  // can throw. The old code threw on a missing deadlines row while the hold was
+  // pending, so a declined card escaped as an unhandled rejection and the user
+  // was told "no deadlines" instead of "the card was declined".
+  test("a declined card surfaces, and no rejection escapes", async () => {
+    const escaped: unknown[] = [];
+    const onEscape = (reason: unknown) => escaped.push(reason);
+    process.on("unhandledRejection", onEscape);
+    try {
+      const convex = {
+        action: async (ref: unknown) => {
+          if (getFunctionName(ref as never).includes("holdPayment"))
+            throw new Error("The card was declined.");
+          return {};
+        },
+        mutation: async () => ({ ok: true }),
+        // No deadlines row: the trigger for the old throw.
+        query: async () => ({ ...(detail() as object), deadlines: null }),
+      } as unknown as Parameters<typeof openOrder>[0];
+      const message = await openOrder(
+        convex,
+        { connected: {} as never },
+        "user-1",
+        "q1",
+        "token-abc",
+        INVITE,
+        report,
+      ).then(
+        () => "",
+        (cause: Error) => cause.message,
+      );
+      // Let any floating rejection settle before asserting it did not.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(message).toBe("The card was declined.");
+      expect(escaped).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onEscape);
+    }
+  });
+});
+
+/** A valid argument set for createStudioAndQuote, as the form builds it. */
+const QUOTE_ARGS = {
+  studioName: "North Studio",
+  title: "Three hero images",
+  brief: "A short brief for the fixed-price image pack.",
+  amountUsd: 900,
+  clientEmail: "client@example.com",
+  orderNonce: "a".repeat(64),
+  merchantCommitment: "a".repeat(64),
+  termsCommitment: "a".repeat(64),
+  terms: {
+    unitPrice: "90000",
+    total: "90000",
+    scopeDigest: "a".repeat(64),
+    rightsDigest: "a".repeat(64),
+    paymentPolicy: "a".repeat(64),
+    salt: "a".repeat(64),
+  },
+};
+const FORM = {
+  title: QUOTE_ARGS.title,
+  brief: QUOTE_ARGS.brief,
+  amountUsd: QUOTE_ARGS.amountUsd,
+  clientEmail: QUOTE_ARGS.clientEmail,
+};
+
+/** The descriptor a registered function publishes for its args or returns. */
+const descriptor = (fn: unknown, kind: "exportArgs" | "exportReturns") =>
+  JSON.parse((fn as Record<string, () => string>)[kind]()) as {
+    value: Record<string, unknown>;
+  };
+
+describe("the form and the server agree, checked against the server's own descriptors", () => {
+  // A field the server never reads, or a required one the form forgot, throws
+  // ArgumentValidationError in production and tsc cannot see it: the browser
+  // builds the object at runtime. checkArgs is the mirror of checkReturns.
+  const CASES: readonly (readonly [string, Record<string, unknown>, string])[] =
+    [
+      [
+        "a field the server never reads",
+        { ...QUOTE_ARGS, amountMinor: 90000 },
+        "extra field amountMinor",
+      ],
+      [
+        "a required field the form forgot",
+        Object.fromEntries(
+          Object.entries(QUOTE_ARGS).filter(([k]) => k !== "termsCommitment"),
+        ),
+        "required field termsCommitment is missing",
+      ],
+    ];
+
+  for (const [name, args, message] of CASES)
+    test(`${name} is rejected, not ignored`, () => {
+      expect(() =>
+        checkArgs(stripeProvisioning.createStudioAndQuote, args),
+      ).toThrow(message);
+    });
+
+  test("the form's own limits match the server's", () => {
+    const form = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
+    const server = readFileSync("convex/trustedProvisioning.ts", "utf8");
+    // Each pair is one bound the browser enforces and the server re-enforces.
+    const BOUNDS: readonly (readonly [string, string])[] = [
+      ["minLength={20}", "boundedText(args.brief, 20, 1000)"],
+      ["maxLength={1000}", "boundedText(args.brief, 20, 1000)"],
+      ["slice(0, 80)", "boundedText(args.title, 5, 80)"],
+      ["minLength={2}", "boundedText(name, 2, 60)"],
+      ["maxLength={60}", "boundedText(name, 2, 60)"],
+    ];
+    for (const [inForm, inServer] of BOUNDS) {
+      expect(form).toContain(inForm);
+      expect(server).toContain(inServer);
+    }
+    expect(form).toContain("min={1}");
+    expect(form).toContain("max={5000}");
+    expect(server).toMatch(/args\.amountUsd < 1 \|\|\s*args\.amountUsd > 5000/);
+  });
+
+  test("the browser's upload fields are exactly what the server declares", () => {
+    // The browser builds the `files` array itself, so this is the one place a
+    // hand-written shape could drift from the server's validator.
+    const proposed = {
+      grantId: "grant-1",
+      sha256: "a".repeat(64),
+      contentType: "image/jpeg",
+      byteLength: 3,
+    };
+    const filesArg = (
+      descriptor(files.freezeMutation, "exportArgs").value.files as {
+        fieldType: { value: { value: Record<string, unknown> } };
+      }
+    ).fieldType.value.value;
+    expect(Object.keys(proposed).sort()).toEqual(Object.keys(filesArg).sort());
+    expect(() =>
+      checkArgs(files.freezeMutation, { orderId: "o1", files: [proposed] }),
+    ).not.toThrow();
+    expect(() =>
+      checkArgs(files.freezeMutation, {
+        orderId: "o1",
+        files: [{ ...proposed, name: "file-0.jpg" }],
+      }),
+    ).toThrow("extra field name");
+  });
+
+  test("requestUpload returns the four fields the browser reads", () => {
+    // The browser destructures grantId, uploadUrl and uploadTicket. A rename on
+    // the server would leave the upload silently posting to undefined.
+    expect(
+      Object.keys(
+        descriptor(files.requestUploadMutation, "exportReturns").value,
+      ).sort(),
+    ).toEqual(["expiresAt", "grantId", "uploadTicket", "uploadUrl"]);
+  });
+
+  test("an account is required before the quote form renders", () => {
+    // NewQuote returns null without `me`, before any hook runs a query.
+    const source = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
+    expect(source).toContain("if (!me) return null;");
+    expect(source.indexOf("if (!me) return null;")).toBeLessThan(
+      source.indexOf("<form"),
+    );
+  });
+});
+
+describe("the whole story runs on real handlers", () => {
+  test("studio quotes, buyer claims, and the order reads back", async () => {
+    // One database, two identities: the studio writes the quote, then the buyer
+    // claims it. That is what a second signed-in browser is.
+    const studio = real("did:privy:merchant");
+    const created = await createQuote(
+      studio.client,
+      "did:privy:merchant",
+      { studioName: "North Studio" },
+      FORM,
+    );
+    // The handler's own returns validator already ran; these are the fields the
+    // UI reads, so a rename on either side breaks this line.
+    expect(created.quoteId).toMatch(/^quote_[0-9a-f]{32}$/);
+    expect(created.inviteUrl).toContain(created.quoteId);
+    // The draft the server actually wrote, and the cents it derived.
+    const draft = studio.tables.quoteDrafts[0];
+    expect(draft).toMatchObject({ ...FORM, amountMinor: FORM.amountUsd * 100 });
+    const terms = draft.terms as { unitPrice: string };
+    expect(String(terms.unitPrice)).toBe(String(FORM.amountUsd * 100));
+
+    // The invite the studio was handed opens for the invited buyer. The invite
+    // query admits a non-member only when the signed-in email matches.
+    const token = new URL(created.inviteUrl).searchParams.get("invite") ?? "";
+    expect(token).toHaveLength(64);
+    AUTH_USER.value = { email: FORM.clientEmail };
+    const buyer = real("did:privy:buyer", studio.tables);
+    const preview = await buyer.client.query(api.invite, {
+      quoteId: created.quoteId,
+      token,
+    });
+    // Exactly the fields orders.invite declares: no clientEmail, no terms.
+    // `network` is the hex of "preprod" and `orderNonce` is server-generated, so
+    // the assertion is on shape plus agreement with the stored draft.
+    expect(preview).toMatchObject({
+      title: FORM.title,
+      brief: FORM.brief,
+      amountUsd: FORM.amountUsd,
+      studioName: "North Studio",
+      claimed: false,
+    });
+    expect(Object.keys(preview ?? {}).sort()).toEqual([
+      "amountUsd",
+      "brief",
+      "claimed",
+      "network",
+      "orderNonce",
+      "studioName",
+      "title",
+    ]);
+    // The network field is the 32-byte hex of "preprod", zero-padded.
+    expect(preview?.network).toBe("70726570726f64".padEnd(64, "0"));
+    const stored = draft as unknown as { orderNonce: string; scopeId: string };
+    expect(preview?.orderNonce).toBe(stored.orderNonce);
+    expect(typeof token).toBe("string");
+
+    // The Accept screen calls openOrder, which claims then reads the order. The
+    // chain fake cannot produce a genesis hash, so the flow stops after the
+    // claim; what matters is that the refusal it stops on is the chain's.
+    if (!preview) throw new Error("the invitation did not read back");
+    const stopped = await openOrder(
+      buyer.client,
+      { connected: {} as never },
+      "did:privy:buyer",
+      created.quoteId,
+      token,
+      preview,
+      report,
+    ).then(
+      () => "",
+      (cause: Error) => cause.message,
+    );
+    expect(stopped).not.toContain("This order link does not work.");
+
+    // The server recorded the buyer, rotated the token, and made a membership.
+    expect(buyer.tables.quoteDrafts[0].buyerSubject).toBe("did:privy:buyer");
+    expect(buyer.tables.quoteDrafts[0].inviteToken).not.toBe(token);
+    expect(buyer.tables.memberships).toContainEqual(
+      expect.objectContaining({
+        privySubject: "did:privy:buyer",
+        scopeId: stored.scopeId,
+        role: "buyer",
+        status: "active",
+      }),
+    );
+    // A spent link is refused with the same message as a wrong one.
+    expect(
+      await buyer.client.mutation(api.acceptInvite, {
+        quoteId: created.quoteId,
+        token,
+        buyerCommitment: "b".repeat(64),
+      }),
+    ).toEqual({ ok: false, reason: "This order link does not work." });
   });
 });

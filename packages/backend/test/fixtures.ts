@@ -143,18 +143,17 @@ export const handlerOf = <A = Row, R = unknown, C = AdmissionContext>(
 ) => (fn as { _handler: (ctx: C, args: A) => Promise<R> })._handler;
 
 /**
- * Reject any key a handler returned that its own `returns` validator does not
- * declare. `handlerOf(...)` calls `_handler` directly, so unit tests bypass the
- * return validator: that is how `createQuote` shipped returning
- * `{...draft, emailed}` — a superset of `quoteReturns` — and failed live with
- * `ReturnsValidationError: Object contains extra field inviteToken`. tsc cannot
- * see it, because a spread adds keys at runtime. `exportReturns()` is the
- * function's own descriptor, so this walks the real validator.
+ * Walk a validator's JSON descriptor. `strict` is the whole difference between
+ * checking arguments and checking returns: an argument the function declares but
+ * the caller omitted is a bug, while a return field the validator declares but
+ * the handler omitted is Convex's business, not the test's.
  */
-export function checkReturns(fn: unknown, v: unknown, at = "$"): void {
-  const d = JSON.parse(
-    (fn as { exportReturns: () => string }).exportReturns(),
-  ) as Desc;
+function walkDescriptor(
+  d: Desc,
+  v: unknown,
+  at: string,
+  strict: boolean,
+): void {
   const walk = (n: Desc, x: unknown, at: string): void => {
     if (n.type === "union") {
       const errs: string[] = [];
@@ -174,8 +173,15 @@ export function checkReturns(fn: unknown, v: unknown, at = "$"): void {
         });
       return;
     }
-    if (n.type !== "object" || typeof x !== "object" || x === null) return;
-    const f = n.value as Record<string, { fieldType: Desc }>;
+    if (n.type !== "object") return;
+    if (typeof x !== "object" || x === null) {
+      if (strict) throw new Error(`${at}: expected an object`);
+      return;
+    }
+    const f = n.value as Record<
+      string,
+      { fieldType: Desc; optional?: boolean }
+    >;
     for (const [k, inner] of Object.entries(x)) {
       if (!(k in f))
         throw new Error(
@@ -183,6 +189,45 @@ export function checkReturns(fn: unknown, v: unknown, at = "$"): void {
         );
       walk(f[k].fieldType, inner, `${at}.${k}`);
     }
+    if (!strict) return;
+    for (const [k, spec] of Object.entries(f))
+      if (!spec.optional && !(k in (x as object)))
+        throw new Error(`${at}: required field ${k} is missing`);
   };
   walk(d, v, at);
+}
+
+/**
+ * Reject any key a handler returned that its own `returns` validator does not
+ * declare. `handlerOf(...)` calls `_handler` directly, so unit tests bypass the
+ * return validator: that is how `createQuote` shipped returning
+ * `{...draft, emailed}` — a superset of `quoteReturns` — and failed live with
+ * `ReturnsValidationError: Object contains extra field inviteToken`. tsc cannot
+ * see it, because a spread adds keys at runtime. `exportReturns()` is the
+ * function's own descriptor, so this walks the real validator.
+ */
+export function checkReturns(fn: unknown, v: unknown, at = "$"): void {
+  walkDescriptor(
+    JSON.parse((fn as { exportReturns: () => string }).exportReturns()) as Desc,
+    v,
+    at,
+    false,
+  );
+}
+
+/**
+ * The mirror for arguments: reject a field the function never reads, and a
+ * required field the caller forgot. A form that sends `{amount}` where the
+ * server takes `{amountUsd}` fails live with an ArgumentValidationError that no
+ * type-checker sees, because the browser builds the object at runtime. Called
+ * before every handler in the web harness, so the form and the server agree by
+ * construction rather than by review.
+ */
+export function checkArgs(fn: unknown, v: unknown, at = "$"): void {
+  walkDescriptor(
+    JSON.parse((fn as { exportArgs: () => string }).exportArgs()) as Desc,
+    v,
+    at,
+    true,
+  );
 }

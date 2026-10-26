@@ -246,10 +246,13 @@ async function startOrder(
     report("attach", "done");
   } else {
     const deadlines = (await deadlinesNow)?.deadlines;
+    // Settle the hold before the throw below: it was started concurrently, so
+    // awaiting it here costs nothing, and a rejection can no longer escape as an
+    // unhandled rejection when the deadlines read came back empty. A declined
+    // card is also the more actionable of the two failures, so it wins.
+    await holdNow;
     if (!deadlines)
       throw new Error("The order has no deadlines yet. Reload the order.");
-    // The hold must have succeeded before a contract is published.
-    await holdNow;
     const deployed = await run(report, "deploy", () =>
       deployOrder({
         connected: wallet.connected,

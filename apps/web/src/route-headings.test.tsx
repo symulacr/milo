@@ -488,15 +488,94 @@ describe("a resend clears the dead-link message", () => {
     const form = container.querySelector("form");
     if (!input || !form) throw new Error("form not mounted");
     (input as unknown as { value: string }).value = "a@b.co";
-    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+    input.dispatchEvent(new window.Event("input", { bubbles: true }) as never);
     await act(async () =>
       form.dispatchEvent(
-        new window.Event("submit", { bubbles: true, cancelable: true }),
+        new window.Event("submit", {
+          bubbles: true,
+          cancelable: true,
+        }) as never,
       ),
     );
 
     expect(heading()).not.toContain("Request a new link");
     await act(async () => root.unmount());
     window.close();
+  });
+});
+
+/**
+ * Mount a component in a real DOM and return the handles a user has.
+ *
+ * Two platform facts this pins, both verified by probe:
+ *  - React's synthetic `input`/`change` events do NOT fire in happy-dom (no
+ *    event type works, even on a minimal controlled input), so a controlled
+ *    field cannot be typed into. Uncontrolled fields (`defaultValue`, `name`)
+ *    can: the native value setter updates the DOM and `FormData` reads it.
+ *  - The global `FormData` is Node's, which ignores a happy-dom form and returns
+ *    null for every field. happy-dom's own `FormData` reads it correctly, so
+ *    the harness exposes that one.
+ */
+async function mount(path: string, node: React.ReactNode) {
+  const window = new Window({ url: `http://localhost${path}` });
+  const slots = globalThis as unknown as Record<string, unknown>;
+  slots.window = window;
+  for (const key of Object.getOwnPropertyNames(window))
+    if (!(key in globalThis)) slots[key] = (window as never)[key];
+  // happy-dom's FormData, so a submitted form has readable fields.
+  slots.FormData = (window as unknown as { FormData: unknown }).FormData;
+  const container = window.document.createElement("div");
+  window.document.body.append(container as never);
+  const root = createRoot(container as unknown as HTMLElement);
+  await act(async () =>
+    root.render(<MemoryRouter initialEntries={[path]}>{node}</MemoryRouter>),
+  );
+  /** Set a field the way a browser does: native setter, then an input event. */
+  const type = async (selector: string, value: string) => {
+    const input = container.querySelector(selector) as HTMLInputElement | null;
+    if (!input) throw new Error(`no ${selector}`);
+    const setter = Object.getOwnPropertyDescriptor(
+      Object.getPrototypeOf(input),
+      "value",
+    )?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }) as never);
+    await act(async () => {});
+  };
+  const submit = async () => {
+    const form = container.querySelector("form");
+    if (!form) throw new Error("no form");
+    await act(async () =>
+      form.dispatchEvent(
+        new window.Event("submit", {
+          bubbles: true,
+          cancelable: true,
+        }) as never,
+      ),
+    );
+  };
+  const text = () => container.textContent ?? "";
+  const done = async () => {
+    await act(async () => root.unmount());
+    window.close();
+  };
+  return { container, type, submit, text, done };
+}
+
+describe("the sign-in form is a real form", () => {
+  test("it has an email field and a submit button that names the action", async () => {
+    const form = await mount("/orders", <SignIn />);
+    expect(form.container.querySelector("input[type=email]")).not.toBeNull();
+    const button = form.container.querySelector("button[type=submit]");
+    expect(button?.textContent).toContain("Email me a sign-in link");
+    await form.done();
+  });
+
+  test("submitting with no address asks for one instead of sending", async () => {
+    // The real submit handler runs; the empty-address guard is the form's own.
+    const form = await mount("/orders", <SignIn />);
+    await form.submit();
+    expect(form.text()).toContain("Enter an email address.");
+    await form.done();
   });
 });
