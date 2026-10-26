@@ -29,4 +29,13 @@ crons.interval(
   internalRef<"mutation">("files:sweepGrantsMutation"),
 );
 
+// The dead-letter digest. `minuteUTC` is omitted on purpose: Convex spreads the
+// run across the hour, and the docs warn off the busy top-of-hour. It emails
+// only when there is something wrong, and no-ops when no operator is configured.
+crons.daily(
+  "operator digest",
+  { hourUTC: 7 },
+  internalRef<"action">("diagnostics:digest"),
+);
+
 export default crons;

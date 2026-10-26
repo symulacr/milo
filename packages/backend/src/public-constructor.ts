@@ -29,6 +29,12 @@ export interface ConstructorQuote extends PublicConstructorInputs {
 const nonzeroHex = (value: unknown): boolean =>
   typeof value === "string" && HEX64.test(value) && value !== ZERO64;
 
+export function networkBytes(network: string): Uint8Array {
+  const bytes = new Uint8Array(32);
+  bytes.set(ENCODER.encode(network));
+  return bytes;
+}
+
 const fingerprint = (kind: string, value: unknown) =>
   bytesToHex(
     sha256(
@@ -62,8 +68,7 @@ export function reconstructPublicConstructor(quote: ConstructorQuote) {
     new Set(commitments).size === 3 &&
     ordered;
   if (!valid) throw new Error(INVALID_CONSTRUCTOR);
-  const network = new Uint8Array(32);
-  network.set(ENCODER.encode(quote.network));
+  const network = networkBytes(quote.network);
   const [a, b, c, d] = deadlines.map(BigInt);
   return {
     network,

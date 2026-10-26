@@ -1,24 +1,53 @@
+import {
+  bytesToHex as nobleBytesToHex,
+  hexToBytes as nobleHexToBytes,
+} from "@noble/hashes/utils.js";
+
 export const HEX64 = /^[a-f0-9]{64}$/;
-const PAIRS = Array.from(
-  { length: 256 },
-  (_, i) => (i < 16 ? "0" : "") + i.toString(16),
-);
-const VALUES = new Int8Array(128).fill(-1);
-for (let i = 0; i < 10; i++) VALUES[48 + i] = i;
-for (let i = 0; i < 6; i++) VALUES[97 + i] = VALUES[65 + i] = 10 + i;
-export function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new Error("hex length must be even");
-  const out = new Uint8Array(hex.length >>> 1);
-  for (let i = 0; i < out.length; i++) {
-    const hi = VALUES[hex.charCodeAt(i * 2)] ?? -1;
-    const lo = VALUES[hex.charCodeAt(i * 2 + 1)] ?? -1;
-    if (hi < 0 || lo < 0) throw new Error("invalid hex");
-    out[i] = (hi << 4) | lo;
-  }
-  return out;
+
+/** Hex codec: `@noble/hashes` already ships it and is a direct dependency. */
+export const hexToBytes = (hex: string): Uint8Array => nobleHexToBytes(hex);
+export const bytesToHex = (b: Uint8Array | ArrayLike<number>): string =>
+  nobleBytesToHex(b instanceof Uint8Array ? b : Uint8Array.from(b));
+
+/**
+ * A trimmed, non-empty environment value, or undefined. One definition for the
+ * three Convex modules that used to carry their own copy.
+ */
+export function env(name: string): string | undefined {
+  const value = process.env[name];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
-export function bytesToHex(b: Uint8Array | ArrayLike<number>): string {
-  let s = "";
-  for (let i = 0; i < b.length; i++) s += PAIRS[b[i] & 0xff];
-  return s;
+
+/** Bytes from the platform CSPRNG. Never `Math.random()` for a secret. */
+export function randomBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+/** A 32-byte random value as lowercase hex. */
+export const randomHex = (): string => bytesToHex(randomBytes(32));
+
+/**
+ * Compare two hex strings without leaking where they differ. Unparseable hex is
+ * a non-match, never an exception: both callers compare attacker-controlled
+ * input on a public path. `http.ts` grew this for the webhook secret; the invite
+ * token is the same kind of bearer secret, so it lives here now.
+ */
+export function timingSafeEqualHex(aHex: string, bHex: string): boolean {
+  let a: Uint8Array;
+  let b: Uint8Array;
+  try {
+    a = hexToBytes(aHex);
+    b = hexToBytes(bHex);
+  } catch {
+    return false;
+  }
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 }

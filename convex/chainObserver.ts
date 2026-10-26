@@ -1,11 +1,15 @@
 import {
+  actionGeneric,
   internalActionGeneric,
   internalMutationGeneric,
   internalQueryGeneric,
   makeFunctionReference,
 } from "convex/server";
-import { v } from "convex/values";
-import { bytesToHex, hexToBytes } from "../packages/backend/src/encoding";
+import { type Infer, v } from "convex/values";
+import { bytesToHex, env, hexToBytes } from "../packages/backend/src/encoding";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
+import { fail, type ReadContext, unavailable } from "./admissionContext";
+import { isOperator } from "./auth";
 
 const PENDING_LIMIT = 25;
 const FINALITY_DEPTH = 3;
@@ -96,9 +100,9 @@ export function planObservation(input: {
   if (input.lastStateHex === action.state) return { kind: "unchanged" };
   const decoded = input.decode(action.state);
   if (!isPhase(decoded.phase))
-    throw new Error("decoded ledger phase is not a known order phase");
+    unavailable("decoded ledger phase is not a known order phase");
   if (!isIndex(decoded.revision))
-    throw new Error("decoded ledger revision is not a safe integer");
+    unavailable("decoded ledger revision is not a safe integer");
   return {
     kind: "project",
     stateHex: action.state,
@@ -137,13 +141,11 @@ export async function withRetry<T>(
     if (result.ok) return result.value;
     last = result.reason;
     if (!result.retryable)
-      throw new Error(`chain observation failed: ${result.reason}`);
+      unavailable(`chain observation failed: ${result.reason}`);
     if (index === MAX_ATTEMPTS - 1) break;
     await sleep(backoffMs(index, random));
   }
-  throw new Error(
-    `chain observation exhausted ${MAX_ATTEMPTS} attempts: ${last}`,
-  );
+  unavailable(`chain observation exhausted ${MAX_ATTEMPTS} attempts: ${last}`);
 }
 
 export function redactIndexerUrl(url: string): string {
@@ -160,8 +162,9 @@ export function redactIndexerUrl(url: string): string {
 export function indexerEndpoint(url: string, token: string): string {
   const parsed = new URL(url);
   if (parsed.username || parsed.password)
-    throw new Error("indexer URL must not carry credentials");
-  if (parsed.hash) throw new Error("indexer URL must not carry a fragment");
+    fail("INVALID_INPUT", "indexer URL must not carry credentials");
+  if (parsed.hash)
+    fail("INVALID_INPUT", "indexer URL must not carry a fragment");
   parsed.searchParams.set("project_id", token);
   return parsed.href;
 }
@@ -221,7 +224,7 @@ export function createIndexerTransport(
 function parseHead(data: unknown): number {
   const height = (data as { block?: { height?: unknown } } | null)?.block
     ?.height;
-  if (!isIndex(height)) throw new Error("indexer head block is missing");
+  if (!isIndex(height)) unavailable("indexer head block is missing");
   return height;
 }
 
@@ -296,35 +299,20 @@ async function loadRuntimeDecoder(): Promise<
   }
 }
 
-function env(name: string): string | undefined {
-  const value = process.env[name];
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function indexerConfig(): { url: string; token: string } {
   const url =
     env("MIDNIGHT_PREPROD_INDEXER_HTTP") ?? env("MILO_PREPROD_INDEXER_HTTP");
   const token = env("MILO_PREPROD_BLOCKFROST_PROJECT_ID");
   if (!url)
-    throw new Error(
+    unavailable(
       "MIDNIGHT_PREPROD_INDEXER_HTTP or MILO_PREPROD_INDEXER_HTTP is required",
     );
-  if (!token) throw new Error("MILO_PREPROD_BLOCKFROST_PROJECT_ID is required");
+  if (!token) unavailable("MILO_PREPROD_BLOCKFROST_PROJECT_ID is required");
   return { url, token };
 }
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
-export type PendingOrder = {
-  orderId: string;
-  address: string;
-  nonce: string;
-  artifactFingerprint: string;
-  lastStateHex: string | null;
-};
 
 const pendingOrderValidator = v.object({
   orderId: v.string(),
@@ -333,6 +321,8 @@ const pendingOrderValidator = v.object({
   artifactFingerprint: v.string(),
   lastStateHex: v.union(v.string(), v.null()),
 });
+
+export type PendingOrder = Infer<typeof pendingOrderValidator>;
 
 const pendingOrdersRef = makeFunctionReference<
   "query",
@@ -432,6 +422,39 @@ const retryParse = <T>(
     Math.random,
   );
 
+type ProjectedPlan = Extract<ObservationPlan, { kind: "project" }>;
+
+type RunMutation = (ref: unknown, args: unknown) => Promise<unknown>;
+
+/**
+ * Record one observed state, then stamp it. Both callers (the cron poll and the
+ * on-demand refresh) must do exactly this, in this order: the stamp is only
+ * written once the observation writer has bound the state.
+ */
+async function commitObservation(
+  runMutation: RunMutation,
+  order: PendingOrder,
+  plan: ProjectedPlan,
+): Promise<boolean> {
+  const verdict = (await runMutation(recordObservationRef, {
+    orderId: order.orderId,
+    address: order.address,
+    nonce: order.nonce,
+    artifactFingerprint: order.artifactFingerprint,
+    phase: plan.phase,
+    revision: plan.revision,
+    deliveryManifest: plan.deliveryManifest,
+  })) as { kind: string } | null;
+  if (verdict?.kind !== "bind") return false;
+  await runMutation(markObservedRef, {
+    orderId: order.orderId,
+    lastStateHex: plan.stateHex,
+    blockHeight: plan.blockHeight,
+    blockHash: plan.blockHash,
+  });
+  return true;
+}
+
 export async function runPoll(deps: PollDeps): Promise<PollSummary> {
   const pending = await deps.runQuery();
   const summary: PollSummary = {
@@ -470,25 +493,15 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
         summary.skipped += 1;
         continue;
       }
-      const verdict = (await deps.runMutation(recordObservationRef, {
-        orderId: order.orderId,
-        address: order.address,
-        nonce: order.nonce,
-        artifactFingerprint: order.artifactFingerprint,
-        phase: plan.phase,
-        revision: plan.revision,
-        deliveryManifest: plan.deliveryManifest,
-      })) as { kind: string } | null;
-      if (verdict?.kind !== "bind") {
+      const committed = await commitObservation(
+        (ref, args) => deps.runMutation(ref, args as Record<string, unknown>),
+        order,
+        plan,
+      );
+      if (!committed) {
         summary.skipped += 1;
         continue;
       }
-      await deps.runMutation(markObservedRef, {
-        orderId: order.orderId,
-        lastStateHex: plan.stateHex,
-        blockHeight: plan.blockHeight,
-        blockHash: plan.blockHash,
-      });
       summary.projected += 1;
     } catch {
       summary.failed += 1;
@@ -517,3 +530,132 @@ export const poll = internalActionGeneric({
 });
 
 export const chainObserver = { pendingOrders, markObserved, poll };
+
+const orderForQuoteRef = makeFunctionReference<
+  "query",
+  { quoteId: string },
+  {
+    orderId: string;
+    address: string;
+    nonce: string;
+    artifactFingerprint: string;
+    lastStateHex: string | null;
+  } | null
+>("chainObserver:orderForQuote");
+
+export const orderForQuote = internalQueryGeneric({
+  args: { quoteId: v.string() },
+  returns: v.union(
+    v.object({
+      orderId: v.string(),
+      address: v.string(),
+      nonce: v.string(),
+      artifactFingerprint: v.string(),
+      lastStateHex: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("chainOrders")
+      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+      .unique();
+    return row
+      ? {
+          orderId: row.orderId,
+          address: row.address,
+          nonce: row.nonce,
+          artifactFingerprint: row.artifactFingerprint,
+          lastStateHex: row.lastStateHex ?? null,
+        }
+      : null;
+  },
+});
+
+const orderScopeMemberRef = makeFunctionReference<
+  "query",
+  { quoteId: string; subject: string },
+  boolean
+>("chainObserver:orderScopeMember");
+
+/**
+ * True when the subject may read the quote's order: an active member of its
+ * scope, or an operator allowed to see a DISPUTED order they are not a member
+ * of. The second branch mirrors `orders:order`; without it an operator could
+ * read a dispute but never refresh the chain state behind it.
+ */
+export const orderScopeMember = internalQueryGeneric({
+  args: { quoteId: v.string(), subject: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx: ReadContext, args) => {
+    const draft = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    if (!draft) return false;
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_subject_scope", (q) =>
+        q.eq("privySubject", args.subject).eq("scopeId", draft.scopeId),
+      )
+      .unique();
+    if (membership?.status === "active") return true;
+    const chain = await ctx.db
+      .query("chainOrders")
+      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+      .unique();
+    return chain?.phase === "DISPUTED" && (await isOperator(ctx));
+  },
+});
+
+export const refreshOrder = actionGeneric({
+  args: { quoteId: v.string() },
+  returns: v.object({
+    phase: v.union(v.string(), v.null()),
+    revision: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    // Only a participant in the order's scope may spend an indexer read.
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
+    const allowed = await ctx.runQuery(orderScopeMemberRef, {
+      quoteId: args.quoteId,
+      subject,
+    });
+    if (!allowed) return { phase: null, revision: null };
+    const order = await ctx.runQuery(orderForQuoteRef, {
+      quoteId: args.quoteId,
+    });
+    if (!order) return { phase: null, revision: null };
+    const decode = requireDecoder(await loadRuntimeDecoder());
+    const { url, token } = indexerConfig();
+    const transport = createIndexerTransport(url, token, fetch);
+    const headHeight = await retryParse(
+      transport,
+      HEAD_BLOCK,
+      undefined,
+      parseHead,
+      "bad head block",
+    );
+    const action = await retryParse(
+      transport,
+      LATEST_CONTRACT_STATE,
+      { address: order.address },
+      parseAction,
+      "bad contract action",
+    );
+    const plan = planObservation({
+      action,
+      headHeight,
+      lastStateHex: order.lastStateHex,
+      decode,
+    });
+    if (plan.kind !== "project") return { phase: null, revision: null };
+    const committed = await commitObservation(
+      (ref, args) => ctx.runMutation(ref as never, args as never),
+      order,
+      plan,
+    );
+    if (!committed) return { phase: null, revision: null };
+    return { phase: plan.phase, revision: plan.revision };
+  },
+});

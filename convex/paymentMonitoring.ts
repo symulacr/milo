@@ -8,7 +8,7 @@ import { type GenericId, v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { usableObservation } from "../packages/backend/src/provisioning-policy";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
-import type { AdmissionContext } from "./admissionContext";
+import { type AdmissionContext, fail } from "./admissionContext";
 import { paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer } from "./auth/identity";
 import {
@@ -22,6 +22,7 @@ import {
   monitorLive,
   projectMonitorStatus,
   quoteById,
+  recordObservation,
 } from "./paymentMonitor";
 
 const tickRef = makeFunctionReference<"mutation">("paymentMonitoring:tick");
@@ -119,7 +120,8 @@ export const status = queryGeneric({
         !isQuoteBuyer(membership, quote.buyerAccountId) ||
         authorities?.some((row) => row?.status === "revoked")
       )
-        throw new Error(
+        fail(
+          "FORBIDDEN",
           "Authenticated quote buyer or monitoring consent owner required",
         );
     }
@@ -164,15 +166,15 @@ export const start = mutationGeneric({
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const current = await monitorBinding(ctx, args.quoteId, subject);
     if (!current || current.quote.version !== args.expectedVersion)
-      throw new Error("Active immutable payment and quote buyer required");
+      fail("FORBIDDEN", "Active immutable payment and quote buyer required");
     if (jobBlocked(await jobFor(ctx, args.quoteId)))
-      throw new Error("Payment job must finish before monitoring");
+      fail("WRONG_STATE", "Payment job must finish before monitoring");
     const old = await monitorFor(ctx, args.quoteId);
     const now = Date.now();
     if (!clockOk(now) || (old && !Number.isSafeInteger(old.generation + 1)))
-      throw new Error("Invalid monitoring clock or generation");
+      fail("WRONG_STATE", "Invalid monitoring clock or generation");
     if (old && monitorLive(old, now))
-      throw new Error("Stop existing monitoring before starting a new session");
+      fail("WRONG_STATE", "Stop existing monitoring first");
     const value = {
       quoteId: args.quoteId,
       paymentIntentId: current.payment._id,
@@ -205,7 +207,7 @@ export const stop = mutationGeneric({
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const session = await monitorFor(ctx, args.quoteId);
     if (session && session.consentSubject !== subject)
-      throw new Error("Monitoring consent owner required");
+      fail("FORBIDDEN", "Monitoring consent owner required");
     if (session && session.state !== "stopped") {
       await invalidatePaymentObservation(
         ctx,
@@ -313,17 +315,19 @@ export const finish = internalMutationGeneric({
       return null;
     const now = Date.now();
     const current = await rebind(ctx, session);
-    await invalidatePaymentObservation(
-      ctx,
-      session.paymentIntentId,
-      session._id,
-      session.generation,
-    );
     if (
       !monitorLive(session, now) ||
       current?.binding !== session.binding ||
       now >= session.startedAt + MONITOR_LEASE_MS
     ) {
+      // The monitor is no longer authoritative for this intent, so it may only
+      // clear its own row, never a webhook's.
+      await invalidatePaymentObservation(
+        ctx,
+        session.paymentIntentId,
+        session._id,
+        session.generation,
+      );
       await ctx.db.patch(session._id, { state: "stopped" });
       return null;
     }
@@ -335,15 +339,15 @@ export const finish = internalMutationGeneric({
       paymentBindsQuote(auth, current.quote) &&
       usableObservation(auth, now, session.startedAt)
     ) {
-      await ctx.db.insert("paymentObservations", {
-        paymentIntentId: payment._id,
-        authorization: {
+      await recordObservation(
+        ctx,
+        payment._id,
+        {
           ...auth,
           usableUntil: Math.min(auth.usableUntil, session.expiresAt),
         },
-        monitorId: session._id,
-        monitorGeneration: session.generation,
-      });
+        { monitorId: session._id, generation: session.generation },
+      );
     }
     const nextAt = Math.min(now + MONITOR_INTERVAL_MS, session.expiresAt);
     await ctx.db.patch(session._id, { state: "waiting", nextAt });

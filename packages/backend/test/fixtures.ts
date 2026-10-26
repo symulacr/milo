@@ -1,8 +1,15 @@
-import type { FrozenQuote } from "../src/admission-policy";
+import type { AdmissionContext } from "../../../convex/admissionContext";
+import type {
+  FrozenQuote,
+  PaymentAuthorization,
+} from "../src/admission-policy";
+import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "../src/admission-policy";
 import {
   CONSTRUCTOR_ENCODING,
   publicConstructorFingerprints,
 } from "../src/public-constructor.ts";
+
+type Row = Record<string, unknown>;
 
 /**
  * Shared preprod quote fixture for the backend admission and monitoring
@@ -70,4 +77,112 @@ export function buildQuote(
     Record<string, unknown>;
   Object.assign(quote, publicConstructorFingerprints(quote));
   return quote as unknown as QuoteFixture;
+}
+
+/**
+ * A provider hold observed now: usable for the 60 s admission window and
+ * capturable for seven days, which is what makes the two rules distinguishable.
+ */
+export function buildAuthorization(
+  overrides: Partial<PaymentAuthorization> = {},
+): PaymentAuthorization {
+  const now = Date.now();
+  return {
+    id: "auth-1",
+    quoteId: "quote-1",
+    quoteVersion: 1,
+    buyerAccountId: "buyer-1",
+    amountMinor: 36000,
+    currency: "USD",
+    usableFrom: now,
+    usableUntil: now + PAYMENT_AUTHORIZATION_WINDOW_MS,
+    captureBeforeMs: now + 7 * 24 * 60 * 60_000,
+    source: "payment-observer",
+    status: "authorized",
+    providerReceiptFingerprint: "b".repeat(64),
+    ...overrides,
+  };
+}
+
+/** A validator's JSON descriptor, as `exportReturns()` serialises it. */
+type Desc = { type: string; value?: unknown };
+
+const H64 = (c: string) => c.repeat(64);
+
+/**
+ * A valid `writeQuoteDraft` / `createQuote` argument set. Three suites built
+ * the same twenty lines by hand; the only variation is the scope and the odd
+ * override, so those are the parameters.
+ */
+export const quoteArgs = (
+  scopeId: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  scopeId,
+  title: "Three hero images",
+  brief: "A short brief for the fixed-price image pack.",
+  amountUsd: 900,
+  clientEmail: "client@example.com",
+  orderNonce: H64("a"),
+  merchantCommitment: H64("b"),
+  termsCommitment: H64("d"),
+  terms: {
+    unitPrice: "90000",
+    total: "90000",
+    scopeDigest: H64("e"),
+    rightsDigest: H64("f"),
+    paymentPolicy: H64("1"),
+    salt: H64("2"),
+  },
+  ...overrides,
+});
+
+/** The `_handler` behind a registered Convex function. */
+export const handlerOf = <A = Row, R = unknown, C = AdmissionContext>(
+  fn: unknown,
+) => (fn as { _handler: (ctx: C, args: A) => Promise<R> })._handler;
+
+/**
+ * Reject any key a handler returned that its own `returns` validator does not
+ * declare. `handlerOf(...)` calls `_handler` directly, so unit tests bypass the
+ * return validator: that is how `createQuote` shipped returning
+ * `{...draft, emailed}` — a superset of `quoteReturns` — and failed live with
+ * `ReturnsValidationError: Object contains extra field inviteToken`. tsc cannot
+ * see it, because a spread adds keys at runtime. `exportReturns()` is the
+ * function's own descriptor, so this walks the real validator.
+ */
+export function checkReturns(fn: unknown, v: unknown, at = "$"): void {
+  const d = JSON.parse(
+    (fn as { exportReturns: () => string }).exportReturns(),
+  ) as Desc;
+  const walk = (n: Desc, x: unknown, at: string): void => {
+    if (n.type === "union") {
+      const errs: string[] = [];
+      for (const b of n.value as Desc[])
+        try {
+          walk(b, x, at);
+          return;
+        } catch (e) {
+          errs.push(String(e));
+        }
+      throw new Error(`${at}: no union branch (${errs.join("; ")})`);
+    }
+    if (n.type === "array") {
+      if (Array.isArray(x))
+        x.forEach((i, k) => {
+          walk(n.value as Desc, i, `${at}[${k}]`);
+        });
+      return;
+    }
+    if (n.type !== "object" || typeof x !== "object" || x === null) return;
+    const f = n.value as Record<string, { fieldType: Desc }>;
+    for (const [k, inner] of Object.entries(x)) {
+      if (!(k in f))
+        throw new Error(
+          `${at}: Object contains extra field ${k} that is not in the validator`,
+        );
+      walk(f[k].fieldType, inner, `${at}.${k}`);
+    }
+  };
+  walk(d, v, at);
 }

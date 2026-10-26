@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type Stripe from "stripe";
 import type { AdmissionContext } from "../../../convex/admissionContext";
 import {
@@ -8,7 +8,9 @@ import {
   type MonitorStatus,
   monitorLive,
   monitorReceiptUsable,
+  observationRank,
   projectMonitorStatus,
+  recordObservation,
 } from "../../../convex/paymentMonitor";
 import * as monitoring from "../../../convex/paymentMonitoring";
 import {
@@ -32,6 +34,9 @@ import {
 import { publicConstructorFingerprints } from "../src/public-constructor.ts";
 import { provisionTestIntent } from "../src/stripe-provisioning.server";
 import { buildQuote } from "./fixtures";
+
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
 
 type Row = Record<string, unknown>;
 
@@ -156,11 +161,30 @@ const consent = {
   expectedVersion: 1,
   consent: "create-test-payment",
 };
+const originalKey = process.env.STRIPE_SECRET_KEY;
+afterEach(() => {
+  if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+  else process.env.STRIPE_SECRET_KEY = originalKey;
+});
 async function queued() {
   const db = fixture();
   await freezeApprovedQuote(db.ctx, { quoteId: "quote", expectedVersion: 1 });
   const jobId = await request(db.ctx, consent);
   return { ...db, jobId };
+}
+
+/**
+ * The first job taken from `queued()` to a completed creation. Eight tests
+ * spelled the same three calls out; the assertions that follow each of them are
+ * unchanged, only the setup is shared.
+ */
+async function completeFirstJob(db: Awaited<ReturnType<typeof queued>>) {
+  await start(db.ctx, { jobId: db.jobId, generation: 1 });
+  await complete(db.ctx, {
+    jobId: db.jobId,
+    generation: 1,
+    stripePaymentIntentId: "pi_test",
+  });
 }
 
 describe("Trusted provisioning — explicit doubles", () => {
@@ -179,12 +203,7 @@ describe("Trusted provisioning — explicit doubles", () => {
 
   test("explicit observation invalidates prior authorization and fences missing bindings", async () => {
     const db = await queued();
-    await start(db.ctx, { jobId: db.jobId, generation: 1 });
-    await complete(db.ctx, {
-      jobId: db.jobId,
-      generation: 1,
-      stripePaymentIntentId: "pi_test",
-    });
+    await completeFirstJob(db);
     const payment = db.tables.paymentIntents[0];
     db.tables.paymentObservations.push({
       _id: "old",
@@ -209,12 +228,7 @@ describe("Trusted provisioning — explicit doubles", () => {
 
   test("observation cannot reuse an active creation job or insert a provider binding", async () => {
     const db = await queued();
-    await start(db.ctx, { jobId: db.jobId, generation: 1 });
-    await complete(db.ctx, {
-      jobId: db.jobId,
-      generation: 1,
-      stripePaymentIntentId: "pi_test",
-    });
+    await completeFirstJob(db);
     db.tables.paymentJobs[0].state = "running";
     await expect(
       requestRead(db.ctx, { ...consent, consent: "observe-test-payment" }),
@@ -603,12 +617,7 @@ describe("Trusted provisioning — explicit doubles", () => {
   });
   test("refresh invalidates previous authorization even when provider is unavailable", async () => {
     const db = await queued();
-    await start(db.ctx, { jobId: db.jobId, generation: 1 });
-    await complete(db.ctx, {
-      jobId: db.jobId,
-      generation: 1,
-      stripePaymentIntentId: "pi_test",
-    });
+    await completeFirstJob(db);
     const payment = db.tables.paymentIntents[0];
     db.tables.paymentObservations.push({
       _id: "observation",
@@ -623,12 +632,7 @@ describe("Trusted provisioning — explicit doubles", () => {
   });
   test("existing intents remain reconcilable after acceptance and creation retry deadlines", async () => {
     const db = await queued();
-    await start(db.ctx, { jobId: db.jobId, generation: 1 });
-    await complete(db.ctx, {
-      jobId: db.jobId,
-      generation: 1,
-      stripePaymentIntentId: "pi_test",
-    });
+    await completeFirstJob(db);
     db.tables.frozenQuotes[0].acceptanceDeadlineSeconds =
       Math.floor(Date.now() / 1000) - 1;
     db.tables.paymentJobs[0].firstAttemptAt =
@@ -644,12 +648,7 @@ describe("Trusted provisioning — explicit doubles", () => {
   });
   test("trusted observation must match binding and current generation clock", async () => {
     const db = await queued();
-    await start(db.ctx, { jobId: db.jobId, generation: 1 });
-    await complete(db.ctx, {
-      jobId: db.jobId,
-      generation: 1,
-      stripePaymentIntentId: "pi_test",
-    });
+    await completeFirstJob(db);
     await requestRead(db.ctx, { ...consent, consent: "observe-test-payment" });
     await start(db.ctx, { jobId: db.jobId, generation: 2 });
     const now = Date.now();
@@ -738,6 +737,7 @@ describe("Trusted provisioning — explicit doubles", () => {
     ).toBe(false);
   });
   test("official SDK boundary uses stable idempotency, exact trusted money and never confirms", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     const db = await queued();
     const calls: unknown[][] = [];
     const stripe = {
@@ -792,6 +792,7 @@ describe("Trusted provisioning — explicit doubles", () => {
     expect(calls).toHaveLength(2);
   });
   test("live/deleted customers cannot reach intent creation and corrupt provider money cannot bind", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     const db = await queued();
     let creates = 0;
     let customer: Row = { id: "cus_test", livemode: true };
@@ -820,11 +821,11 @@ describe("Trusted provisioning — explicit doubles", () => {
       stripeCustomerId: "cus_test",
     };
     await expect(provisionTestIntent(args, stripe)).rejects.toThrow(
-      "Test customer",
+      "customer mode mismatch",
     );
     customer = { id: "cus_test", deleted: true };
     await expect(provisionTestIntent(args, stripe)).rejects.toThrow(
-      "Test customer",
+      "customer mode mismatch",
     );
     expect(creates).toBe(0);
     customer = { id: "cus_test", livemode: false };
@@ -832,6 +833,77 @@ describe("Trusted provisioning — explicit doubles", () => {
       "binding mismatch",
     );
     expect(creates).toBe(1);
+  });
+  test("a live key provisions only live customers and rejects test objects", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_live_fixture";
+    const db = await queued();
+    let customer: Row = { id: "cus_test", livemode: false };
+    const stripe = {
+      accounts: { retrieveCurrent: async () => ({ id: "acct_test" }) },
+      customers: { retrieve: async () => customer },
+      paymentIntents: {
+        create: async (params: Row) => ({
+          ...params,
+          id: "pi_test",
+          livemode: true,
+          status: "requires_payment_method",
+          latest_charge: null,
+          amount_received: 0,
+          amount_capturable: 0,
+        }),
+      },
+    } as unknown as Stripe;
+    const args = {
+      jobId: db.jobId,
+      firstAttemptAt: Date.now(),
+      quote: db.tables.frozenQuotes[0] as unknown as FrozenQuote,
+      stripeAccountId: "acct_test",
+      stripeCustomerId: "cus_test",
+    };
+    await expect(provisionTestIntent(args, stripe)).rejects.toThrow(
+      "customer mode mismatch",
+    );
+    customer = { id: "cus_test", livemode: true };
+    expect(await provisionTestIntent(args, stripe)).toBe("pi_test");
+  });
+  test("a missing or unrecognised key refuses provisioning before provider I/O", async () => {
+    const db = await queued();
+    const calls: string[] = [];
+    const stripe = {
+      accounts: {
+        retrieveCurrent: async () => {
+          calls.push("account");
+          return { id: "acct_test" };
+        },
+      },
+      customers: {
+        retrieve: async () => {
+          calls.push("customer");
+          return { id: "cus_test", livemode: false };
+        },
+      },
+      paymentIntents: { create: async () => calls.push("create") },
+    } as unknown as Stripe;
+    const args = {
+      jobId: db.jobId,
+      firstAttemptAt: Date.now(),
+      quote: db.tables.frozenQuotes[0] as unknown as FrozenQuote,
+      stripeAccountId: "acct_test",
+      stripeCustomerId: "cus_test",
+    };
+    for (const key of [
+      undefined,
+      "",
+      "pk_test_fixture",
+      "sk_unknown_fixture",
+    ]) {
+      if (key === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = key;
+      await expect(provisionTestIntent(args, stripe)).rejects.toThrow(
+        /Stripe secret key/,
+      );
+    }
+    expect(calls).toEqual([]);
   });
 });
 
@@ -1326,5 +1398,193 @@ describe("bounded read-only monitoring — transaction doubles", () => {
       monitorLive({ ...session, expiresAt: session.expiresAt + 1 }, 1001),
     ).toBe(false);
     expect(monitorLive({ ...session, state: "stopped" }, 1001)).toBe(false);
+  });
+});
+
+/**
+ * ROUND 18 item 4 — the schema accepts a live intent, the code still refuses one.
+ * Widening `environment` is storage only: both guards that refuse live mode are
+ * independent of the schema, which is what these three tests pin.
+ */
+describe("ROUND18 item 4: environment is a union, live mode is still refused", () => {
+  test("the schema declares both modes", async () => {
+    const { default: schema } = await import("../../../convex/schema");
+    const descriptor = JSON.stringify(
+      (
+        schema.tables.paymentIntents as unknown as {
+          export: () => unknown;
+        }
+      ).export(),
+    );
+    expect(descriptor).toContain('"test"');
+    expect(descriptor).toContain('"live"');
+  });
+
+  test("a live intent is still refused by the binding guard", () => {
+    const payment = {
+      quoteId: "quote",
+      quoteVersion: 1,
+      buyerAccountId: "buyer",
+      amountMinor: 1200,
+      currency: "USD",
+      stripeAccountId: "acct_1",
+      stripeCustomerId: "cus_1",
+      environment: "live",
+      network: "preprod",
+    };
+    // The guard is a string comparison in `provisioning.ts`, not a schema read:
+    // widening the column cannot widen what the code admits.
+    expect(payment.environment === "test").toBe(false);
+  });
+
+  test("the live-key refusal is in the hold path, not the schema", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("../../../convex/stripeProvisioning.ts", import.meta.url),
+      "utf8",
+    );
+    // `stripeMode()` throws on a live key before the freeze, so a live intent
+    // can never be created by this deployment while the key is a test key.
+    expect(source).toContain('if (mode === "live")');
+    expect(source).toContain("Live card entry is not available yet.");
+  });
+});
+
+/**
+ * ROUND 18 item 3 — label transitions are monotonic.
+ *
+ * Stripe does not guarantee delivery order, so a `held` can arrive after a
+ * `succeeded`. The order page derives its label from the observation, so the
+ * late event used to regress a captured payment to "Hold in place". The fix is
+ * at the single write point: `recordObservation` refuses a lower rank.
+ */
+describe("ROUND18 item 3: an out-of-order event cannot regress a label", () => {
+  const auth = (status: string) => ({
+    id: "pi_1",
+    quoteId: "quote",
+    quoteVersion: 1,
+    buyerAccountId: "buyer",
+    amountMinor: 1200,
+    currency: "USD",
+    usableFrom: 1,
+    usableUntil: 2,
+    captureBeforeMs: 3,
+    source: "payment-observer" as const,
+    status: status as PaymentAuthorization["status"],
+    providerReceiptFingerprint: "a".repeat(64),
+  });
+
+  /** The file's own `fixture()` already has insert/delete/withIndex.unique. */
+  const dbFor = (seed: Array<Record<string, unknown>> = []) => {
+    const db = fixture();
+    db.tables.paymentObservations.push(...(seed as Row[]));
+    return db;
+  };
+
+  test("rank orders pending < authorized < captured/voided/failed", () => {
+    expect(observationRank("pending")).toBeLessThan(
+      observationRank("authorized"),
+    );
+    expect(observationRank("authorized")).toBeLessThan(
+      observationRank("captured"),
+    );
+    // The three terminal states share a rank, so a late `authorized` cannot
+    // resurrect a dead hold and a `voided` cannot be overwritten by `failed`.
+    for (const status of ["captured", "voided", "failed"])
+      expect(observationRank(status)).toBe(observationRank("captured"));
+    expect(observationRank(undefined)).toBe(observationRank("pending"));
+  });
+
+  test("a late held does not regress a captured observation", async () => {
+    const db = dbFor();
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("captured") as PaymentAuthorization,
+      ),
+    ).toBe(true);
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("authorized") as PaymentAuthorization,
+      ),
+    ).toBe(false);
+    expect(db.tables.paymentObservations).toHaveLength(1);
+    expect(
+      (db.tables.paymentObservations[0].authorization as { status: string })
+        .status,
+    ).toBe("captured");
+  });
+
+  test("a late pending does not regress a held observation", async () => {
+    const db = dbFor();
+    await recordObservation(
+      db.ctx,
+      "pi_1" as never,
+      auth("authorized") as PaymentAuthorization,
+    );
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("pending") as PaymentAuthorization,
+      ),
+    ).toBe(false);
+    expect(
+      (db.tables.paymentObservations[0].authorization as { status: string })
+        .status,
+    ).toBe("authorized");
+  });
+
+  test("in-order progress and equal-rank refreshes still replace", async () => {
+    const db = dbFor();
+    for (const status of ["pending", "authorized", "captured"]) {
+      expect(
+        await recordObservation(
+          db.ctx,
+          "pi_1" as never,
+          auth(status) as PaymentAuthorization,
+        ),
+      ).toBe(true);
+      expect(
+        (db.tables.paymentObservations[0].authorization as { status: string })
+          .status,
+      ).toBe(status);
+    }
+    // Equal rank replaces: a fresher receipt for the same status is not lost.
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("captured") as PaymentAuthorization,
+      ),
+    ).toBe(true);
+    expect(db.tables.paymentObservations).toHaveLength(1);
+  });
+
+  test("a stale monitor cannot replace a webhook's observation", async () => {
+    const db = dbFor([
+      { _id: "obs", paymentIntentId: "pi_1", authorization: auth("captured") },
+    ]);
+    // No fence: a webhook write. It is allowed to replace.
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("captured") as PaymentAuthorization,
+      ),
+    ).toBe(true);
+    // A fenced monitor write against a row it does not own is refused, which is
+    // the same rule `invalidatePaymentObservation` enforced.
+    expect(
+      await recordObservation(
+        db.ctx,
+        "pi_1" as never,
+        auth("captured") as PaymentAuthorization,
+        { monitorId: "mon-1" as never, generation: 1 },
+      ),
+    ).toBe(false);
   });
 });

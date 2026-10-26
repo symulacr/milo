@@ -1,31 +1,30 @@
-import type {
-  DataModelFromSchemaDefinition,
-  GenericQueryCtx,
+import {
+  internalActionGeneric,
+  internalQueryGeneric,
+  makeFunctionReference,
 } from "convex/server";
-import { queryGeneric } from "convex/server";
-import { v } from "convex/values";
-import { requireSessionSubject } from "../packages/backend/src/session-identity";
-import type schema from "./schema";
+import { type GenericId, v } from "convex/values";
+import { sendEmail } from "../packages/backend/src/email";
+import { env } from "../packages/backend/src/encoding";
+import {
+  operatorEmails,
+  requireSessionSubject,
+} from "../packages/backend/src/session-identity";
+import type { ReadContext, ReadDb } from "./admissionContext";
 
-type DiagContext = GenericQueryCtx<
-  DataModelFromSchemaDefinition<typeof schema>
->;
+const deadLetterCountsRef = makeFunctionReference<
+  "query",
+  Record<string, never>,
+  {
+    unprocessed: number;
+    recent: number;
+    byType: Array<{ eventType: string; count: number }>;
+  }
+>("diagnostics:deadLetterCounts");
 
 export const DIAGNOSTICS_BY_INTENT_LIMIT = 64;
 
-type DiagDb = {
-  query: (table: string) => {
-    withIndex: (
-      name: string,
-      range: (q: { eq: (field: string, value: unknown) => unknown }) => unknown,
-    ) => {
-      take: (n: number) => Promise<unknown[]>;
-      unique?: () => Promise<unknown>;
-    };
-  };
-};
-
-export type ByIntentRow = {
+type ByIntentRow = {
   id: string;
   action: "capture" | "void";
   state: string;
@@ -50,12 +49,14 @@ const projectOp = (row: RawOpRow): ByIntentRow => ({
 });
 
 export async function byIntentRows(
-  db: DiagDb,
+  db: ReadDb,
   paymentIntentId: string,
 ): Promise<ByIntentRow[]> {
   const rows = (await db
     .query("settlementOps")
-    .withIndex("by_intent", (q) => q.eq("paymentIntentId", paymentIntentId))
+    .withIndex("by_intent", (q) =>
+      q.eq("paymentIntentId", paymentIntentId as GenericId<"paymentIntents">),
+    )
     .take(DIAGNOSTICS_BY_INTENT_LIMIT)) as RawOpRow[];
   return rows.map(projectOp);
 }
@@ -68,7 +69,7 @@ const opValidator = v.object({
   attempt: v.number(),
 });
 
-export const read = queryGeneric({
+export const read = internalQueryGeneric({
   args: {
     paymentIntentId: v.optional(v.id("paymentIntents")),
     refreshToken: v.optional(v.string()),
@@ -84,7 +85,7 @@ export const read = queryGeneric({
       }),
     ),
   }),
-  handler: async (ctx: DiagContext, args) => {
+  handler: async (ctx: ReadContext, args) => {
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
     const memberships = await ctx.db
       .query("memberships")
@@ -129,5 +130,89 @@ export const read = queryGeneric({
         processed: row.processedAt !== undefined,
       })),
     };
+  },
+});
+
+/**
+ * How far back the digest looks: a day plus an hour, so a cron that fires a few
+ * minutes late still covers the full previous day without double-counting.
+ */
+export const DIGEST_WINDOW_MS = 25 * 60 * 60_000;
+
+/** One digest run must not load an unbounded inbox. */
+export const DEAD_LETTER_LIMIT = 500;
+
+/**
+ * The dead-letter count: events received but never reconciled. Stripe retries a
+ * live delivery for up to 3 days but a sandbox delivery only 3 times, so a silent
+ * gap is the normal failure mode. `by_received` bounds the scan to the window, so
+ * a fixed backlog cannot mask a new one.
+ */
+export const deadLetterCounts = internalQueryGeneric({
+  args: {},
+  returns: v.object({
+    unprocessed: v.number(),
+    recent: v.number(),
+    byType: v.array(v.object({ eventType: v.string(), count: v.number() })),
+  }),
+  handler: async (ctx: ReadContext) => {
+    const rows = await ctx.db
+      .query("paymentInbox")
+      .withIndex("by_received", (q) =>
+        q.gt("receivedAt", Date.now() - DIGEST_WINDOW_MS),
+      )
+      .take(DEAD_LETTER_LIMIT);
+    const unprocessed = rows.filter((row) => row.processedAt === undefined);
+    const counts = new Map<string, number>();
+    for (const row of unprocessed)
+      counts.set(row.eventType, (counts.get(row.eventType) ?? 0) + 1);
+    return {
+      unprocessed: unprocessed.length,
+      recent: rows.length,
+      byType: [...counts.entries()]
+        .map(([eventType, count]) => ({ eventType, count }))
+        .sort((a, b) => b.count - a.count),
+    };
+  },
+});
+
+/**
+ * The daily operator digest. No-op when `MILO_OPERATOR_EMAILS` is unset (the
+ * same rule `operatorEmails()` applies everywhere) and when nothing is
+ * unprocessed: a daily "all clear" trains an operator to ignore the one that
+ * matters.
+ */
+export const digest = internalActionGeneric({
+  args: {},
+  returns: v.object({ emailed: v.number(), unprocessed: v.number() }),
+  handler: async (ctx) => {
+    const recipients = operatorEmails();
+    const counts = (await ctx.runQuery(deadLetterCountsRef, {})) as {
+      unprocessed: number;
+      recent: number;
+      byType: Array<{ eventType: string; count: number }>;
+    };
+    if (recipients.length === 0 || counts.unprocessed === 0)
+      return { emailed: 0, unprocessed: counts.unprocessed };
+    const text = [
+      `${counts.unprocessed} of ${counts.recent} events in the last day were never reconciled.`,
+      ...counts.byType.map((row) => `  ${row.count} x ${row.eventType}`),
+      "Check the Stripe webhook endpoint and the Convex logs.",
+    ].join("\n");
+    let emailed = 0;
+    for (const to of recipients) {
+      try {
+        await sendEmail({
+          to,
+          url: env("SITE_URL") ?? "https://milo.app",
+          subject: `${counts.unprocessed} unprocessed Stripe event(s)`,
+          text,
+        });
+        emailed += 1;
+      } catch {
+        // One bad recipient must not stop the rest; the next run is the retry.
+      }
+    }
+    return { emailed, unprocessed: counts.unprocessed };
   },
 });

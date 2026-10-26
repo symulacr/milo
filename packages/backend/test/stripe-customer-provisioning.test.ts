@@ -18,14 +18,18 @@ const input = {
 };
 const authorities = JSON.stringify([input]);
 const original = process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
+const originalKey = process.env.STRIPE_SECRET_KEY;
 afterEach(() => {
   if (original === undefined)
     delete process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
   else process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = original;
+  if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+  else process.env.STRIPE_SECRET_KEY = originalKey;
 });
 
 function fixture() {
   process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = authorities;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
   const calls: unknown[][] = [];
   const writes: CustomerFactCommit[] = [];
   let creations = 0;
@@ -210,10 +214,47 @@ describe("Stripe test-customer provider facts (not buyer ownership)", () => {
         (reason: unknown) => reason,
       );
       if (!(error instanceof Error)) throw new Error("Expected redacted error");
-      expect(error.message).toBe("Stripe test customer facts unavailable");
+      expect(error.message).toBe("Stripe customer facts unavailable");
       expect(error.cause).toBeUndefined();
       expect(f.writes).toEqual([]);
       if (failure === "account") expect(f.calls).toEqual([]);
     });
   }
+
+  test("a live key accepts only live customers and a test key only test customers", async () => {
+    for (const [key, livemode] of [
+      ["sk_live_fixture", true],
+      ["sk_test_fixture", false],
+    ] as const) {
+      const f = fixture();
+      process.env.STRIPE_SECRET_KEY = key;
+      f.customer.livemode = livemode;
+      expect(await provisionTestCustomerFacts(input, f.commit, f.factory)).toBe(
+        "binding-1",
+      );
+      expect(f.writes).toHaveLength(1);
+      f.customer.livemode = !livemode;
+      await expect(
+        provisionTestCustomerFacts(input, f.commit, f.factory),
+      ).rejects.toThrow("Stripe customer facts unavailable");
+      expect(f.writes).toHaveLength(1);
+    }
+  });
+
+  test("a missing or unrecognised key commits nothing", async () => {
+    for (const key of [
+      undefined,
+      "",
+      "pk_test_fixture",
+      "sk_unknown_fixture",
+    ]) {
+      const f = fixture();
+      if (key === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = key;
+      await expect(
+        provisionTestCustomerFacts(input, f.commit, f.factory),
+      ).rejects.toThrow("Stripe customer facts unavailable");
+      expect(f.writes).toEqual([]);
+    }
+  });
 });

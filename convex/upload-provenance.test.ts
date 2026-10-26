@@ -10,8 +10,11 @@ import {
   resolveRead,
   storeAndAttachUpload,
 } from "./files";
+import type { Row } from "./orderProjection.double";
+import { readSurface, writeSurface } from "./orderProjection.double";
 
-type Row = Record<string, unknown> & { _id: string };
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
 
 /** The mutation an action's function reference names, resolved by its registered name. */
 function mutationFor(name: string) {
@@ -95,68 +98,8 @@ function databaseDouble(options?: {
       },
     },
     db: {
-      get: async (id: string) => {
-        for (const rows of Object.values(tables)) {
-          const found = rows.find((row) => row._id === id);
-          if (found) return found;
-        }
-        return null;
-      },
-      query: (table: string) => {
-        const rows = () => tables[table] ?? [];
-        const filter = (predicate: (row: Row) => boolean) => {
-          const matched = rows().filter(predicate);
-          return {
-            unique: async () => (matched.length === 1 ? matched[0] : null),
-            take: async (n: number) => matched.slice(0, n),
-            first: async () => matched[0] ?? null,
-            collect: async () => matched,
-          };
-        };
-        return {
-          withIndex: (
-            _index: string,
-            range: (q: {
-              eq: (field: string, value: unknown) => unknown;
-            }) => unknown,
-          ) => {
-            const captured: Array<[string, unknown]> = [];
-            const chain = {
-              eq: (field: string, value: unknown) => {
-                captured.push([field, value]);
-                return chain;
-              },
-            };
-            range(chain);
-            return filter((row) =>
-              captured.every(([field, value]) => row[field] === value),
-            );
-          },
-          fullTableScan: () => filter(() => true),
-        };
-      },
-      insert: async (table: string, doc: Record<string, unknown>) => {
-        const _id = `${table}-${tables[table].length + 1}`;
-        const row = { ...doc, _id };
-        tables[table].push(row);
-        return _id;
-      },
-      patch: async (id: string, fields: Record<string, unknown>) => {
-        for (const rows of Object.values(tables)) {
-          const found = rows.find((row) => row._id === id);
-          if (found) {
-            Object.assign(found, fields);
-            return;
-          }
-        }
-        throw new Error(`unknown document ${id}`);
-      },
-      delete: async (id: string) => {
-        for (const rows of Object.values(tables)) {
-          const index = rows.findIndex((row) => row._id === id);
-          if (index >= 0) rows.splice(index, 1);
-        }
-      },
+      ...readSurface(tables),
+      ...writeSurface(tables),
     },
   };
   return {
@@ -195,6 +138,17 @@ describe("upload URL to storageId provenance is closed", () => {
     expect(f.tables.fileGrants[0].uploadTicket).toBe(issued.uploadTicket);
     expect(f.tables.fileGrants[0].storageId).toBeUndefined();
     expect(GRANT_TTL_MS).toBe(5 * 60 * 1000);
+  });
+
+  test("the ticket carries CSPRNG entropy, not a Math.random suffix", async () => {
+    const f = databaseDouble();
+    const issued = await requestUpload(f.ctx, { orderId: "order-1" });
+    // ut_<grantId>_<32 hex chars>: 128 bits from the platform CSPRNG. The old
+    // Math.random() suffix was ~10 decimal digits and never looked like this.
+    expect(issued.uploadTicket).toMatch(/^ut_.+_[0-9a-f]{32}$/);
+    const suffix = issued.uploadTicket.split("_").at(-1) ?? "";
+    expect(suffix).toHaveLength(32);
+    expect(suffix).not.toBe("0".repeat(32));
   });
 
   test("attachUpload refuses a storageId without the grant's upload ticket", async () => {

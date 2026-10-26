@@ -1,14 +1,15 @@
 import type Stripe from "stripe";
 import type { FrozenQuote } from "./admission-policy";
 import { PROVIDER_RETRY_WINDOW_MS } from "./provisioning-policy";
+import { stripeMode } from "./stripe-mode";
 import {
   isPositiveInt,
   isTestStripeId,
   normalizeTestPayment,
-  testStripeClient,
+  stripeClient,
 } from "./stripe-observer.server";
 
-export { testStripeClient };
+export { stripeClient };
 
 export interface ProvisioningRequest {
   jobId: string;
@@ -20,9 +21,10 @@ export interface ProvisioningRequest {
 
 export async function provisionTestIntent(
   request: ProvisioningRequest,
-  stripe: Stripe = testStripeClient(),
+  stripe: Stripe = stripeClient(),
 ): Promise<string> {
   const { quote } = request;
+  const mode = stripeMode(process.env.STRIPE_SECRET_KEY);
   if (
     quote.network !== "preprod" ||
     quote.currency !== "USD" ||
@@ -38,10 +40,10 @@ export async function provisionTestIntent(
   const customer = await stripe.customers.retrieve(request.stripeCustomerId);
   if (
     customer.deleted ||
-    customer.livemode !== false ||
+    customer.livemode !== (mode === "live") ||
     customer.id !== request.stripeCustomerId
   )
-    throw new Error("Test customer required");
+    throw new Error("Stripe customer mode mismatch");
   const now = Date.now();
   if (
     !Number.isSafeInteger(request.firstAttemptAt) ||
@@ -83,6 +85,7 @@ export async function provisionTestIntent(
       network: "preprod",
     },
     Date.now(),
+    mode,
   );
   if (
     normalized.kind !== "observed" ||

@@ -109,3 +109,34 @@ export function usableObservation(
     HEX64.test(authorization.providerReceiptFingerprint)
   );
 }
+
+/**
+ * A hold is capturable when the provider still allows the capture, whatever the
+ * observation's age. `usableObservation` answers a different question: is this
+ * observation recent enough to admit a contract. Capture happens days later, so
+ * it must ask the provider's expiry, not the admission freshness rule.
+ */
+export function capturableHold(
+  authorization: PaymentAuthorization,
+  now: number,
+) {
+  return (
+    nonNegative(now) &&
+    authorization.status === "authorized" &&
+    Number.isSafeInteger(authorization.usableFrom) &&
+    Number.isSafeInteger(authorization.captureBeforeMs) &&
+    authorization.captureBeforeMs > authorization.usableFrom &&
+    now >= authorization.usableFrom &&
+    now < authorization.captureBeforeMs &&
+    HEX64.test(authorization.providerReceiptFingerprint)
+  );
+}
+
+/** The window question admission asks, asked again at capture. */
+export const captureCoversResolution = (
+  authorization: PaymentAuthorization,
+  resolutionDeadlineSeconds: number,
+  captureSafetyMarginMs: number,
+): boolean =>
+  BigInt(resolutionDeadlineSeconds) * 1000n + BigInt(captureSafetyMarginMs) <
+  BigInt(authorization.captureBeforeMs);

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { isTestStripeId, testStripeClient } from "./stripe-observer.server";
+import { type StripeMode, stripeMode } from "./stripe-mode";
+import { isTestStripeId, stripeClient } from "./stripe-observer.server";
 import {
   canonicalPayload,
   type Provenance,
@@ -51,7 +52,7 @@ function isTrustedIdentifier(value: string): boolean {
 export async function provisionTestCustomerFacts<T>(
   input: CustomerFactRequest,
   commit: (args: CustomerFactCommit) => Promise<T>,
-  createClient: () => CustomerFactReader = testStripeClient,
+  createClient: () => CustomerFactReader = stripeClient,
 ): Promise<T> {
   validateProvisioningAuthority(
     input,
@@ -69,7 +70,9 @@ export async function provisionTestCustomerFacts<T>(
 
   let accountId: string;
   let customerId: string;
+  let mode: StripeMode;
   try {
+    mode = stripeMode(process.env.STRIPE_SECRET_KEY);
     const stripe = createClient();
     const account = await stripe.accounts.retrieveCurrent();
     if (account.id !== input.stripeAccountId)
@@ -78,13 +81,13 @@ export async function provisionTestCustomerFacts<T>(
     if (
       customer.id !== input.stripeCustomerId ||
       (customer.deleted !== undefined && customer.deleted !== false) ||
-      customer.livemode !== false
+      customer.livemode !== (mode === "live")
     )
-      throw new Error("Invalid test customer");
+      throw new Error("Invalid customer mode");
     accountId = account.id;
     customerId = customer.id;
   } catch {
-    throw new Error("Stripe test customer facts unavailable");
+    throw new Error("Stripe customer facts unavailable");
   }
 
   const evidenceFingerprint = createHash("sha256")
@@ -95,7 +98,7 @@ export async function provisionTestCustomerFacts<T>(
         stripeAccountId: accountId,
         stripeCustomerId: customerId,
         deleted: false,
-        livemode: false,
+        livemode: mode === "live",
         buyerMapping: {
           authority: "operator-asserted",
           buyerAccountId: input.buyerAccountId,

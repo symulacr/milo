@@ -12,18 +12,35 @@ import {
   requestPayment,
 } from "../../../convex/provisioning";
 import {
+  attachContract,
+  createQuote,
+} from "../../../convex/stripeProvisioning";
+import {
+  acceptInvite,
   assertProvisioningActive,
+  createStudio,
+  finalizeQuote,
   provision,
   revoke,
+  studioFor,
+  writeQuoteDraft,
 } from "../../../convex/trustedProvisioning";
 import { provisionTestCustomerFacts } from "../src/stripe-customer-provisioning.server";
 import {
   canonicalPayload,
   validateProvenance,
 } from "../src/trusted-provisioning-policy";
-import { buildQuote } from "./fixtures";
+import { buildQuote, checkReturns, handlerOf, quoteArgs } from "./fixtures";
+
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
 
 type Row = Record<string, unknown>;
+
+/** The registered function behind a handler, for its `exportReturns`. */
+const returnsOf = (name: string) =>
+  (({ writeQuoteDraft, createQuote }) as Record<string, unknown>)[name];
+
 const provenance = {
   operatorId: "operator-1",
   sourceId: "verified-import",
@@ -33,21 +50,22 @@ const configured = JSON.stringify([
   { operatorId: provenance.operatorId, sourceId: provenance.sourceId },
 ]);
 const original = process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
+const originalKey = process.env.STRIPE_SECRET_KEY;
 afterEach(() => {
   if (original === undefined)
     delete process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
   else process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = original;
+  if (originalKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+  else process.env.STRIPE_SECRET_KEY = originalKey;
 });
-function handler<T>(fn: unknown) {
-  return (fn as { _handler: (ctx: AdmissionContext, args: Row) => Promise<T> })
-    ._handler;
-}
+const handler = <T>(fn: unknown) => handlerOf<Row, T>(fn);
 const insert = handler<string>(provision);
 const remove = handler<null>(revoke);
 
 // Handler doubles verify policy, not hosted Convex authorization or OCC.
 function fixture() {
   process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = configured;
+  process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
   const tables: Record<string, Row[]> = Object.fromEntries(
     [
       "trustedProvisioning",
@@ -479,5 +497,489 @@ describe("internal trusted provisioning", () => {
       ),
     ).rejects.toThrow("Stripe identifiers");
     expect(tables.trustedProvisioningAudit).toHaveLength(0);
+  });
+});
+
+const createStudioHandler = handlerOf<{ name: string }, { scopeId: string }>(
+  createStudio,
+);
+const writeQuoteDraftHandler = handlerOf<
+  Record<string, unknown>,
+  { quoteId: string; inviteUrl: string; emailed: boolean }
+>(writeQuoteDraft);
+const acceptInviteHandler = handlerOf<
+  { quoteId: string; token: string; buyerCommitment: string },
+  { ok: boolean; reason?: string }
+>(acceptInvite);
+const studioForHandler = handlerOf<
+  Record<string, never>,
+  { scopeId: string } | null
+>(studioFor);
+
+const HEX = (char: string) => char.repeat(64);
+
+function workspaceFixture(subject = "did:privy:merchant") {
+  const tables: Record<string, Row[]> = Object.fromEntries(
+    ["memberships", "quoteDrafts"].map((name) => [name, []]),
+  );
+  let serial = 0;
+  const get = (id: string) =>
+    Object.values(tables)
+      .flat()
+      .find((row) => row._id === id) ?? null;
+  const ctx = {
+    scheduler: { runAfter: async () => null },
+    auth: { getUserIdentity: async () => ({ issuer: "privy.io", subject }) },
+    db: {
+      query: (table: string) => ({
+        withIndex: (_name: string, range: (q: unknown) => unknown) => {
+          const conditions: [string, unknown][] = [];
+          const q = {
+            eq: (key: string, value: unknown) => {
+              conditions.push([key, value]);
+              return q;
+            },
+          };
+          range(q);
+          const matched = () =>
+            (tables[table] ?? []).filter((row) =>
+              conditions.every(([key, value]) => row[key] === value),
+            );
+          return {
+            unique: async () => {
+              const rows = matched();
+              if (rows.length > 1) throw new Error("Duplicate rows");
+              return rows[0] ?? null;
+            },
+            take: async (n: number) => matched().slice(0, n),
+            first: async () => matched()[0] ?? null,
+            filter: () => ({
+              filter: () => ({ first: async () => matched()[0] ?? null }),
+              first: async () => matched()[0] ?? null,
+            }),
+          };
+        },
+      }),
+      insert: async (table: string, value: Row) => {
+        const id = `${table}-${++serial}`;
+        tables[table].push({ ...value, _id: id });
+        return id;
+      },
+      patch: async (id: string, value: Row) => {
+        const row = get(id);
+        if (!row) throw new Error("Missing row");
+        Object.assign(row, value);
+      },
+    },
+  } as unknown as AdmissionContext;
+  return { ctx, tables };
+}
+
+describe("workspace studio and invite flow", () => {
+  test("createStudio is one per subject and idempotent", async () => {
+    const f = workspaceFixture();
+    const first = await createStudioHandler(f.ctx, { name: "North Studio" });
+    const second = await createStudioHandler(f.ctx, { name: "North Studio" });
+    expect(second.scopeId).toBe(first.scopeId);
+    expect(f.tables.memberships).toHaveLength(1);
+    expect(f.tables.memberships[0]).toMatchObject({
+      role: "merchant",
+      studioName: "North Studio",
+      status: "active",
+    });
+  });
+
+  test("createStudio rejects a name outside 2 to 60 characters", async () => {
+    const f = workspaceFixture();
+    await expect(createStudioHandler(f.ctx, { name: "A" })).rejects.toThrow(
+      "2 to 60",
+    );
+    await expect(
+      createStudioHandler(f.ctx, { name: "A".repeat(61) }),
+    ).rejects.toThrow("2 to 60");
+  });
+
+  test("studioFor finds the caller's studio and nothing else", async () => {
+    const f = workspaceFixture();
+    expect(await studioForHandler(f.ctx, {})).toBeNull();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    expect(await studioForHandler(f.ctx, {})).toEqual({
+      scopeId: studio.scopeId,
+    });
+    const other = workspaceFixture("did:privy:other");
+    expect(await studioForHandler(other.ctx, {})).toBeNull();
+  });
+
+  test("createQuote requires an active merchant in the scope", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await expect(
+      writeQuoteDraftHandler(f.ctx, quoteArgs("someone-else")),
+    ).rejects.toThrow("Active studio merchant required");
+    const created = await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId),
+    );
+    expect(created.inviteUrl).toContain(`/orders/${created.quoteId}?invite=`);
+    expect(f.tables.quoteDrafts).toHaveLength(1);
+    // The draft mutation's own return validator must accept what it returns.
+    checkReturns(writeQuoteDraft, created);
+  });
+
+  // R14: the create-quote action returned `{...draft, emailed}`, and the draft
+  // mutation returns `inviteToken` too, so the action's `quoteReturns` rejected
+  // its own result live with `ReturnsValidationError: Object contains extra
+  // field inviteToken`. Every unit test called `_handler` and skipped the
+  // validator, so nothing caught it. These two rows run the real action and
+  // check its output against its real `returns` descriptor.
+  test("createQuote's result satisfies its returns validator", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    const draft = await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId),
+    );
+    // The action's only Convex call is the draft mutation; the rest is email.
+    const ctx = {
+      runMutation: async () => draft,
+    } as unknown as AdmissionContext;
+    // A fixture key, not a real secret: the action HMACs the nonce with it.
+    const previous = process.env.MILO_OPERATOR_SECRET;
+    process.env.MILO_OPERATOR_SECRET = "a".repeat(64);
+    try {
+      const result = await (
+        createQuote as unknown as {
+          _handler: (c: AdmissionContext, a: unknown) => Promise<unknown>;
+        }
+      )._handler(ctx, quoteArgs(studio.scopeId));
+      checkReturns(createQuote, result);
+      // The token is the draft's; the action must not leak it to the browser.
+      expect(result).not.toHaveProperty("inviteToken");
+      expect(returnsOf("createQuote")).toBe(createQuote);
+    } finally {
+      if (previous === undefined) delete process.env.MILO_OPERATOR_SECRET;
+      else process.env.MILO_OPERATOR_SECRET = previous;
+    }
+  });
+
+  test("createQuote rejects terms that do not equal the amount in cents", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await expect(
+      writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, {
+          terms: {
+            unitPrice: "1",
+            total: "1",
+            scopeDigest: HEX("e"),
+            rightsDigest: HEX("f"),
+            paymentPolicy: HEX("1"),
+            salt: HEX("2"),
+          },
+        }),
+      ),
+    ).rejects.toThrow("cents");
+  });
+
+  test("acceptInvite is single use and creates the buyer membership", async () => {
+    const merchant = workspaceFixture();
+    const studio = await createStudioHandler(merchant.ctx, {
+      name: "North Studio",
+    });
+    const created = await writeQuoteDraftHandler(
+      merchant.ctx,
+      quoteArgs(studio.scopeId),
+    );
+    const token = new URL(created.inviteUrl).searchParams.get("invite") ?? "";
+    const buyer = workspaceFixture("did:privy:buyer");
+    buyer.tables.quoteDrafts = merchant.tables.quoteDrafts;
+    await expect(
+      acceptInviteHandler(buyer.ctx, {
+        quoteId: created.quoteId,
+        token: "wrong",
+        buyerCommitment: HEX("c"),
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    await expect(
+      acceptInviteHandler(buyer.ctx, {
+        quoteId: created.quoteId,
+        token,
+        buyerCommitment: HEX("c"),
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(buyer.tables.memberships[0]).toMatchObject({
+      role: "buyer",
+      scopeId: studio.scopeId,
+    });
+    const second = workspaceFixture("did:privy:other");
+    second.tables.quoteDrafts = merchant.tables.quoteDrafts;
+    await expect(
+      acceptInviteHandler(second.ctx, {
+        quoteId: created.quoteId,
+        token,
+        buyerCommitment: HEX("c"),
+      }),
+    ).resolves.toMatchObject({ ok: false });
+  });
+
+  // AUDIT15 A-04: the link is also the sign-in callback, so it lives on in mail
+  // archives. Claiming must rotate the token, or a used link stays readable
+  // forever through `orders.invite`.
+  test("acceptInvite rotates the invite token on claim", async () => {
+    const merchant = workspaceFixture();
+    const studio = await createStudioHandler(merchant.ctx, {
+      name: "North Studio",
+    });
+    const created = await writeQuoteDraftHandler(
+      merchant.ctx,
+      quoteArgs(studio.scopeId),
+    );
+    const token = new URL(created.inviteUrl).searchParams.get("invite") ?? "";
+    const before = merchant.tables.quoteDrafts[0].inviteToken;
+    expect(before).toBe(token);
+    const buyer = workspaceFixture("did:privy:buyer");
+    buyer.tables.quoteDrafts = merchant.tables.quoteDrafts;
+    await expect(
+      acceptInviteHandler(buyer.ctx, {
+        quoteId: created.quoteId,
+        token,
+        buyerCommitment: HEX("c"),
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    const after = merchant.tables.quoteDrafts[0].inviteToken;
+    expect(after).not.toBe(token);
+    expect(after).toMatch(/^[a-f0-9]{64}$/);
+    // The old link no longer resolves, and the new value is never returned.
+    await expect(
+      acceptInviteHandler(workspaceFixture("did:privy:third").ctx, {
+        quoteId: created.quoteId,
+        token,
+        buyerCommitment: HEX("c"),
+      }),
+    ).resolves.toMatchObject({ ok: false });
+  });
+});
+
+const finalizeHandler = handlerOf<
+  { quoteId: string; operatorCommitment: string },
+  { ok: boolean; version?: number; reason?: string }
+>(finalizeQuote);
+
+describe("finalizeQuote", () => {
+  function seeded() {
+    const f = workspaceFixture("did:privy:buyer");
+    f.tables.memberships.push({
+      _id: "m1",
+      privySubject: "did:privy:merchant",
+      scopeId: "scope-1",
+      accountId: "did:privy:merchant",
+      role: "merchant",
+      status: "active",
+      studioName: "North Studio",
+    });
+    f.tables.quoteDrafts.push({
+      _id: "d1",
+      id: "quote-1",
+      scopeId: "scope-1",
+      studioName: "North Studio",
+      merchantSubject: "did:privy:merchant",
+      merchantAccountId: "did:privy:merchant",
+      title: "Three hero images",
+      brief: "A short brief for the fixed-price image pack.",
+      clientEmail: "client@example.com",
+      amountUsd: 900,
+      amountMinor: 90_000,
+      currency: "USD",
+      orderNonce: HEX("a"),
+      merchantCommitment: HEX("b"),
+      termsCommitment: HEX("d"),
+      terms: {
+        unitPrice: "90000",
+        total: "90000",
+        scopeDigest: HEX("e"),
+        rightsDigest: HEX("f"),
+        paymentPolicy: HEX("1"),
+        salt: HEX("2"),
+      },
+      inviteToken: "token",
+      buyerSubject: "did:privy:buyer",
+      buyerAccountId: "did:privy:buyer",
+      buyerCommitment: HEX("c"),
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    return f;
+  }
+
+  test("refuses before the client accepts the order", async () => {
+    const f = seeded();
+    f.tables.quoteDrafts[0].buyerCommitment = undefined;
+    await expect(
+      finalizeHandler(f.ctx, {
+        quoteId: "quote-1",
+        operatorCommitment: HEX("5"),
+      }),
+    ).resolves.toMatchObject({ ok: false });
+  });
+
+  test("refuses without a configured genesis hash", async () => {
+    const f = seeded();
+    f.tables.admissionTimingPolicies = [
+      { _id: "t1", network: "preprod", captureSafetyMarginMs: 1000 },
+    ];
+    await expect(
+      finalizeHandler(f.ctx, {
+        quoteId: "quote-1",
+        operatorCommitment: HEX("5"),
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("genesis"),
+    });
+  });
+
+  test("writes the approved quote once and is idempotent", async () => {
+    const f = seeded();
+    f.tables.admissionTimingPolicies = [
+      { _id: "t1", network: "preprod", captureSafetyMarginMs: 1000 },
+    ];
+    f.tables.approvedQuotes = [];
+    f.tables.trustedProvisioning = [];
+    f.tables.trustedProvisioningAudit = [];
+    process.env.MILO_PREPROD_GENESIS_HASH = `0x${"9".repeat(64)}`;
+    const args = { quoteId: "quote-1", operatorCommitment: HEX("5") };
+    const first = await finalizeHandler(f.ctx, args);
+    expect(first).toMatchObject({ ok: true, version: 1 });
+    expect(f.tables.approvedQuotes).toHaveLength(1);
+    const second = await finalizeHandler(f.ctx, args);
+    expect(second).toMatchObject({ ok: true, version: 1 });
+    expect(f.tables.approvedQuotes).toHaveLength(1);
+    delete process.env.MILO_PREPROD_GENESIS_HASH;
+  });
+});
+
+const attachHandler = (
+  attachContract as unknown as {
+    _handler: (
+      ctx: never,
+      args: { quoteId: string; address: string },
+    ) => Promise<{ ok: boolean; phase?: string; reason?: string }>;
+  }
+)._handler;
+
+describe("attachContract", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    delete process.env.MIDNIGHT_PREPROD_INDEXER_HTTP;
+    delete process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID;
+  });
+
+  test("rejects a malformed address before any indexer call", async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      throw new Error("should not be called");
+    }) as unknown as typeof fetch;
+    await expect(
+      attachHandler({} as never, { quoteId: "q", address: "nope" }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(called).toBe(false);
+  });
+
+  test("rejects when no frozen quote exists", async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("should not be called");
+    }) as unknown as typeof fetch;
+    const ctx = {
+      runQuery: async () => null,
+      runMutation: async () => null,
+    } as never;
+    await expect(
+      attachHandler(ctx, { quoteId: "q", address: "a".repeat(64) }),
+    ).resolves.toMatchObject({ ok: false });
+  });
+
+  test("rejects when the indexer reports no contract at the address", async () => {
+    process.env.MIDNIGHT_PREPROD_INDEXER_HTTP = "https://indexer.invalid";
+    process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID = "preprod_test";
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { query: string };
+      const data = body.query.includes("contractAction")
+        ? { contractAction: null }
+        : { block: { height: 100 } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const ctx = {
+      runQuery: async () => ({
+        id: "quote-1",
+        version: 1,
+        orderNonce: HEX("a"),
+        termsCommitment: HEX("d"),
+        buyerCommitment: HEX("c"),
+        merchantCommitment: HEX("b"),
+        operatorCommitment: HEX("5"),
+        rolesFingerprint: HEX("3"),
+        initialStateFingerprint: HEX("4"),
+        genesisHash: "9".repeat(64),
+        acceptance: 1,
+        delivery: 2,
+        review: 3,
+        resolution: 4,
+      }),
+      runMutation: async () => null,
+    } as never;
+    await expect(
+      attachHandler(ctx, { quoteId: "quote-1", address: "a".repeat(64) }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("No contract"),
+    });
+  });
+
+  test("rejects a contract that is not final", async () => {
+    process.env.MIDNIGHT_PREPROD_INDEXER_HTTP = "https://indexer.invalid";
+    process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID = "preprod_test";
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { query: string };
+      const data = body.query.includes("contractAction")
+        ? {
+            contractAction: {
+              state: "00",
+              transaction: {
+                hash: "f".repeat(64),
+                block: { height: 99, hash: "e".repeat(64) },
+              },
+            },
+          }
+        : { block: { height: 100 } };
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const ctx = {
+      runQuery: async () => ({
+        id: "quote-1",
+        version: 1,
+        orderNonce: HEX("a"),
+        termsCommitment: HEX("d"),
+        buyerCommitment: HEX("c"),
+        merchantCommitment: HEX("b"),
+        operatorCommitment: HEX("5"),
+        rolesFingerprint: HEX("3"),
+        initialStateFingerprint: HEX("4"),
+        genesisHash: "9".repeat(64),
+        acceptance: 1,
+        delivery: 2,
+        review: 3,
+        resolution: 4,
+      }),
+      runMutation: async () => null,
+    } as never;
+    await expect(
+      attachHandler(ctx, { quoteId: "quote-1", address: "a".repeat(64) }),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("final"),
+    });
   });
 });

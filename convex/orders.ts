@@ -1,16 +1,27 @@
 import {
-  type DataModelFromSchemaDefinition,
-  type GenericQueryCtx,
   internalMutationGeneric,
+  internalQueryGeneric,
   makeFunctionReference,
   queryGeneric,
 } from "convex/server";
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import {
   MAX_OBSERVATION_AGE_MS,
   type ObservationBinding,
 } from "../packages/backend/src/admission-policy";
-import { requireSessionSubject } from "../packages/backend/src/session-identity";
+import { timingSafeEqualHex } from "../packages/backend/src/encoding";
+import { inviteUrl } from "../packages/backend/src/invite-link";
+import {
+  operatorEmails,
+  requireSessionSubject,
+} from "../packages/backend/src/session-identity";
+import { fail, type ReadContext } from "./admissionContext";
+import {
+  chainPhaseValidator,
+  quoteTermsValidator,
+  stageValidator,
+} from "./admissionValidators";
+import { authComponent, operatorAllowed } from "./auth";
 import { isQuoteBuyer } from "./auth/identity";
 import {
   applyChainObservation,
@@ -19,17 +30,13 @@ import {
   type ChainOrderRow,
 } from "./observationIngest";
 import { projectDeliveryPhase } from "./orderProjection";
-import type schema from "./schema";
+import { membershipFor } from "./paymentMonitor";
 
 const openSettlementRef = makeFunctionReference<"mutation">(
   "settlement:openFromObservation",
 );
 
-type OrderReadContext = GenericQueryCtx<
-  DataModelFromSchemaDefinition<typeof schema>
->;
-
-export const recordObservationArgs = v.object({
+const recordObservationArgs = v.object({
   orderId: v.string(),
   address: v.string(),
   nonce: v.string(),
@@ -51,17 +58,9 @@ const observationBinding = v.union(
   v.object({ kind: v.literal("address-claimed"), reason: v.string() }),
 );
 
-export const orderPhase = v.union(
-  v.literal("DEPLOYED"),
-  v.literal("RESERVED"),
-  v.literal("ACCEPTED"),
-  v.literal("SUBMITTED"),
-  v.literal("DISPUTED"),
-  v.literal("APPROVED"),
-  v.literal("CANCELLED"),
-);
+const orderPhase = chainPhaseValidator;
 
-export const chainOrderRecord = v.object({
+const chainOrderRecord = v.object({
   orderId: v.string(),
   network: v.literal("preprod"),
   address: v.string(),
@@ -141,7 +140,7 @@ function chainDb(ctx: ChainDbCtx): ChainObservationDb {
     },
     async patchOrder(orderId, patch) {
       const doc = await findChainOrder(ctx, "by_order", "orderId", orderId);
-      if (!doc) throw new Error("chain order disappeared mid-observation");
+      if (!doc) fail("NOT_FOUND", "chain order disappeared mid-observation");
       await ctx.db.patch(doc._id, patch);
     },
     async insertObservation(record) {
@@ -180,10 +179,10 @@ export const recordObservation = internalMutationGeneric({
   },
 });
 
-export const read = queryGeneric({
+export const read = internalQueryGeneric({
   args: { quoteId: v.string() },
   returns: v.union(chainOrderRecord, v.null()),
-  handler: async (ctx: OrderReadContext, args) => {
+  handler: async (ctx: ReadContext, args) => {
     const quoteId = args.quoteId.trim();
     if (!quoteId) return null;
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
@@ -259,3 +258,490 @@ export const orders = {
 };
 
 export type { ChainObservationResult, ObservationBinding };
+
+type Stage = Infer<typeof stageValidator>;
+
+const STAGE = stageValidator;
+
+const ROLE = v.union(
+  v.literal("buyer"),
+  v.literal("merchant"),
+  v.literal("operator"),
+);
+
+const NETWORK_HEX =
+  "70726570726f6400000000000000000000000000000000000000000000000000";
+
+type Authorization = { authorization: { status: string } };
+
+export type PaymentState =
+  | "none"
+  | "pending"
+  | "held"
+  | "captured"
+  | "released"
+  | "failed"
+  | "needs-card";
+
+const stageOf = (
+  observation: Authorization | null,
+  chainOrder: { phase: Stage } | null,
+): Stage => {
+  if (chainOrder) return chainOrder.phase;
+  // A hold is only real when the provider authorized or captured it; a frozen
+  // quote or a pending intent is not money, so it stays QUOTE.
+  const status = observation?.authorization.status;
+  return status === "authorized" || status === "captured"
+    ? "PAYMENT_HELD"
+    : "QUOTE";
+};
+
+/**
+ * The label follows the provider. A settlement op deletes the observation, so
+ * the receipt on the completed op is the only surviving record of a capture or
+ * a release. `phase` is the tie-breaker: a cancelled order cannot show
+ * Captured, nor an approved one Released, so a stale status yields to the chain.
+ */
+export const paymentStateOf = (
+  payment: unknown,
+  observation: Authorization | null,
+  settlement: { action: "capture" | "void"; state: string } | null,
+  phase?: string | null,
+): PaymentState => {
+  if (!payment) return "none";
+  const settle = (state: PaymentState): PaymentState =>
+    (phase === "CANCELLED" && state === "captured") ||
+    (phase === "APPROVED" && state === "released")
+      ? "pending"
+      : state;
+  if (settlement?.state === "complete")
+    return settle(settlement.action === "capture" ? "captured" : "released");
+  const status = observation?.authorization.status;
+  if (status === "captured") return settle("captured");
+  if (status === "voided") return settle("released");
+  if (status === "failed") return "failed";
+  return status === "authorized" ? "held" : "pending";
+};
+
+/**
+ * An operator resolves disputes across studios. The allowlist is the only
+ * source, so removing an email removes the access on the next read.
+ */
+async function isOperator(ctx: ReadContext): Promise<boolean> {
+  if (operatorEmails().length === 0) return false;
+  const user = await authComponent.safeGetAuthUser(ctx);
+  return operatorAllowed(user?.email);
+}
+
+const orderDetailValidator = v.object({
+  quoteId: v.string(),
+  orderId: v.union(v.string(), v.null()),
+  title: v.string(),
+  brief: v.string(),
+  amountUsd: v.number(),
+  studioName: v.string(),
+  role: ROLE,
+  stage: STAGE,
+  version: v.number(),
+  clientEmail: v.union(v.string(), v.null()),
+  inviteUrl: v.union(v.string(), v.null()),
+  inviteClaimed: v.boolean(),
+  deadlines: v.union(
+    v.object({
+      acceptance: v.string(),
+      delivery: v.string(),
+      review: v.string(),
+      resolution: v.string(),
+    }),
+    v.null(),
+  ),
+  chain: v.object({
+    network: v.string(),
+    orderNonce: v.string(),
+    termsCommitment: v.string(),
+    buyerCommitment: v.union(v.string(), v.null()),
+    merchantCommitment: v.string(),
+    operatorCommitment: v.string(),
+  }),
+  terms: quoteTermsValidator,
+  payment: v.object({
+    state: v.union(
+      v.literal("none"),
+      v.literal("pending"),
+      v.literal("held"),
+      v.literal("captured"),
+      v.literal("released"),
+      v.literal("failed"),
+      v.literal("needs-card"),
+    ),
+    mode: v.union(v.literal("test"), v.literal("live"), v.null()),
+  }),
+  contract: v.union(
+    v.object({
+      address: v.string(),
+      phase: v.string(),
+      revision: v.number(),
+      fresh: v.union(v.boolean(), v.null()),
+      observedAt: v.union(v.number(), v.null()),
+    }),
+    v.null(),
+  ),
+  delivery: v.object({
+    manifest: v.union(v.string(), v.null()),
+    files: v.array(
+      v.object({
+        index: v.number(),
+        sha256: v.string(),
+        contentType: v.string(),
+        byteLength: v.number(),
+      }),
+    ),
+  }),
+});
+
+export type OrderDetail = Infer<typeof orderDetailValidator>;
+
+export const order = queryGeneric({
+  args: { quoteId: v.string() },
+  returns: v.union(orderDetailValidator, v.null()),
+  handler: async (ctx: ReadContext, args) => {
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
+    const draft = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    if (!draft) return null;
+    // Everything below the draft is keyed by the draft's own scope or id, so it
+    // is independent and runs in one batch. These used to be six sequential
+    // awaits: on a cold read that is six serial dependency chains for a page the
+    // user is staring at.
+    const [membership, chainOrder, frozen, payment] = await Promise.all([
+      membershipFor(ctx, subject, draft.scopeId),
+      ctx.db
+        .query("chainOrders")
+        .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+        .unique(),
+      ctx.db
+        .query("frozenQuotes")
+        .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+        .unique(),
+      ctx.db
+        .query("paymentIntents")
+        .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+        .unique(),
+    ]);
+    const disputed = chainOrder?.phase === "DISPUTED";
+    // The allowlist is the only source of operator rights (`auth.ts`). A stored
+    // `operator` membership row used to be a second source here, but the
+    // `!disputed` refusal below made it unreachable, so it was removed rather
+    // than left looking load-bearing.
+    const operator = disputed && (await isOperator(ctx));
+    if (!operator && membership?.status !== "active") return null;
+    const role: "buyer" | "merchant" | "operator" = operator
+      ? "operator"
+      : membership?.role === "merchant"
+        ? "merchant"
+        : "buyer";
+    const [observation, delivery, settlement] = await Promise.all([
+      payment
+        ? ctx.db
+            .query("paymentObservations")
+            .withIndex("by_payment_intent", (q) =>
+              q.eq("paymentIntentId", payment._id),
+            )
+            .unique()
+        : null,
+      chainOrder
+        ? ctx.db
+            .query("deliveries")
+            .withIndex("by_order", (q) => q.eq("orderId", chainOrder.orderId))
+            .first()
+        : null,
+      payment
+        ? ctx.db
+            .query("settlementOps")
+            .withIndex("by_intent_state", (q) =>
+              q.eq("paymentIntentId", payment._id).eq("state", "complete"),
+            )
+            .first()
+        : null,
+    ]);
+    const merchant = role === "merchant";
+    return {
+      quoteId: draft.id,
+      orderId: chainOrder?.orderId ?? null,
+      title: draft.title,
+      brief: draft.brief,
+      amountUsd: draft.amountUsd,
+      studioName: draft.studioName,
+      role,
+      stage: stageOf(observation, chainOrder as { phase: Stage } | null),
+      version: frozen?.version ?? 1,
+      clientEmail: merchant ? draft.clientEmail : null,
+      inviteUrl:
+        merchant && !draft.buyerSubject
+          ? inviteUrl(draft.id, draft.inviteToken)
+          : null,
+      inviteClaimed: Boolean(draft.buyerSubject),
+      deadlines: frozen
+        ? {
+            acceptance: String(frozen.acceptanceDeadlineSeconds),
+            delivery: String(frozen.deliveryDeadlineSeconds),
+            review: String(frozen.reviewDeadlineSeconds),
+            resolution: String(frozen.resolutionDeadlineSeconds),
+          }
+        : null,
+      chain: {
+        network: NETWORK_HEX,
+        orderNonce: draft.orderNonce,
+        termsCommitment: draft.termsCommitment,
+        buyerCommitment: draft.buyerCommitment ?? null,
+        merchantCommitment: draft.merchantCommitment,
+        operatorCommitment: draft.operatorCommitment ?? "",
+      },
+      terms: draft.terms,
+      payment: {
+        state: paymentStateOf(
+          payment,
+          observation,
+          settlement,
+          chainOrder?.phase,
+        ),
+        mode: payment ? ("test" as const) : null,
+      },
+      contract: chainOrder
+        ? {
+            address: chainOrder.address,
+            phase: chainOrder.phase,
+            revision: chainOrder.revision,
+            fresh:
+              chainOrder.observedAt == null
+                ? null
+                : Date.now() - chainOrder.observedAt <= MAX_OBSERVATION_AGE_MS,
+            observedAt: chainOrder.observedAt ?? null,
+          }
+        : null,
+      delivery: {
+        manifest: chainOrder?.deliveryManifest ?? null,
+        files: (delivery?.files ?? []).map((file, index) => ({
+          index,
+          sha256: file.sha256,
+          contentType: file.contentType,
+          byteLength: file.byteLength,
+        })),
+      },
+    };
+  },
+});
+
+const listRowValidator = v.object({
+  quoteId: v.string(),
+  title: v.string(),
+  studioName: v.string(),
+  role: ROLE,
+  amountUsd: v.number(),
+  stage: STAGE,
+  lastActivityAt: v.number(),
+  updatedAt: v.number(),
+});
+
+/**
+ * How many drafts one list request will consider, per source. This is a product
+ * bound, not an implementation detail: the list is a dashboard, and a user with
+ * more than this many open orders needs the paged view rather than a longer
+ * page. It is stated once so the join below is bounded by the same number the
+ * draft read is — the previous shape capped the *join* at 512 rows instead,
+ * which dropped chain rows for drafts the user could still see.
+ */
+const LIST_DRAFT_LIMIT = 64;
+
+export const list = queryGeneric({
+  args: {},
+  returns: v.array(listRowValidator),
+  handler: async (ctx: ReadContext) => {
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
+    const [memberships, mine, buying] = await Promise.all([
+      ctx.db
+        .query("memberships")
+        .withIndex("by_subject", (q) => q.eq("privySubject", subject))
+        .take(LIST_DRAFT_LIMIT),
+      ctx.db
+        .query("quoteDrafts")
+        .withIndex("by_merchant", (q) => q.eq("merchantSubject", subject))
+        .take(LIST_DRAFT_LIMIT),
+      ctx.db
+        .query("quoteDrafts")
+        .withIndex("by_buyer", (q) => q.eq("buyerSubject", subject))
+        .take(LIST_DRAFT_LIMIT),
+    ]);
+    const active = memberships.filter((row) => row.status === "active");
+    const drafts = [...mine, ...buying];
+
+    const operator = await isOperator(ctx);
+    const disputed = operator
+      ? await ctx.db
+          .query("chainOrders")
+          .withIndex("by_terminal_phase", (q) =>
+            q.eq("terminal", false).eq("phase", "DISPUTED"),
+          )
+          .take(LIST_DRAFT_LIMIT)
+      : [];
+    const wanted = new Set([
+      ...drafts.map((d) => d.id),
+      ...disputed.map((c) => c.quoteId),
+    ]);
+
+    // Index-backed per-draft lookups, in parallel. A full-table scan with a cap
+    // silently dropped any row past the cap, which showed a live order as QUOTE;
+    // `by_quote` cannot. The draft set is already bounded, so this is bounded
+    // too, and it all runs inside one query — the client still makes one call.
+    const ids = [...wanted];
+    /** One index read per key, all in flight at once. */
+    const byKey = async <T>(
+      read: (id: string) => Promise<T | null>,
+      keys: string[],
+    ): Promise<Map<string, T | null>> =>
+      new Map(
+        await Promise.all(
+          keys.map(async (id) => [id, await read(id)] as const),
+        ),
+      );
+    // The draft shape the operator branch joins onto; stated once so the map is
+    // typed rather than `unknown`.
+    type ListedDraft = {
+      id: string;
+      scopeId: string;
+      title: string;
+      studioName: string;
+      amountUsd: number;
+      updatedAt: number;
+    };
+    const [chainByQuote, paymentByQuote, draftById] = await Promise.all([
+      byKey(
+        (id) =>
+          ctx.db
+            .query("chainOrders")
+            .withIndex("by_quote", (q) => q.eq("quoteId", id))
+            .unique(),
+        ids,
+      ),
+      byKey(
+        (id) =>
+          ctx.db
+            .query("paymentIntents")
+            .withIndex("by_quote", (q) => q.eq("quoteId", id))
+            .unique(),
+        ids,
+      ),
+      byKey(
+        (id) =>
+          ctx.db
+            .query("quoteDrafts")
+            .withIndex("by_quote", (q) => q.eq("id", id))
+            .unique(),
+        // Empty for a non-operator: the same typed call, no branch to type.
+        operator ? disputed.map((chain) => chain.quoteId) : [],
+      ),
+    ]);
+    // One observation per payment intent; fetch them for the payments we found.
+    const observationByIntent = await byKey(
+      (id) =>
+        ctx.db
+          .query("paymentObservations")
+          .withIndex("by_payment_intent", (q) =>
+            q.eq("paymentIntentId", id as never),
+          )
+          .unique(),
+      [...paymentByQuote.values()].flatMap((p) => (p ? [String(p._id)] : [])),
+    );
+
+    const rows: Infer<typeof listRowValidator>[] = [];
+    const seen = new Set<string>();
+    const add = (
+      draft: ListedDraft,
+      role: "buyer" | "merchant" | "operator",
+    ) => {
+      if (seen.has(draft.id)) return;
+      seen.add(draft.id);
+      const chainOrder = chainByQuote.get(draft.id) ?? null;
+      const payment = paymentByQuote.get(draft.id);
+      const observation = payment
+        ? (observationByIntent.get(String(payment._id)) ?? null)
+        : null;
+      const stage = stageOf(observation, chainOrder as { phase: Stage } | null);
+      const lastActivityAt = Math.max(
+        draft.updatedAt,
+        chainOrder?.observedAt ?? 0,
+        observation?.authorization.usableFrom ?? 0,
+      );
+      rows.push({
+        quoteId: draft.id,
+        title: draft.title,
+        studioName: draft.studioName,
+        role,
+        amountUsd: draft.amountUsd,
+        stage,
+        lastActivityAt,
+        updatedAt: lastActivityAt,
+      });
+    };
+
+    for (const draft of drafts) {
+      const membership = active.find((row) => row.scopeId === draft.scopeId);
+      if (membership) add(draft, membership.role);
+    }
+    for (const chain of disputed) {
+      const draft = draftById.get(chain.quoteId);
+      if (draft) add(draft, "operator");
+    }
+    return rows.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  },
+});
+
+export const invite = queryGeneric({
+  args: { quoteId: v.string(), token: v.string() },
+  returns: v.union(
+    v.object({
+      title: v.string(),
+      brief: v.string(),
+      amountUsd: v.number(),
+      studioName: v.string(),
+      claimed: v.boolean(),
+      network: v.string(),
+      orderNonce: v.string(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx: ReadContext, args) => {
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
+    // `v.string()` accepts a megabyte; a quote id is `quote_` + 32 hex and a
+    // token is 64, so anything longer is refused before the query.
+    if (args.quoteId.length > 64 || args.token.length > 64) return null;
+    const draft = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    // One refusal for "no such quote" and "wrong token": the token is a bearer
+    // secret, so the two must be indistinguishable. Constant-time compare keeps
+    // the prefix length out of the response time.
+    if (!draft || !timingSafeEqualHex(draft.inviteToken, args.token))
+      return null;
+    // Holding the link is not enough: the reader must be the invited person or
+    // already in the studio. Without this any signed-in user who sees the URL
+    // (it carries the token in a query string) reads the brief and the amount.
+    const membership = await membershipFor(ctx, subject, draft.scopeId);
+    if (membership?.status !== "active") {
+      const user = await authComponent.safeGetAuthUser(ctx);
+      if ((user?.email ?? "").toLowerCase() !== draft.clientEmail) return null;
+    }
+    return {
+      title: draft.title,
+      brief: draft.brief,
+      amountUsd: draft.amountUsd,
+      studioName: draft.studioName,
+      claimed: Boolean(draft.buyerSubject),
+      network: NETWORK_HEX,
+      orderNonce: draft.orderNonce,
+    };
+  },
+});

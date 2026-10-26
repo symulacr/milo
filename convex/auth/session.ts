@@ -1,8 +1,8 @@
-import { queryGeneric } from "convex/server";
+import { internalQueryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { requireSessionSubject } from "../../packages/backend/src/session-identity";
 
-export const current = queryGeneric({
+export const current = internalQueryGeneric({
   args: {},
   returns: v.object({ subject: v.string() }),
   handler: async (ctx) => ({

@@ -1,21 +1,15 @@
-import type {
-  DataModelFromSchemaDefinition,
-  GenericQueryCtx,
-} from "convex/server";
 import type { GenericId } from "convex/values";
+import type { PaymentAuthorization } from "../packages/backend/src/admission-policy";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import { canonicalPayload } from "../packages/backend/src/trusted-provisioning-policy";
-import type { AdmissionContext } from "./admissionContext";
+import type { AdmissionContext, ReadContext } from "./admissionContext";
 import { isQuoteBuyer } from "./auth/identity";
-import type schema from "./schema";
 
 export const MONITOR_DURATION_MS = 5 * 60_000;
 export const MONITOR_INTERVAL_MS = 15_000;
 export const MONITOR_LEASE_MS = 60_000;
 
-export type MonitorQueryContext = GenericQueryCtx<
-  DataModelFromSchemaDefinition<typeof schema>
->;
+export type MonitorQueryContext = ReadContext;
 
 export type MonitorStatus = {
   quoteVersion: number | null;
@@ -67,20 +61,20 @@ export function projectMonitorStatus(
   };
 }
 
-export const quoteById = (ctx: MonitorQueryContext, quoteId: string) =>
+export const quoteById = (ctx: ReadContext, quoteId: string) =>
   ctx.db
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", quoteId))
     .unique();
 
-export const paymentForQuote = (ctx: MonitorQueryContext, quoteId: string) =>
+export const paymentForQuote = (ctx: ReadContext, quoteId: string) =>
   ctx.db
     .query("paymentIntents")
     .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
     .unique();
 
 export const membershipFor = (
-  ctx: MonitorQueryContext,
+  ctx: ReadContext,
   subject: string,
   scopeId: string,
 ) =>
@@ -92,7 +86,7 @@ export const membershipFor = (
     .unique();
 
 export const authoritiesFor = (
-  ctx: MonitorQueryContext,
+  ctx: ReadContext,
   entries: readonly (readonly [
     "quote" | "customer" | "membership" | "timing",
     string,
@@ -108,7 +102,7 @@ export const authoritiesFor = (
   );
 
 export async function monitorBinding(
-  ctx: MonitorQueryContext,
+  ctx: ReadContext,
   quoteId: string,
   subject: string,
 ) {
@@ -194,4 +188,71 @@ export async function invalidatePaymentObservation(
       (row.monitorId === monitorId && row.monitorGeneration === generation))
   )
     await ctx.db.delete(row._id);
+}
+
+/**
+ * How far along a payment is. The order page derives its label from the
+ * observation, so a lower rank arriving late would visibly regress it: a `held`
+ * webhook delivered after `succeeded` would show "Hold in place" for a captured
+ * payment. Stripe does not guarantee delivery order, so this is a real hazard.
+ * Terminal states share a rank, so a late authorization cannot resurrect a dead
+ * hold.
+ */
+const RANK: Record<string, number> = {
+  pending: 0,
+  authorized: 1,
+  captured: 3,
+  voided: 3,
+  failed: 3,
+};
+
+export const observationRank = (status: string | undefined): number =>
+  RANK[status ?? ""] ?? 0;
+
+/**
+ * Record an observation unless a strictly higher-ranked one is already there.
+ *
+ * The single write point for `paymentObservations`: four callers used to
+ * open-code `invalidate` + `insert`, which is how an out-of-order `held` could
+ * overwrite a `captured`. Equal rank still replaces, so a fresher receipt for
+ * the same status is not lost. `fence` keeps the rule `invalidate` already
+ * enforced: a monitor may only replace its own row.
+ */
+export async function recordObservation(
+  ctx: Pick<AdmissionContext, "db">,
+  paymentIntentId: GenericId<"paymentIntents">,
+  authorization: PaymentAuthorization,
+  fence?: {
+    monitorId: GenericId<"paymentMonitors">;
+    generation: number;
+  },
+): Promise<boolean> {
+  const existing = await ctx.db
+    .query("paymentObservations")
+    .withIndex("by_payment_intent", (q) =>
+      q.eq("paymentIntentId", paymentIntentId),
+    )
+    .unique();
+  if (
+    existing &&
+    fence &&
+    (existing.monitorId !== fence.monitorId ||
+      existing.monitorGeneration !== fence.generation)
+  )
+    return false;
+  if (
+    existing &&
+    observationRank(authorization.status) <
+      observationRank(existing.authorization.status)
+  )
+    return false;
+  if (existing) await ctx.db.delete(existing._id);
+  await ctx.db.insert("paymentObservations", {
+    paymentIntentId,
+    authorization,
+    ...(fence
+      ? { monitorId: fence.monitorId, monitorGeneration: fence.generation }
+      : {}),
+  });
+  return true;
 }

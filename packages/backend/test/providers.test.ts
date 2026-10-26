@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type Stripe from "stripe";
-import { HEX64 } from "../src/encoding";
+import { HEX64, timingSafeEqualHex } from "../src/encoding";
 import { requireSessionSubject } from "../src/session-identity";
+import type { StripeMode } from "../src/stripe-mode";
 import {
   normalizeTestPayment,
+  stripeClient,
   type TestPaymentBinding,
 } from "../src/stripe-observer.server";
+
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
 
 const now = 1_800_000_000_000;
 const binding: TestPaymentBinding = {
@@ -56,16 +61,23 @@ function fixture(): Stripe.PaymentIntent {
   } as Stripe.PaymentIntent;
 }
 
+const normalize = (
+  intent: Stripe.PaymentIntent,
+  b: TestPaymentBinding,
+  at: number,
+  mode: StripeMode = "test",
+) => normalizeTestPayment(intent, b, at, mode);
+
 describe("Stripe server observation normalization", () => {
   test("matching non-USD intent and immutable binding fail the fixed protocol policy", () => {
     const intent = fixture();
     intent.currency = "eur";
-    expect(
-      normalizeTestPayment(intent, { ...binding, currency: "EUR" }, now).kind,
-    ).toBe("blocked");
+    expect(normalize(intent, { ...binding, currency: "EUR" }, now).kind).toBe(
+      "blocked",
+    );
   });
   test("uses provider capture expiry and bounds observation freshness", () => {
-    const result = normalizeTestPayment(fixture(), binding, now);
+    const result = normalize(fixture(), binding, now);
     expect(result.kind).toBe("observed");
     if (result.kind !== "observed") throw new Error("missing observation");
     expect(result.authorization).toMatchObject({
@@ -86,18 +98,18 @@ describe("Stripe server observation normalization", () => {
     if (charge.payment_method_details?.card)
       delete charge.payment_method_details.card.capture_before;
     intent.metadata = { capture_before: String(now / 1000 + 99999) };
-    expect(normalizeTestPayment(intent, binding, now).kind).toBe("blocked");
+    expect(normalize(intent, binding, now).kind).toBe("blocked");
   });
 
   test("expiry boundary cannot authorize", () => {
-    const result = normalizeTestPayment(fixture(), binding, now + 600_000);
+    const result = normalize(fixture(), binding, now + 600_000);
     expect(result.kind === "observed" && result.authorization.status).toBe(
       "failed",
     );
   });
 
   test("freshness never extends beyond a nearly expired provider hold", () => {
-    const result = normalizeTestPayment(fixture(), binding, now + 590_000);
+    const result = normalize(fixture(), binding, now + 590_000);
     expect(result.kind === "observed" && result.authorization.usableUntil).toBe(
       now + 600_000,
     );
@@ -109,7 +121,7 @@ describe("Stripe server observation normalization", () => {
       const charge = intent.latest_charge as Stripe.Charge;
       if (!charge.payment_method_details?.card) throw new Error("missing card");
       charge.payment_method_details.card.capture_before = expiry;
-      expect(normalizeTestPayment(intent, binding, now).kind).toBe("blocked");
+      expect(normalize(intent, binding, now).kind).toBe("blocked");
     });
   }
 
@@ -126,7 +138,7 @@ describe("Stripe server observation normalization", () => {
   })) {
     test(`rejects intent mismatch: ${field}`, () => {
       const intent = { ...fixture(), [field]: value } as Stripe.PaymentIntent;
-      expect(normalizeTestPayment(intent, binding, now).kind).toBe("blocked");
+      expect(normalize(intent, binding, now).kind).toBe("blocked");
     });
   }
 
@@ -147,7 +159,7 @@ describe("Stripe server observation normalization", () => {
         ...(intent.latest_charge as Stripe.Charge),
         [field]: value,
       };
-      expect(normalizeTestPayment(intent, binding, now).kind).toBe("blocked");
+      expect(normalize(intent, binding, now).kind).toBe("blocked");
     });
   }
 
@@ -162,7 +174,7 @@ describe("Stripe server observation normalization", () => {
       const intent = fixture();
       intent.status = provider;
       intent.latest_charge = null;
-      const result = normalizeTestPayment(intent, binding, now);
+      const result = normalize(intent, binding, now);
       expect(result.kind === "observed" && result.authorization.status).toBe(
         expected,
       );
@@ -176,35 +188,64 @@ describe("Stripe server observation normalization", () => {
     const charge = intent.latest_charge as Stripe.Charge;
     charge.captured = true;
     charge.amount_captured = 1200;
-    const result = normalizeTestPayment(intent, binding, now);
+    const result = normalize(intent, binding, now);
     expect(result.kind === "observed" && result.authorization.status).toBe(
       "captured",
     );
     charge.amount_refunded = 1;
-    expect(normalizeTestPayment(intent, binding, now).kind).toBe("blocked");
+    expect(normalize(intent, binding, now).kind).toBe("blocked");
   });
 
   test("rejects live bindings and invalid clocks", () => {
     expect(
-      normalizeTestPayment(
+      normalize(
         fixture(),
         { ...binding, environment: "live" } as unknown as TestPaymentBinding,
         now,
       ).kind,
     ).toBe("blocked");
-    expect(normalizeTestPayment(fixture(), binding, Number.NaN).kind).toBe(
+    expect(normalize(fixture(), binding, Number.NaN).kind).toBe("blocked");
+    expect(normalize(fixture(), binding, Number.MAX_SAFE_INTEGER).kind).toBe(
       "blocked",
     );
     expect(
-      normalizeTestPayment(fixture(), binding, Number.MAX_SAFE_INTEGER).kind,
-    ).toBe("blocked");
-    expect(
-      normalizeTestPayment(
+      normalize(
         fixture(),
         { ...binding, network: "mainnet" } as unknown as TestPaymentBinding,
         now,
       ).kind,
     ).toBe("blocked");
+  });
+
+  test("live mode accepts only live intents and charges", () => {
+    const live = fixture();
+    live.livemode = true;
+    (live.latest_charge as Stripe.Charge).livemode = true;
+    const result = normalize(live, binding, now, "live");
+    expect(result.kind).toBe("observed");
+    if (result.kind !== "observed") throw new Error("missing observation");
+    expect(result.authorization.status).toBe("authorized");
+  });
+
+  test("configured mode rejects a provider object from the other mode", () => {
+    const live = fixture();
+    live.livemode = true;
+    (live.latest_charge as Stripe.Charge).livemode = true;
+    expect(normalize(live, binding, now, "test").kind).toBe("blocked");
+    expect(normalize(fixture(), binding, now, "live").kind).toBe("blocked");
+  });
+
+  test("live mode still rejects a live intent carrying a test charge", () => {
+    const live = fixture();
+    live.livemode = true;
+    expect(normalize(live, binding, now, "live").kind).toBe("blocked");
+  });
+
+  test("the Stripe client refuses every key that does not name a mode", () => {
+    for (const key of [undefined, "", "pk_live_x", "sk_unknown_x"])
+      expect(() => stripeClient(key)).toThrow();
+    expect(stripeClient("sk_test_fixture")).toBeInstanceOf(Object);
+    expect(stripeClient("sk_live_fixture")).toBeInstanceOf(Object);
   });
 });
 
@@ -223,6 +264,74 @@ describe("Privy identity boundary", () => {
       expect(() => requireSessionSubject(identity)).toThrow(
         "Authenticated session required",
       );
+    }
+  });
+
+  // AUDIT15 A-01/A-02: an unset or empty origin must refuse every session
+  // rather than fall back to the issuer of a provider this codebase no longer
+  // uses. Previously `issuerFor()` returned "privy.io" and a legacy token was
+  // accepted.
+  test("an unconfigured deployment refuses every session", () => {
+    const site = process.env.CONVEX_SITE_URL;
+    const auth = process.env.BETTER_AUTH_URL;
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.BETTER_AUTH_URL;
+    try {
+      for (const identity of [
+        { issuer: "privy.io", subject: "did:privy:attacker123" },
+        { issuer: "urn:milo:auth-unconfigured", subject: "a".repeat(16) },
+        { issuer: "", subject: "a".repeat(16) },
+      ]) {
+        expect(() => requireSessionSubject(identity)).toThrow(
+          "Authenticated session required",
+        );
+      }
+    } finally {
+      if (site !== undefined) process.env.CONVEX_SITE_URL = site;
+      if (auth !== undefined) process.env.BETTER_AUTH_URL = auth;
+    }
+  });
+
+  // AUDIT15 A-02: `??` does not skip an empty string, so an empty origin used
+  // to be treated as configured and an empty issuer was accepted.
+  test("an empty origin is treated as unconfigured", () => {
+    const site = process.env.CONVEX_SITE_URL;
+    process.env.CONVEX_SITE_URL = "";
+    try {
+      expect(() =>
+        requireSessionSubject({ issuer: "", subject: "a".repeat(16) }),
+      ).toThrow("Authenticated session required");
+    } finally {
+      if (site === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = site;
+    }
+  });
+});
+
+// AUDIT15 A-13: the invite token is a bearer secret, so it is compared in
+// constant time. A plain `!==` has the same *result*, so the only honest test is
+// that the shared helper is correct and that both invite paths use it.
+describe("constant-time invite token compare", () => {
+  test("the helper matches only equal hex, and never throws on junk", () => {
+    const a = "a".repeat(64);
+    expect(timingSafeEqualHex(a, a)).toBe(true);
+    expect(timingSafeEqualHex(a, "b".repeat(64))).toBe(false);
+    expect(timingSafeEqualHex(a, "a".repeat(63))).toBe(false);
+    expect(timingSafeEqualHex(a, "zz")).toBe(false);
+    expect(timingSafeEqualHex("zz", a)).toBe(false);
+  });
+
+  test("both invite paths use it instead of a raw comparison", async () => {
+    for (const f of [
+      "../../../convex/orders.ts",
+      "../../../convex/trustedProvisioning.ts",
+    ]) {
+      const src = await Bun.file(new URL(f, import.meta.url).pathname).text();
+      expect(src).toContain(
+        "timingSafeEqualHex(draft.inviteToken, args.token)",
+      );
+      expect(src).not.toContain("draft.inviteToken !== args.token");
+      expect(src).not.toContain("draft.inviteToken === args.token");
     }
   });
 });

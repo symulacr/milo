@@ -4,6 +4,9 @@ import {
   makeFunctionReference,
 } from "convex/server";
 import { v } from "convex/values";
+import type Stripe from "stripe";
+import { stripeMode } from "../packages/backend/src/stripe-mode";
+import { stripeClient } from "../packages/backend/src/stripe-observer.server";
 
 export const providerIntent = internalQueryGeneric({
   args: { payment: v.id("paymentIntents") },
@@ -26,60 +29,22 @@ export const providerIntent = internalQueryGeneric({
   },
 });
 
-function env(name: string): string | undefined {
-  const value = process.env[name];
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-async function stripeForm(
-  path: string,
-  form: Record<string, string>,
-  idempotencyKey: string,
-): Promise<{ status: number; body: string }> {
-  const key = env("STRIPE_SECRET_KEY");
-  if (!key) throw new Error("STRIPE_SECRET_KEY missing");
-  const res = await fetch(`https://api.stripe.com/v1${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: new URLSearchParams(form).toString(),
-  });
-  return { status: res.status, body: await res.text() };
-}
-
 type ProviderOutcome = "captured" | "voided" | "ambiguous" | "retry" | "failed";
 
-function classify(
-  action: "capture" | "void",
-  status: number,
-  body: string,
-  amountMinor: number,
-): { outcome: ProviderOutcome; receipt?: Record<string, unknown> } {
-  if (status >= 200 && status < 300) {
-    let providerStatus = action === "capture" ? "succeeded" : "canceled";
-    let amountCaptured = amountMinor;
-    try {
-      const parsed = JSON.parse(body) as {
-        status?: string;
-        amount_received?: number;
-      };
-      if (parsed.status) providerStatus = parsed.status;
-      if (typeof parsed.amount_received === "number")
-        amountCaptured = parsed.amount_received;
-    } catch {}
-    return {
-      outcome: action === "capture" ? "captured" : "voided",
-      receipt: { providerStatus, amountCaptured, observedAt: Date.now() },
-    };
-  }
-  if (status === 409 || status === 425) return { outcome: "ambiguous" };
-  if (status >= 500 || status === 429) return { outcome: "retry" };
-  return { outcome: "failed" };
+/**
+ * Map a provider failure to the settlement outcome. The SDK raises
+ * `StripeError` with the HTTP status, so the mapping is a table, not a parser.
+ *
+ * A connection failure or timeout carries no status: the request may have
+ * reached Stripe and taken effect, so it is ambiguous, never a clean retry.
+ * The shared idempotency key makes the follow-up safe either way.
+ */
+export function outcomeOf(error: unknown): ProviderOutcome {
+  const status = (error as Stripe.errors.StripeError | undefined)?.statusCode;
+  if (status === 409 || status === 425) return "ambiguous";
+  if (status !== undefined && (status >= 500 || status === 429)) return "retry";
+  if (status === undefined) return "ambiguous";
+  return "failed";
 }
 
 const beginRef = makeFunctionReference<
@@ -110,6 +75,13 @@ export const run = internalActionGeneric({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Refuse a live key before touching the provider. `holdPayment` already
+    // refuses to create a live intent, so this is the same guard at the only
+    // other place that can move money. `stripeClient` validates the shape only.
+    if (stripeMode(process.env.STRIPE_SECRET_KEY) === "live") {
+      await ctx.runMutation(finishRef, { ...args, outcome: "failed" });
+      return null;
+    }
     const started = await ctx.runMutation(beginRef, args);
     if (!started) return null;
     const finish = (
@@ -132,22 +104,28 @@ export const run = internalActionGeneric({
       await finish("failed");
       return null;
     }
-    const path =
-      started.action === "capture"
-        ? `/payment_intents/${pi}/capture`
-        : `/payment_intents/${pi}/cancel`;
+    const capture = started.action === "capture";
     try {
-      const result = await stripeForm(path, {}, started.idempotencyKey);
-      const verdict = classify(
-        started.action,
-        result.status,
-        result.body,
-        started.amountMinor,
-      );
-      await finish(verdict.outcome, verdict.receipt);
+      const stripe = stripeClient();
+      const intent = capture
+        ? await stripe.paymentIntents.capture(
+            pi,
+            {},
+            { idempotencyKey: started.idempotencyKey },
+          )
+        : await stripe.paymentIntents.cancel(
+            pi,
+            {},
+            { idempotencyKey: started.idempotencyKey },
+          );
+      await finish(capture ? "captured" : "voided", {
+        providerStatus: intent.status,
+        amountCaptured: intent.amount_received,
+        observedAt: Date.now(),
+      });
       return null;
-    } catch {
-      await finish("retry");
+    } catch (error) {
+      await finish(outcomeOf(error));
       return null;
     }
   },

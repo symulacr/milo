@@ -1,6 +1,6 @@
 import type { Infer } from "convex/values";
 import { v } from "convex/values";
-import type { AdmissionContext } from "./admissionContext";
+import { type AdmissionContext, fail } from "./admissionContext";
 
 const deliveryPhase = v.union(
   v.literal("ACCEPTED"),
@@ -87,7 +87,7 @@ export async function createOrder(
       existing.address !== input.address ||
       existing.nonce !== input.nonce
     )
-      throw new Error("Existing order cannot be adopted or rebound");
+      fail("CONFLICT", "Existing order cannot be adopted or rebound");
     const projection = await findOrder(ctx, input.quoteId);
     if (!projection) {
       await ctx.db.insert(
@@ -107,7 +107,7 @@ export async function createOrder(
     .query("chainOrders")
     .withIndex("by_address", (q) => q.eq("address", input.address))
     .unique();
-  if (claimed) throw new Error("Contract address is already claimed");
+  if (claimed) fail("CONFLICT", "Contract address is already claimed");
   await ctx.db.insert("chainOrders", {
     orderId: input.quoteId,
     quoteId: input.quoteId,
@@ -136,7 +136,7 @@ export async function projectDeliveryPhase(
   revision: number,
 ): Promise<void> {
   const order = await findOrder(ctx, orderId);
-  if (!order) throw new Error("Order projection is missing");
+  if (!order) fail("NOT_FOUND", "Order projection is missing");
   const next = deliveryPhaseFor(phase);
   if (order.phase === next && order.revision === revision) return;
   await ctx.db.patch(order._id, { phase: next, revision });

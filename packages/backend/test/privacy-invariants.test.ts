@@ -187,6 +187,8 @@ describe("M9.2 no PII/secrets in logs or public projections", () => {
     process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES = JSON.stringify([
       { operatorId: "op", sourceId: "verified-import" },
     ]);
+    const previousKey = process.env.STRIPE_SECRET_KEY;
+    process.env.STRIPE_SECRET_KEY = "sk_test_fixture";
     try {
       await expect(
         provisionTestCustomerFacts(
@@ -210,9 +212,11 @@ describe("M9.2 no PII/secrets in logs or public projections", () => {
             customers: { retrieve: async () => ({ id: "cus_x" }) },
           }),
         ),
-      ).rejects.toThrow("Stripe test customer facts unavailable");
+      ).rejects.toThrow("Stripe customer facts unavailable");
     } finally {
       delete process.env.MILO_TRUSTED_PROVISIONING_AUTHORITIES;
+      if (previousKey === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = previousKey;
     }
   });
 

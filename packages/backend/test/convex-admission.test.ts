@@ -10,6 +10,9 @@ import {
 import { REQUIRED_ENTRYPOINTS } from "../src/admission-policy";
 import { buildQuote } from "./fixtures";
 
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
+
 // Explicit DB double: verifies adapter reads/writes, not Convex transaction/OCC behavior.
 function databaseDouble() {
   const now = Date.now();

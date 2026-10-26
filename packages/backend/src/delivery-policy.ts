@@ -2,11 +2,12 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { z } from "zod";
 import { bytesToHex, HEX64, hexToBytes } from "./encoding.ts";
 
-const MAX_BYTES = 5 * 1024 * 1024;
+export const MAX_BYTES = 5 * 1024 * 1024;
 const ENCODER = new TextEncoder();
 const id = z.string().trim().min(1).max(256);
 const digest = z.string().regex(HEX64);
-const mime = z.enum(["image/png", "image/jpeg", "image/webp"]);
+export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const mime = z.enum(ACCEPTED_IMAGE_TYPES as [string, ...string[]]);
 const size = z.number().int().positive().max(MAX_BYTES);
 const file = z.strictObject({
   grantId: id,

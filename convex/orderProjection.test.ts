@@ -7,68 +7,8 @@
  * threw before its policy ran. These tests pin the pairing and the backfill.
  */
 import { describe, expect, test } from "bun:test";
-import type { AdmissionContext } from "./admissionContext";
 import { createOrder, deliveryPhaseFor } from "./orderProjection";
-
-type Row = Record<string, unknown> & { _id: string };
-
-function databaseDouble(seed: Record<string, Row[]> = {}) {
-  const tables: Record<string, Row[]> = {
-    chainOrders: [],
-    orders: [],
-    ...seed,
-  };
-  const ctx = {
-    db: {
-      query: (table: string) => {
-        const rows = () => tables[table] ?? [];
-        const filter = (predicate: (row: Row) => boolean) => ({
-          unique: async () => {
-            const matched = rows().filter(predicate);
-            return matched.length === 1 ? matched[0] : null;
-          },
-          collect: async () => rows().filter(predicate),
-        });
-        return {
-          withIndex: (
-            _index: string,
-            range: (q: {
-              eq: (field: string, value: unknown) => unknown;
-            }) => unknown,
-          ) => {
-            const captured: Array<[string, unknown]> = [];
-            const chain = {
-              eq: (field: string, value: unknown) => {
-                captured.push([field, value]);
-                return chain;
-              },
-            };
-            range(chain);
-            return filter((row) =>
-              captured.every(([field, value]) => row[field] === value),
-            );
-          },
-        };
-      },
-      insert: async (table: string, doc: Record<string, unknown>) => {
-        const _id = `${table}-${tables[table].length + 1}`;
-        tables[table].push({ ...doc, _id });
-        return _id;
-      },
-      patch: async (id: string, fields: Record<string, unknown>) => {
-        for (const rows of Object.values(tables)) {
-          const found = rows.find((row) => row._id === id);
-          if (found) {
-            Object.assign(found, fields);
-            return;
-          }
-        }
-        throw new Error(`unknown document ${id}`);
-      },
-    },
-  };
-  return { ctx: ctx as unknown as AdmissionContext, tables };
-}
+import { databaseDouble } from "./orderProjection.double";
 
 const input = {
   quoteId: "quote-1",

@@ -18,11 +18,25 @@ import {
   type UploadGrant,
   verifyRetrievedBytes,
 } from "../packages/backend/src/delivery-policy";
+import { bytesToHex, randomBytes } from "../packages/backend/src/encoding";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
-import type { AdmissionContext } from "./admissionContext";
+import { type AdmissionContext, fail } from "./admissionContext";
 import { requireMembership } from "./auth/identity";
 
 export { GRANT_GRACE_MS, GRANT_TTL_MS };
+
+/**
+ * Compare two provenance tickets without leaking where they differ. The ticket
+ * is a bearer secret, so an early-exit compare would time-leak its prefix.
+ */
+function ticketMatches(expected: string | undefined, given: string): boolean {
+  if (typeof expected !== "string" || expected.length !== given.length)
+    return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++)
+    diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
+}
 
 const inspectGrantRef = makeFunctionReference<"action">(
   "files:inspectGrantAction",
@@ -97,10 +111,8 @@ const grantsForOrder = (ctx: AdmissionContext, orderId: string) =>
     .withIndex("by_order", (q) => q.eq("orderId", orderId))
     .collect() as Promise<FileGrantRow[]>;
 
-const allGrants = (ctx: AdmissionContext) =>
-  ctx.db.query("fileGrants").fullTableScan().collect() as Promise<
-    FileGrantRow[]
-  >;
+/** One sweep run removes at most this many grants. */
+export const SWEEP_BATCH = 64;
 
 const deliveryForOrder = (ctx: AdmissionContext, orderId: string) =>
   ctx.db
@@ -113,7 +125,7 @@ async function loadOrder(ctx: AdmissionContext, orderId: string) {
     .query("orders")
     .withIndex("by_order", (q) => q.eq("id", orderId))
     .unique()) as OrderRow | null;
-  if (!order) throw new Error("authorized order membership is required");
+  if (!order) fail("FORBIDDEN", "authorized order membership is required");
   return order;
 }
 
@@ -124,7 +136,7 @@ async function requireMerchantOrder(ctx: AdmissionContext, orderId: string) {
     membership.role !== "merchant" ||
     membership.accountId !== order.merchantId
   )
-    throw new Error("merchant delivery is not permitted in this phase");
+    fail("FORBIDDEN", "merchant delivery is not permitted in this phase");
   return { order, membership };
 }
 
@@ -185,13 +197,13 @@ export async function requestUpload(
   requireSessionSubject(await ctx.auth.getUserIdentity());
   const { order } = await requireMerchantOrder(ctx, input.orderId);
   if (order.phase !== "ACCEPTED")
-    throw new Error("merchant delivery is not permitted in this phase");
+    fail("FORBIDDEN", "merchant delivery is not permitted in this phase");
   const now = Date.now();
   const outstanding = (await grantsForOrder(ctx, order.id)).filter((grant) =>
     liveGrant(grant, now),
   );
   if (outstanding.length >= 3)
-    throw new Error("per-user outstanding upload limit reached");
+    fail("CONFLICT", "per-user outstanding upload limit reached");
   const expiresAt = now + GRANT_TTL_MS;
   const grantId = await ctx.db.insert("fileGrants", {
     orderId: order.id,
@@ -202,7 +214,9 @@ export async function requestUpload(
     inspected: undefined,
   });
   const uploadUrl = await ctx.storage.generateUploadUrl();
-  const uploadTicket = `ut_${String(grantId)}_${String(now)}_${String(Math.random()).slice(2, 10)}`;
+  // The ticket is the provenance secret that proves the caller received this
+  // upload URL. Math.random() gave it ~26 bits; use the platform CSPRNG.
+  const uploadTicket = `ut_${String(grantId)}_${bytesToHex(randomBytes(16))}`;
   await ctx.db.patch(grantId as never, { uploadTicket } as never);
   return { grantId: String(grantId), expiresAt, uploadUrl, uploadTicket };
 }
@@ -210,7 +224,7 @@ export async function requestUpload(
 async function requireUploadGrant(ctx: AdmissionContext, grantId: string) {
   requireSessionSubject(await ctx.auth.getUserIdentity());
   const grant = await grantRow(ctx, grantId);
-  if (!grant) throw new Error("upload grant is unavailable");
+  if (!grant) fail("NOT_FOUND", "upload grant is unavailable");
   const order = await loadOrder(ctx, grant.orderId);
   const membership = await requireMembership(ctx, order.scopeId);
   const owner =
@@ -218,7 +232,7 @@ async function requireUploadGrant(ctx: AdmissionContext, grantId: string) {
     membership.accountId === order.merchantId &&
     membership.accountId === grant.uploaderId;
   if (!owner || !liveGrant(grant, Date.now()))
-    throw new Error("upload grant is unavailable");
+    fail("NOT_FOUND", "upload grant is unavailable");
   return grant;
 }
 
@@ -249,18 +263,19 @@ export async function attachUpload(
   if (
     typeof input.uploadTicket !== "string" ||
     input.uploadTicket.length === 0 ||
-    grant.uploadTicket !== input.uploadTicket
+    !ticketMatches(grant.uploadTicket, input.uploadTicket)
   )
-    throw new Error("upload URL provenance ticket is not valid for this grant");
+    fail("INVALID_INPUT", "upload URL provenance ticket is invalid");
   const metadata = await ctx.storage.getMetadata(input.storageId);
-  if (!metadata) throw new Error("storage object is required before bind");
+  if (!metadata)
+    fail("INVALID_INPUT", "storage object is required before bind");
   const claimed = (await ctx.db
     .query("fileGrants")
     .withIndex("by_storage", (q) => q.eq("storageId", input.storageId))
     .collect()) as FileGrantRow[];
   for (const other of claimed) {
     if (other._id !== grant._id && !other.consumed)
-      throw new Error("storage object is already claimed by another grant");
+      fail("CONFLICT", "storage object is already claimed by another grant");
   }
   return bindGrant(ctx, grant, input.storageId);
 }
@@ -270,7 +285,7 @@ export async function storeAndAttachUpload(
   input: { grantId: string; bytes: Uint8Array },
 ) {
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0)
-    throw new Error("upload bytes are required");
+    fail("INVALID_INPUT", "upload bytes are required");
   const storageId = await ctx.storage.store(input.bytes);
   await ctx.runMutation(bindUploadRef, { grantId: input.grantId, storageId });
   return { grantId: input.grantId, storageId };
@@ -289,10 +304,11 @@ export async function markInspected(
   input: { grantId: string; inspected: Inspected },
 ) {
   const grant = await grantRow(ctx, input.grantId);
-  if (!grant || grant.consumed) throw new Error("upload grant is unavailable");
-  if (grant.inspected) throw new Error("grant is already inspected");
+  if (!grant || grant.consumed)
+    fail("NOT_FOUND", "upload grant is unavailable");
+  if (grant.inspected) fail("CONFLICT", "grant is already inspected");
   if (grant.storageId !== input.inspected.storageId)
-    throw new Error("storageId that no longer matches the grant is refused");
+    fail("INVALID_INPUT", "storageId no longer matches the grant");
   await ctx.db.patch(grant._id as never, { inspected: input.inspected });
   return String(grant._id);
 }
@@ -302,7 +318,7 @@ export async function inspectGrant(
   input: { grantId: string; storageId: string },
 ) {
   const blob = await ctx.storage.get(input.storageId);
-  if (!blob) throw new Error("storage object is required");
+  if (!blob) fail("INVALID_INPUT", "storage object is required");
   const inspected = inspectBytes(new Uint8Array(await blob.arrayBuffer()));
   await ctx.runMutation(markInspectedRef, {
     grantId: input.grantId,
@@ -329,12 +345,14 @@ export async function freeze(
   const { order, membership } = await requireMerchantOrder(ctx, input.orderId);
   const now = Date.now();
   const existing = await deliveryForOrder(ctx, order.id);
-  const attached = new Set<string>();
-  for (const row of await allGrants(ctx)) {
-    if (row.storageId && row.consumed) attached.add(row.storageId);
-  }
-  const grants = new Map(
-    (await grantsForOrder(ctx, order.id)).map((grant) => [grant._id, grant]),
+  const orderGrants = await grantsForOrder(ctx, order.id);
+  const grants = new Map(orderGrants.map((grant) => [grant._id, grant]));
+  // Only this order's consumed grants count as attached. The previous
+  // full-table scan accepted a storage id consumed by any order.
+  const attached = new Set(
+    orderGrants
+      .filter((grant) => grant.storageId && grant.consumed)
+      .map((grant) => grant.storageId as string),
   );
   const repository = repositoryFor(membership.accountId, order, {
     serverNow: () => now,
@@ -392,7 +410,7 @@ export async function resolveRead(
     confirmedDeliveryMatches: () => confirmed,
     storageAttached: () => true,
     insertDeliveryAndConsumeGrants: () => {
-      throw new Error("read path is immutable");
+      fail("WRONG_STATE", "read path is immutable");
     },
   });
   return authorizeDeliveryRead(repository, {
@@ -417,7 +435,7 @@ export async function serveFile(
     fileIndex: input.fileIndex,
   })) as Inspected & { grantId: string };
   const blob = await ctx.storage.get(descriptor.storageId);
-  if (!blob) throw new Error("delivery is unavailable");
+  if (!blob) fail("NOT_FOUND", "delivery is unavailable");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   verifyRetrievedBytes(
     { ...descriptor, contentType: descriptor.contentType as ContentType },
@@ -428,13 +446,16 @@ export async function serveFile(
 
 export async function sweepGrants(ctx: AdmissionContext) {
   const cutoff = Date.now() - GRANT_TTL_MS - GRANT_GRACE_MS;
+  // A cron sweep must not load every grant ever issued. `by_expiry` bounds the
+  // read to the grants that are already past the grace window, and the cap
+  // keeps one run small; the next run continues where this one stopped.
+  const stale = (await ctx.db
+    .query("fileGrants")
+    .withIndex("by_expiry", (q) => q.lt("expiresAt", cutoff))
+    .take(SWEEP_BATCH)) as FileGrantRow[];
   let removed = 0;
-  for (const grant of await allGrants(ctx)) {
-    if (
-      !grant.consumed &&
-      Number.isSafeInteger(grant.expiresAt) &&
-      grant.expiresAt < cutoff
-    ) {
+  for (const grant of stale) {
+    if (!grant.consumed && Number.isSafeInteger(grant.expiresAt)) {
       await ctx.db.delete(grant._id as never);
       removed += 1;
     }
@@ -520,17 +541,3 @@ export const sweepGrantsMutation = internalMutationGeneric({
   returns: v.object({ removed: v.number() }),
   handler: sweepGrants as never,
 });
-
-export default {
-  requestUpload: requestUploadMutation,
-  attachUpload: attachUploadMutation,
-  storeAndAttach: storeAndAttachUploadAction,
-  freeze: freezeMutation,
-  inspect: inspectGrantAction,
-  bindUpload: bindUploadMutation,
-  grantForInspection: markInspectedMutation,
-  markInspected: markInspectedMutation,
-  resolveRead: resolveReadMutation,
-  serveFile: serveFileAction,
-  sweepGrants: sweepGrantsMutation,
-};

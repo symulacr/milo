@@ -8,6 +8,7 @@ import {
   type ObservedDeployment,
   validDeploymentObservation,
 } from "../packages/backend/src/admission-policy";
+import { fail } from "./admissionContext";
 import { deploymentObservationFields } from "./admissionValidators";
 
 const recordDeploymentArgs = v.object(deploymentObservationFields);
@@ -53,11 +54,11 @@ export type RecordDeploymentResult =
   | { kind: "replay"; observationId: string };
 
 function stale(reason: string): never {
-  throw new Error(`stale deployment observation: ${reason}`);
+  fail("WRONG_STATE", `stale deployment observation: ${reason}`);
 }
 
 function contradictory(reason: string): never {
-  throw new Error(`contradictory deployment observation: ${reason}`);
+  fail("WRONG_STATE", `contradictory deployment observation: ${reason}`);
 }
 
 export type StoredDeploymentRecord = ObservedDeployment;
@@ -247,7 +248,15 @@ export async function applyChainObservation(
     observedAt: now,
     kind: "bind",
   });
-  return { ...verdict, orderId: observed.orderId };
+  // Explicit keys, not `{...verdict}`: a spread silently forwards any field
+  // `decideObservationBinding` grows, which is exactly how the create-quote
+  // action shipped a superset of its `returns` validator and failed live.
+  return {
+    kind: "bind",
+    phase: verdict.phase,
+    revision: verdict.revision,
+    orderId: observed.orderId,
+  };
 }
 
 export const recordDeployment = internalMutationGeneric({

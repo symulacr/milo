@@ -1,13 +1,15 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 import Stripe from "stripe";
 import type { PaymentAuthorization } from "./admission-policy";
 import { PAYMENT_AUTHORIZATION_WINDOW_MS } from "./admission-policy";
+import { bytesToHex } from "./encoding";
+import { type StripeMode, stripeMode } from "./stripe-mode";
 
 export const STRIPE_API_VERSION = "2026-09-30.endive" as const;
 export const STRIPE_ACCOUNT_ID = /^acct_[a-zA-Z0-9]+$/;
 export const STRIPE_CUSTOMER_ID = /^cus_[a-zA-Z0-9]+$/;
 
-const TEST_KEY = /^(sk|rk)_test_[a-zA-Z0-9]+$/;
 const INTENT_ID = /^pi_[a-zA-Z0-9]+$/;
 const TEXT_IDS = ["id", "quoteId", "buyerAccountId"] as const;
 const SIMPLE_STATUS: Record<string, PaymentAuthorization["status"]> = {
@@ -47,22 +49,23 @@ const blocked = (reason: string): PaymentObservation => ({
 const externalId = (v: string | { id: string } | null): string | null =>
   typeof v === "string" ? v : (v?.id ?? null);
 
-export function testStripeClient(
-  message = "Server-only Stripe test key required",
-): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || !TEST_KEY.test(key)) throw new Error(message);
+export function stripeClient(key = process.env.STRIPE_SECRET_KEY): Stripe {
+  if (typeof key !== "string") throw new Error("STRIPE_SECRET_KEY missing");
+  stripeMode(key);
   return new Stripe(key, {
     apiVersion: STRIPE_API_VERSION,
     maxNetworkRetries: 1,
     timeout: 10_000,
+    httpClient: Stripe.createFetchHttpClient(),
   });
 }
 
 export async function observeTestPayment(
   binding: TestPaymentBinding,
 ): Promise<PaymentObservation> {
-  const stripe = testStripeClient("A server-only Stripe test key is required");
+  const key = process.env.STRIPE_SECRET_KEY;
+  const mode = stripeMode(key);
+  const stripe = stripeClient(key);
   if (!validBinding(binding)) return blocked("Invalid test payment binding");
   try {
     if (
@@ -74,7 +77,7 @@ export async function observeTestPayment(
       binding.stripePaymentIntentId,
       { expand: ["latest_charge"] },
     );
-    return normalizeTestPayment(intent, binding, observedAt);
+    return normalizeTestPayment(intent, binding, observedAt, mode);
   } catch {
     return blocked("Stripe observation unavailable; retry reconciliation");
   }
@@ -84,6 +87,7 @@ export function normalizeTestPayment(
   intent: Stripe.PaymentIntent,
   binding: TestPaymentBinding,
   observedAt: number,
+  mode: StripeMode,
 ): PaymentObservation {
   if (
     !validBinding(binding) ||
@@ -93,7 +97,7 @@ export function normalizeTestPayment(
   )
     return blocked("Invalid test payment binding or clock");
   if (
-    intent.livemode !== false ||
+    intent.livemode !== (mode === "live") ||
     intent.id !== binding.stripePaymentIntentId ||
     intent.amount !== binding.amountMinor ||
     intent.currency !== binding.currency.toLowerCase() ||
@@ -107,7 +111,7 @@ export function normalizeTestPayment(
     return blocked("Expanded charge required");
   if (
     charge &&
-    (charge.livemode !== false ||
+    (charge.livemode !== (mode === "live") ||
       externalId(charge.payment_intent) !== intent.id ||
       externalId(charge.customer) !== binding.stripeCustomerId ||
       charge.amount !== binding.amountMinor ||
@@ -187,9 +191,9 @@ export function normalizeTestPayment(
       captureBeforeMs,
       source: "payment-observer",
       status,
-      providerReceiptFingerprint: createHash("sha256")
-        .update(JSON.stringify(receipt))
-        .digest("hex"),
+      providerReceiptFingerprint: bytesToHex(
+        sha256(utf8ToBytes(JSON.stringify(receipt))),
+      ),
     },
   };
 }

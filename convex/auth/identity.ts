@@ -1,28 +1,18 @@
-import type {
-  DataModelFromSchemaDefinition,
-  GenericQueryCtx,
-} from "convex/server";
 import { requireSessionSubject } from "../../packages/backend/src/session-identity";
-import type schema from "../schema";
-
-type Context = GenericQueryCtx<DataModelFromSchemaDefinition<typeof schema>>;
+import type { DataModel } from "../_generated/dataModel";
+import { fail, type ReadContext } from "../admissionContext";
+import { membershipFor } from "../paymentMonitor";
 
 type Membership = Pick<
-  DataModelFromSchemaDefinition<typeof schema>["memberships"]["document"],
+  DataModel["memberships"]["document"],
   "status" | "role" | "accountId"
 >;
 
-export async function requireMembership(ctx: Context, scopeId: string) {
+export async function requireMembership(ctx: ReadContext, scopeId: string) {
   const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
-  const membership = await ctx.db
-    .query("memberships")
-    .withIndex("by_subject_scope", (q) =>
-      q.eq("privySubject", subject).eq("scopeId", scopeId),
-    )
-    .unique();
-  if (membership?.status !== "active") {
-    throw new Error("Active membership required");
-  }
+  const membership = await membershipFor(ctx, subject, scopeId);
+  if (membership?.status !== "active")
+    fail("FORBIDDEN", "Active membership required");
   return membership;
 }
 

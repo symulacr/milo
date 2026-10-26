@@ -1,22 +1,28 @@
 import { internalMutationGeneric, makeFunctionReference } from "convex/server";
 import { type GenericId, v } from "convex/values";
 import type { PaymentAuthorization } from "../packages/backend/src/admission-policy";
-import { usableObservation } from "../packages/backend/src/provisioning-policy";
-import type { AdmissionContext } from "./admissionContext";
+import {
+  capturableHold,
+  captureCoversResolution,
+} from "../packages/backend/src/provisioning-policy";
+import { type AdmissionContext, fail, type ReadDb } from "./admissionContext";
 import { invalidatePaymentObservation } from "./paymentMonitor";
 
 export const MAX_SWEEP = 16;
-export const SETTLEMENT_LEASE_MS = 60_000;
-export const RETRY_BACKOFF_MS = 30_000;
+const SETTLEMENT_LEASE_MS = 60_000;
+const RETRY_BACKOFF_MS = 30_000;
+/** How many times a parked (`ambiguous`) op is re-queued before it stays blocked. */
+export const MAX_RECONCILE_ATTEMPTS = 5;
+/** How long a processed inbox row is kept for the audit trail. */
+export const INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const settleActionRef = makeFunctionReference<"action">("stripeSettlement:run");
 
-export type SettleAction = "capture" | "void";
-export type OrderPhase = string;
+type SettleAction = "capture" | "void";
 
 export function settlementAuthorized(
   action: SettleAction,
-  phase: OrderPhase,
+  phase: string,
 ): boolean {
   if (action === "capture") return phase === "APPROVED";
   if (action === "void") return phase === "CANCELLED";
@@ -39,19 +45,7 @@ export function inboxDedupeKey(
   return `${provider}|${accountId}|${eventId}`;
 }
 
-type OpsDb = {
-  query: (table: string) => {
-    withIndex: (
-      name: string,
-      range: (q: { eq: (field: string, value: unknown) => unknown }) => unknown,
-    ) => {
-      take: (n: number) => Promise<unknown[]>;
-      unique?: () => Promise<unknown>;
-    };
-  };
-};
-
-export type SettlementOpRow = {
+type SettlementOpRow = {
   _id: GenericId<"settlementOps">;
   paymentIntentId: GenericId<"paymentIntents">;
   action: SettleAction;
@@ -60,13 +54,14 @@ export type SettlementOpRow = {
   state: string;
   generation: number;
   attempt: number;
+  startedAt?: number;
 };
 
 export async function opsForIntent(
-  db: OpsDb | AdmissionContext["db"],
+  db: ReadDb,
   paymentIntentId: GenericId<"paymentIntents">,
 ): Promise<SettlementOpRow[]> {
-  const rows = await (db as OpsDb)
+  const rows = await db
     .query("settlementOps")
     .withIndex("by_intent", (q) => q.eq("paymentIntentId", paymentIntentId))
     .take(64);
@@ -108,8 +103,13 @@ export const recordEvent = internalMutationGeneric({
     eventType: v.string(),
     digest: v.string(),
     paymentIntentRef: v.union(v.string(), v.null()),
+    cancellationReason: v.optional(v.union(v.string(), v.null())),
   },
-  returns: v.object({ isNew: v.boolean(), inboxId: v.id("paymentInbox") }),
+  returns: v.object({
+    isNew: v.boolean(),
+    inboxId: v.id("paymentInbox"),
+    digestMatches: v.boolean(),
+  }),
   handler: async (ctx: AdmissionContext, args) => {
     const existing = await inboxExists(
       ctx.db,
@@ -117,7 +117,15 @@ export const recordEvent = internalMutationGeneric({
       args.accountId,
       args.eventId,
     );
-    if (existing) return { isNew: false, inboxId: existing._id };
+    if (existing)
+      return {
+        isNew: false,
+        inboxId: existing._id,
+        // A replay of the same event id must carry the same body. A mismatch is
+        // not a duplicate: it is a different payload wearing a known id, and the
+        // caller has to refuse it rather than silently drop it.
+        digestMatches: existing.digest === args.digest,
+      };
     const inboxId = await ctx.db.insert("paymentInbox", {
       provider: args.provider,
       accountId: args.accountId,
@@ -125,10 +133,11 @@ export const recordEvent = internalMutationGeneric({
       eventType: args.eventType,
       digest: args.digest,
       paymentIntentRef: args.paymentIntentRef,
+      cancellationReason: args.cancellationReason ?? undefined,
       receivedAt: Date.now(),
       processedAt: undefined,
     });
-    return { isNew: true, inboxId };
+    return { isNew: true, inboxId, digestMatches: true };
   },
 });
 
@@ -179,32 +188,15 @@ type OpenArgs = {
   currency: string;
 };
 
-const NO_ACTION = {
-  kind: "noop" as const,
-  reason: "phase does not open a settlement action",
-};
+const noop = (reason: string) => ({ kind: "noop" as const, reason });
 
-export const request = internalMutationGeneric({
-  args: {
-    orderId: v.string(),
-    contractRevision: v.number(),
-    phase: v.string(),
-    paymentIntentId: v.id("paymentIntents"),
-    quoteId: v.string(),
-    quoteVersion: v.number(),
-    amountMinor: v.number(),
-    currency: v.string(),
-  },
-  returns: v.union(
-    v.object({
-      kind: v.literal("opened"),
-      opId: v.id("settlementOps"),
-      action: v.union(v.literal("capture"), v.literal("void")),
-      idempotencyKey: v.string(),
-    }),
-    v.object({ kind: v.literal("noop"), reason: v.string() }),
-  ),
-  handler: async (ctx: AdmissionContext, args) => openSettlement(ctx, args),
+const NO_ACTION = noop("phase does not open a settlement action");
+
+const noopResult = v.object({ kind: v.literal("noop"), reason: v.string() });
+const openedResult = v.object({
+  kind: v.literal("opened"),
+  opId: v.id("settlementOps"),
+  action: v.union(v.literal("capture"), v.literal("void")),
 });
 
 async function openSettlement(ctx: AdmissionContext, args: OpenArgs) {
@@ -217,15 +209,16 @@ async function openSettlement(ctx: AdmissionContext, args: OpenArgs) {
   if (!action || !settlementAuthorized(action, args.phase)) return NO_ACTION;
 
   const payment = await ctx.db.get(args.paymentIntentId);
-  if (!payment) throw new Error("Unbound payment refused");
+  if (!payment) fail("CONFLICT", "Unbound payment refused");
   if (
     payment.quoteId !== args.quoteId ||
     payment.quoteVersion !== args.quoteVersion ||
     payment.amountMinor !== args.amountMinor ||
     payment.currency !== args.currency
   )
-    throw new Error("Payment/quote binding drift refused");
+    fail("CONFLICT", "Payment/quote binding drift refused");
 
+  const now = Date.now();
   if (action === "capture") {
     const observation = await ctx.db
       .query("paymentObservations")
@@ -233,13 +226,31 @@ async function openSettlement(ctx: AdmissionContext, args: OpenArgs) {
         q.eq("paymentIntentId", args.paymentIntentId),
       )
       .unique();
-    const now = Date.now();
     const auth: PaymentAuthorization | undefined = observation?.authorization;
+    if (!auth || !capturableHold(auth, now))
+      fail("WRONG_STATE", "Capture requires a capturable hold");
+    // Admission refuses a hold that expires before the resolution window plus
+    // the safety margin; capture asks the same question.
+    const quote = await ctx.db
+      .query("frozenQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    const timing = quote
+      ? await ctx.db
+          .query("admissionTimingPolicies")
+          .withIndex("by_network", (q) => q.eq("network", quote.network))
+          .unique()
+      : null;
     if (
-      auth?.status !== "authorized" ||
-      !usableObservation(auth, now, auth.usableFrom)
+      !quote ||
+      !timing ||
+      !captureCoversResolution(
+        auth,
+        quote.resolutionDeadlineSeconds,
+        timing.captureSafetyMarginMs,
+      )
     )
-      throw new Error("Capture requires a fresh usable bound hold");
+      fail("WRONG_STATE", "Capture window closed before the resolution margin");
   }
 
   const idempotencyKey = settlementIdempotencyKey(
@@ -266,7 +277,6 @@ async function openSettlement(ctx: AdmissionContext, args: OpenArgs) {
 
   await invalidatePaymentObservation(ctx, args.paymentIntentId);
 
-  const now = Date.now();
   const opId = await ctx.db.insert("settlementOps", {
     orderId: args.orderId,
     action,
@@ -303,43 +313,25 @@ export const fenceArgs = {
 
 export const openFromObservation = internalMutationGeneric({
   args: { orderId: v.string() },
-  returns: v.union(
-    v.object({
-      kind: v.literal("opened"),
-      opId: v.id("settlementOps"),
-      action: v.union(v.literal("capture"), v.literal("void")),
-    }),
-    v.object({ kind: v.literal("noop"), reason: v.string() }),
-  ),
+  returns: v.union(openedResult, noopResult),
   handler: async (ctx: AdmissionContext, args) => {
     const chain = await ctx.db
       .query("chainOrders")
       .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
       .unique();
-    if (!chain)
-      return {
-        kind: "noop" as const,
-        reason: "no chain order is bound to this order",
-      };
+    if (!chain) return noop("no chain order is bound to this order");
     if (
       !settlementAuthorized(
         chain.phase === "APPROVED" ? "capture" : "void",
         chain.phase,
       )
     )
-      return {
-        kind: "noop" as const,
-        reason: "observed phase opens no settlement action",
-      };
+      return noop("observed phase opens no settlement action");
     const payment = await ctx.db
       .query("paymentIntents")
       .withIndex("by_quote", (q) => q.eq("quoteId", chain.quoteId))
       .unique();
-    if (!payment)
-      return {
-        kind: "noop" as const,
-        reason: "no authorized payment is bound to this quote",
-      };
+    if (!payment) return noop("no authorized payment is bound to this quote");
     const opened = await openSettlement(ctx, {
       orderId: chain.orderId,
       contractRevision: chain.revision,
@@ -350,8 +342,7 @@ export const openFromObservation = internalMutationGeneric({
       amountMinor: payment.amountMinor,
       currency: payment.currency,
     });
-    if (opened.kind === "noop")
-      return { kind: "noop" as const, reason: opened.reason };
+    if (opened.kind === "noop") return noop(opened.reason);
     return {
       kind: "opened" as const,
       opId: opened.opId,
@@ -508,52 +499,52 @@ export const sweep = internalMutationGeneric({
   returns: v.number(),
   handler: async (ctx: AdmissionContext) => {
     const now = Date.now();
+    const armed = new Set<string>();
     let scheduled = 0;
-    const due = await ctx.db
+    // Recovery first, then fresh work. `running` past its lease and
+    // `reconciliation` past its attempt budget are the two states no webhook
+    // will revisit, so both are re-armed before a backlog of due pending ops can
+    // consume the whole budget.
+    for (const [state, due] of [
+      [
+        "running",
+        (op: SettlementOpRow) =>
+          now >= (op.startedAt ?? 0) + SETTLEMENT_LEASE_MS,
+      ],
+      [
+        "reconciliation",
+        (op: SettlementOpRow) => op.attempt < MAX_RECONCILE_ATTEMPTS,
+      ],
+    ] as const)
+      for (const op of await ctx.db
+        .query("settlementOps")
+        .withIndex("by_due", (q) => q.eq("state", state))
+        .take(MAX_SWEEP)) {
+        if (scheduled >= MAX_SWEEP || !due(op as SettlementOpRow)) continue;
+        const attempt = op.attempt + 1;
+        await ctx.db.patch(op._id, { state: "pending", attempt, nextAt: now });
+        await scheduleSettle(ctx, { ...op, attempt });
+        armed.add(op._id);
+        scheduled += 1;
+      }
+    for (const op of await ctx.db
       .query("settlementOps")
       .withIndex("by_due", (q) => q.eq("state", "pending"))
-      .take(MAX_SWEEP);
-    for (const op of due) {
-      if (op.nextAt > now) continue;
+      .take(MAX_SWEEP)) {
+      if (scheduled >= MAX_SWEEP) break;
+      if (armed.has(op._id) || op.nextAt > now) continue;
       await scheduleSettle(ctx, op);
       scheduled += 1;
-      if (scheduled >= MAX_SWEEP) return scheduled;
     }
-    const running = await ctx.db
-      .query("settlementOps")
-      .withIndex("by_due", (q) => q.eq("state", "running"))
-      .take(MAX_SWEEP);
-    for (const op of running) {
-      if (scheduled >= MAX_SWEEP) break;
-      if (now < (op.startedAt ?? 0) + SETTLEMENT_LEASE_MS) continue;
-      const attempt = op.attempt + 1;
-      await ctx.db.patch(op._id, { state: "pending", attempt, nextAt: now });
-      await scheduleSettle(ctx, { ...op, attempt });
-      scheduled += 1;
-    }
+    // The inbox is an audit trail, not a permanent log: prune processed rows
+    // past the retention window, bounded so one run never scans the table.
+    for (const row of await ctx.db
+      .query("paymentInbox")
+      .withIndex("by_received", (q) =>
+        q.lt("receivedAt", now - INBOX_RETENTION_MS),
+      )
+      .take(MAX_SWEEP))
+      if (row.processedAt !== undefined) await ctx.db.delete(row._id);
     return scheduled;
-  },
-});
-
-export const opsForPaymentIntent = internalMutationGeneric({
-  args: { paymentIntentId: v.id("paymentIntents") },
-  returns: v.array(
-    v.object({
-      id: v.id("settlementOps"),
-      action: v.union(v.literal("capture"), v.literal("void")),
-      state: v.string(),
-      generation: v.number(),
-      attempt: v.number(),
-    }),
-  ),
-  handler: async (ctx: AdmissionContext, args) => {
-    const ops = await opsForIntent(ctx.db, args.paymentIntentId);
-    return ops.map((op) => ({
-      id: op._id,
-      action: op.action,
-      state: op.state,
-      generation: op.generation,
-      attempt: op.attempt,
-    }));
   },
 });

@@ -4,6 +4,59 @@ import { CONSTRUCTOR_ENCODING } from "../packages/backend/src/public-constructor
 const s = v.string();
 const n = v.number();
 
+/** A union of string literals from a list. Shared by schema and orders. */
+export const literals = <T extends string>(...values: T[]) =>
+  v.union(...values.map((value) => v.literal(value)));
+
+/** The matching handler-side reject helper. */
+export const rejectWith = (reason: string) => ({ ok: false as const, reason });
+
+/** The seven on-chain phases, in contract order. */
+export const CHAIN_PHASES = [
+  "DEPLOYED",
+  "RESERVED",
+  "ACCEPTED",
+  "SUBMITTED",
+  "DISPUTED",
+  "APPROVED",
+  "CANCELLED",
+] as const;
+
+export const chainPhaseValidator = literals(...CHAIN_PHASES);
+
+/** The nine order stages the workspace shows. */
+export const STAGES = ["QUOTE", "PAYMENT_HELD", ...CHAIN_PHASES] as const;
+
+export const stageValidator = literals(...STAGES);
+
+/** The six quote terms. One owner; three modules used to declare it. */
+export const quoteTermsValidator = v.object({
+  unitPrice: s,
+  total: s,
+  scopeDigest: s,
+  rightsDigest: s,
+  paymentPolicy: s,
+  salt: s,
+});
+
+/**
+ * The fields a quote draft is written with. `stripeProvisioning`'s public
+ * `quoteArgs` and `trustedProvisioning.writeQuoteDraft`'s args were the same
+ * nine fields with one difference (`operatorCommitment`, which only the action
+ * computes), so the shared part lives here and each caller adds its own.
+ */
+export const quoteDraftFields = {
+  scopeId: s,
+  title: s,
+  brief: s,
+  amountUsd: n,
+  clientEmail: s,
+  orderNonce: s,
+  merchantCommitment: s,
+  termsCommitment: s,
+  terms: quoteTermsValidator,
+};
+
 export const publicConstructorFields = {
   constructorVersion: v.literal(1),
   constructorEncoding: v.literal(CONSTRUCTOR_ENCODING),

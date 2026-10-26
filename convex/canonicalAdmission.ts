@@ -8,7 +8,7 @@ import {
   paymentBindsQuote,
 } from "../packages/backend/src/admission-policy";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
-import type { AdmissionContext } from "./admissionContext";
+import { type AdmissionContext, fail } from "./admissionContext";
 import { admissionArgs } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";
 import { createOrder } from "./orderProjection";
@@ -28,12 +28,12 @@ export async function admitCanonical(
     .query("frozenQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))
     .unique();
-  if (!quote) throw new Error("Frozen quote required");
+  if (!quote) fail("NOT_FOUND", "Frozen quote required");
   await assertProvisioningActive(ctx, "quote", quote.id);
   await assertProvisioningActive(ctx, "customer", quote.buyerAccountId);
   const membership = await requireMembership(ctx, quote.scopeId);
   if (!isQuoteBuyer(membership, quote.buyerAccountId))
-    throw new Error("Authenticated quote buyer required");
+    fail("FORBIDDEN", "Authenticated quote buyer required");
   const merchant = await db
     .query("memberships")
     .withIndex("by_scope_role", (q) =>
@@ -41,7 +41,7 @@ export async function admitCanonical(
     )
     .unique();
   if (merchant?.status !== "active")
-    throw new Error("Active merchant membership required");
+    fail("FORBIDDEN", "Active merchant membership required");
   const reject = (reason: string): AdmissionDecision => ({
     kind: "rejected",
     reason,

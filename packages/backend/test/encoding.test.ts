@@ -48,14 +48,21 @@ describe("encoding hex round-trip", () => {
   });
 });
 
-describe("convex http.ts hex parity (CVG1 guard)", () => {
-  test("bytesToHex implementation matches canonical encoder", async () => {
-    // http exports verifyStripeSignature; hex helpers are internal.
-    // Guard: re-implement using same algorithm and compare on samples.
-    const { bytesToHex, hexToBytes } = await import("../src/encoding");
-    const samples = ["", "00", "ff", "deadbeef", "00".repeat(32)];
-    for (const h of samples) {
-      expect(bytesToHex(hexToBytes(h))).toBe(h);
+describe("hex codec delegates to @noble/hashes", () => {
+  test("is byte-identical to the installed encoder for every byte value", async () => {
+    const noble = await import("@noble/hashes/utils.js");
+    const all = Uint8Array.from({ length: 256 }, (_, i) => i);
+    expect(bytesToHex(all)).toBe(noble.bytesToHex(all));
+    for (let i = 0; i < 256; i++) {
+      const h = i.toString(16).padStart(2, "0");
+      expect(bytesToHex(hexToBytes(h))).toBe(
+        noble.bytesToHex(noble.hexToBytes(h)),
+      );
     }
+  });
+
+  test("accepts an ArrayLike of bytes, as the previous signature did", () => {
+    expect(bytesToHex([0, 255])).toBe("00ff");
+    expect(bytesToHex(Uint8Array.from([0, 255]))).toBe("00ff");
   });
 });

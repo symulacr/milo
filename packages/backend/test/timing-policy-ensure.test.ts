@@ -9,9 +9,13 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AdmissionContext } from "../../../convex/admissionContext";
+import {
+  type Row,
+  readSurface,
+  writeSurface,
+} from "../../../convex/orderProjection.double";
 import { ensurePreprodTimingPolicy } from "../../../convex/trustedProvisioning";
 
-type Row = Record<string, unknown> & { _id: string };
 type Args = Record<string, unknown>;
 
 const provenance = {
@@ -45,49 +49,14 @@ function fixture() {
       "admissionTimingPolicies",
     ].map((name) => [name, []]),
   );
-  let serial = 0;
-  const get = (id: string) =>
-    Object.values(tables)
-      .flat()
-      .find((row) => row._id === id) ?? null;
   const ctx = {
     scheduler: { runAfter: async () => null },
     auth: { getUserIdentity: async () => null },
     db: {
-      get: async (id: string) => get(id),
+      ...readSurface(tables),
+      ...writeSurface(tables),
       normalizeId: (table: string, id: string) =>
         id.startsWith(`${table}-`) ? id : null,
-      query: (table: string) => ({
-        withIndex: (_name: string, range: (q: unknown) => unknown) => {
-          const conditions: [string, unknown][] = [];
-          const q = {
-            eq: (key: string, value: unknown) => {
-              conditions.push([key, value]);
-              return q;
-            },
-          };
-          range(q);
-          return {
-            unique: async () => {
-              const rows = tables[table].filter((row) =>
-                conditions.every(([key, value]) => row[key] === value),
-              );
-              if (rows.length > 1) throw new Error("Duplicate rows");
-              return rows[0] ?? null;
-            },
-          };
-        },
-      }),
-      insert: async (table: string, value: Row) => {
-        const id = `${table}-${++serial}`;
-        tables[table].push({ ...value, _id: id });
-        return id;
-      },
-      patch: async (id: string, value: Row) => {
-        const row = get(id);
-        if (!row) throw new Error("Missing row");
-        Object.assign(row, value);
-      },
     },
   } as unknown as AdmissionContext;
   return { ctx, tables };

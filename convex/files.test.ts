@@ -6,9 +6,14 @@ import {
   GRANT_GRACE_MS,
   GRANT_TTL_MS,
   markInspected,
+  SWEEP_BATCH,
+  sweepGrants,
 } from "./files";
+import type { Row } from "./orderProjection.double";
+import { readSurface, writeSurface } from "./orderProjection.double";
 
-type Row = Record<string, unknown> & { _id: string };
+// AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
+process.env.CONVEX_SITE_URL ??= "privy.io";
 
 function databaseDouble(options?: {
   identity?: { issuer: string; subject: string } | null;
@@ -75,73 +80,8 @@ function databaseDouble(options?: {
       },
     },
     db: {
-      get: async (id: string) => {
-        for (const rows of Object.values(tables)) {
-          const found = rows.find((row) => row._id === id);
-          if (found) return found;
-        }
-        return null;
-      },
-      query: (table: string) => {
-        const rows = () => tables[table] ?? [];
-        const filter = (
-          predicate: (row: Row) => boolean,
-          indexName: string,
-        ) => {
-          const matched = rows().filter(predicate);
-          return {
-            unique: async () => (matched.length === 1 ? matched[0] : null),
-            take: async (n: number) => matched.slice(0, n),
-            first: async () => matched[0] ?? null,
-            collect: async () => matched,
-            [Symbol.for("index")]: indexName,
-          };
-        };
-        return {
-          withIndex: (
-            index: string,
-            range: (q: {
-              eq: (field: string, value: unknown) => unknown;
-            }) => unknown,
-          ) => {
-            const captured: Array<[string, unknown]> = [];
-            const chain = {
-              eq: (field: string, value: unknown) => {
-                captured.push([field, value]);
-                return chain;
-              },
-            };
-            range(chain);
-            return filter(
-              (row) => captured.every(([field, value]) => row[field] === value),
-              index,
-            );
-          },
-          fullTableScan: () => filter(() => true, "full"),
-        };
-      },
-      insert: async (table: string, doc: Record<string, unknown>) => {
-        const _id = `${table}-${tables[table].length + 1}`;
-        const row = { ...doc, _id };
-        tables[table].push(row);
-        return _id;
-      },
-      patch: async (id: string, fields: Record<string, unknown>) => {
-        for (const rows of Object.values(tables)) {
-          const found = rows.find((row) => row._id === id);
-          if (found) {
-            Object.assign(found, fields);
-            return;
-          }
-        }
-        throw new Error(`unknown document ${id}`);
-      },
-      delete: async (id: string) => {
-        for (const rows of Object.values(tables)) {
-          const index = rows.findIndex((row) => row._id === id);
-          if (index >= 0) rows.splice(index, 1);
-        }
-      },
+      ...readSurface(tables),
+      ...writeSurface(tables),
     },
   };
   return {
@@ -368,5 +308,62 @@ describe("RECONSTRUCTED grant TTL constants", () => {
   test("pins 5 minute grant TTL and 1 hour grace", () => {
     expect(GRANT_TTL_MS).toBe(5 * 60 * 1000);
     expect(GRANT_GRACE_MS).toBe(60 * 60 * 1000);
+  });
+});
+
+describe("grant sweep is bounded and index-driven", () => {
+  test("removes only unconsumed grants past the grace window, in one batch", async () => {
+    const f = databaseDouble();
+    const cutoff = Date.now() - GRANT_TTL_MS - GRANT_GRACE_MS;
+    f.tables.fileGrants.push(
+      // Past the window and unconsumed: removed.
+      {
+        _id: "stale-1",
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: cutoff - 1_000,
+        consumed: false,
+      },
+      // Past the window but consumed: kept.
+      {
+        _id: "stale-2",
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: cutoff - 1_000,
+        consumed: true,
+      },
+      // Inside the window: kept.
+      {
+        _id: "fresh-1",
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: cutoff + 1_000,
+        consumed: false,
+      },
+    );
+    const result = await sweepGrants(f.ctx);
+    expect(result.removed).toBe(1);
+    const ids = f.tables.fileGrants.map((row) => row._id);
+    expect(ids).toContain("stale-2");
+    expect(ids).toContain("fresh-1");
+    expect(ids).not.toContain("stale-1");
+  });
+
+  test("never reads more than one batch, however many grants exist", async () => {
+    const f = databaseDouble();
+    const cutoff = Date.now() - GRANT_TTL_MS - GRANT_GRACE_MS;
+    for (let i = 0; i < SWEEP_BATCH * 3; i++) {
+      f.tables.fileGrants.push({
+        _id: `stale-${i}`,
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: cutoff - 1_000,
+        consumed: false,
+      });
+    }
+    const before = f.tables.fileGrants.length;
+    const result = await sweepGrants(f.ctx);
+    expect(result.removed).toBe(SWEEP_BATCH);
+    expect(f.tables.fileGrants).toHaveLength(before - SWEEP_BATCH);
   });
 });

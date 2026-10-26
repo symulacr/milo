@@ -15,10 +15,14 @@ import {
 } from "../packages/backend/src/provisioning-policy";
 import { validPublicConstructor } from "../packages/backend/src/public-constructor.ts";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
-import type { AdmissionContext } from "./admissionContext";
+import { type AdmissionContext, fail } from "./admissionContext";
 import { frozenQuoteFields, paymentAuthorization } from "./admissionValidators";
 import { isQuoteBuyer, requireMembership } from "./auth/identity";
-import { invalidatePaymentObservation } from "./paymentMonitor";
+import {
+  invalidatePaymentObservation,
+  membershipFor,
+  recordObservation,
+} from "./paymentMonitor";
 import { assertProvisioningActive } from "./trustedProvisioning";
 
 type QuoteRef = { id: string; buyerAccountId: string };
@@ -58,18 +62,6 @@ const paymentByQuote = (ctx: AdmissionContext, quoteId: string) =>
     .withIndex("by_quote", (q) => q.eq("quoteId", quoteId))
     .unique();
 
-const membershipOf = (
-  ctx: AdmissionContext,
-  subject: string,
-  scopeId: string,
-) =>
-  ctx.db
-    .query("memberships")
-    .withIndex("by_subject_scope", (q) =>
-      q.eq("privySubject", subject).eq("scopeId", scopeId),
-    )
-    .unique();
-
 export async function freezeApprovedQuote(
   ctx: AdmissionContext,
   input: { quoteId: string; expectedVersion: number },
@@ -79,18 +71,18 @@ export async function freezeApprovedQuote(
     .query("approvedQuotes")
     .withIndex("by_quote", (q) => q.eq("id", input.quoteId))
     .unique();
-  if (!approved) throw new Error("Approved quote required");
+  if (!approved) fail("NOT_FOUND", "Approved quote required");
   await assertProvisioningActive(ctx, "quote", input.quoteId);
   const membership = await requireMembership(ctx, approved.scopeId);
   if (!isQuoteBuyer(membership, approved.buyerAccountId))
-    throw new Error("Quote buyer required");
+    fail("FORBIDDEN", "Quote buyer required");
   if (approved.version !== input.expectedVersion)
-    throw new Error("Quote version changed");
+    fail("WRONG_STATE", "Quote version changed");
   const frozen = await frozenQuoteById(ctx, input.quoteId);
   const { _id, _creationTime, expiresAt, imagePackPolicy, ...quote } = approved;
   validateImagePackPolicy(quote, imagePackPolicy);
   if (!validPublicConstructor(quote))
-    throw new Error("Invalid versioned public constructor inputs");
+    fail("INVALID_INPUT", "Invalid versioned public constructor inputs");
   if (frozen) {
     if (
       Object.keys(frozenQuoteFields).some(
@@ -99,7 +91,7 @@ export async function freezeApprovedQuote(
           quote[key as keyof typeof quote],
       )
     )
-      throw new Error("Frozen quote is immutable");
+      fail("CONFLICT", "Frozen quote is immutable");
     return frozen._id;
   }
   validateFreeze(quote, expiresAt, Date.now());
@@ -120,30 +112,30 @@ export async function requestPaymentJob(
   const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
   const quote = await frozenQuoteById(ctx, input.quoteId);
   if (!quote || quote.version !== input.expectedVersion)
-    throw new Error("Frozen quote version required");
+    fail("INVALID_INPUT", "Frozen quote version required");
   await assertQuoteActive(ctx, quote);
   const membership = await requireMembership(ctx, quote.scopeId);
   if (!isQuoteBuyer(membership, quote.buyerAccountId))
-    throw new Error("Quote buyer required");
+    fail("FORBIDDEN", "Quote buyer required");
   const now = Date.now();
   const monitor = await ctx.db
     .query("paymentMonitors")
     .withIndex("by_quote", (q) => q.eq("quoteId", quote.id))
     .unique();
   if (monitor && monitor.state !== "stopped" && now < monitor.expiresAt)
-    throw new Error("Stop monitoring before requesting a payment job");
+    fail("WRONG_STATE", "Stop monitoring before requesting a payment job");
   const payment = await paymentByQuote(ctx, quote.id);
   if (observationOnly && !payment)
-    throw new Error("Existing immutable payment required for observation");
+    fail("CONFLICT", "Existing immutable payment required for observation");
   const mode: "observe" | "create" =
     payment || observationOnly ? "observe" : "create";
   if (!payment && quote.acceptanceDeadlineSeconds * 1000 <= now)
-    throw new Error("Quote expired");
+    fail("WRONG_STATE", "Quote expired");
   const customer = await ctx.db
     .query("stripeCustomers")
     .withIndex("by_buyer", (q) => q.eq("buyerAccountId", quote.buyerAccountId))
     .unique();
-  if (!customer) throw new Error("Trusted Stripe customer binding required");
+  if (!customer) fail("CONFLICT", "Trusted Stripe customer binding required");
   if (
     payment &&
     paymentMismatch(
@@ -153,26 +145,26 @@ export async function requestPaymentJob(
       customer.stripeCustomerId,
     )
   )
-    throw new Error("Immutable payment binding mismatch");
+    fail("CONFLICT", "Immutable payment binding mismatch");
   const job = await ctx.db
     .query("paymentJobs")
     .withIndex("by_quote", (q) => q.eq("quoteId", quote.id))
     .unique();
   if (job && !validJobClock(job, now))
-    throw new Error("Invalid provisioning job clock");
+    fail("WRONG_STATE", "Invalid provisioning job clock");
   if (
     job &&
     (job.stripeAccountId !== customer.stripeAccountId ||
       job.stripeCustomerId !== customer.stripeCustomerId)
   )
-    throw new Error("Immutable customer binding changed");
+    fail("CONFLICT", "Immutable customer binding changed");
   if (
     job &&
     (job.state === "queued" || job.state === "running") &&
     now - job.startedAt < PROVIDER_LEASE_MS
   ) {
     if (observationOnly && job.mode !== "observe")
-      throw new Error("Creation job must finish before observation");
+      fail("WRONG_STATE", "Creation job must finish before observation");
     return job._id;
   }
   const generation = (job?.generation ?? 0) + 1;
@@ -198,26 +190,36 @@ export async function requestPaymentJob(
   return id;
 }
 
-export const requestPayment = mutationGeneric({
+/**
+ * The two job kinds differ only by the consent literal and whether the job may
+ * create a payment. One registration loop replaces two near-identical exports.
+ * Both are internal: no client calls them, and the tests drive the handler.
+ */
+const JOB_KINDS = [
+  ["create-test-payment", false],
+  ["observe-test-payment", true],
+] as const;
+
+export const requestPayment = internalMutationGeneric({
   args: {
     quoteId: v.string(),
     expectedVersion: v.number(),
-    consent: v.literal("create-test-payment"),
+    consent: v.literal(JOB_KINDS[0][0]),
   },
   returns: v.id("paymentJobs"),
   handler: (ctx: AdmissionContext, input) =>
-    requestPaymentJob(ctx, input, false),
+    requestPaymentJob(ctx, input, JOB_KINDS[0][1]),
 });
 
-export const requestObservation = mutationGeneric({
+export const requestObservation = internalMutationGeneric({
   args: {
     quoteId: v.string(),
     expectedVersion: v.number(),
-    consent: v.literal("observe-test-payment"),
+    consent: v.literal(JOB_KINDS[1][0]),
   },
   returns: v.id("paymentJobs"),
   handler: (ctx: AdmissionContext, input) =>
-    requestPaymentJob(ctx, input, true),
+    requestPaymentJob(ctx, input, JOB_KINDS[1][1]),
 });
 
 export const begin = internalMutationGeneric({
@@ -228,7 +230,7 @@ export const begin = internalMutationGeneric({
       return null;
     const quote = await frozenQuoteById(ctx, job.quoteId);
     const membership = quote
-      ? await membershipOf(ctx, job.consentSubject, quote.scopeId)
+      ? await membershipFor(ctx, job.consentSubject, quote.scopeId)
       : null;
     const payment = await paymentByQuote(ctx, job.quoteId);
     const now = Date.now();
@@ -278,9 +280,9 @@ export const finish = internalMutationGeneric({
       return null;
     }
     const quote = await frozenQuoteById(ctx, job.quoteId);
-    if (!quote) throw new Error("Frozen quote missing");
+    if (!quote) fail("NOT_FOUND", "Frozen quote missing");
     await assertQuoteActive(ctx, quote);
-    const membership = await membershipOf(
+    const membership = await membershipFor(
       ctx,
       job.consentSubject,
       quote.scopeId,
@@ -292,10 +294,10 @@ export const finish = internalMutationGeneric({
     let payment = await paymentByQuote(ctx, quote.id);
     const providerId = args.stripePaymentIntentId;
     if (providerId && job.mode === "observe")
-      throw new Error("Observation jobs cannot create payment bindings");
+      fail("WRONG_STATE", "Observation jobs cannot create payment bindings");
     if (providerId) {
       if (!/^pi_[a-zA-Z0-9]+$/.test(providerId))
-        throw new Error("Invalid provider intent");
+        fail("INVALID_INPUT", "Invalid provider intent");
       const other = await ctx.db
         .query("paymentIntents")
         .withIndex("by_provider_intent", (q) =>
@@ -306,7 +308,7 @@ export const finish = internalMutationGeneric({
         (other && other._id !== payment?._id) ||
         (payment && payment.stripePaymentIntentId !== providerId)
       )
-        throw new Error("Provider intent replay or rebinding");
+        fail("CONFLICT", "Provider intent replay or rebinding");
       if (!payment) {
         const id = await ctx.db.insert("paymentIntents", {
           quoteId: quote.id,
@@ -325,7 +327,7 @@ export const finish = internalMutationGeneric({
     }
     const authorization = args.authorization;
     if (authorization && !payment)
-      throw new Error("Immutable payment binding required");
+      fail("CONFLICT", "Immutable payment binding required");
     if (authorization && payment) {
       if (
         paymentMismatch(
@@ -335,18 +337,14 @@ export const finish = internalMutationGeneric({
           job.stripeCustomerId,
         )
       )
-        throw new Error("Immutable payment binding mismatch");
+        fail("CONFLICT", "Immutable payment binding mismatch");
       if (
         authorization.id !== payment._id ||
         !paymentBindsQuote(authorization, quote) ||
         !usableObservation(authorization, now, job.startedAt)
       )
-        throw new Error("Invalid or stale trusted observation");
-      await invalidatePaymentObservation(ctx, payment._id);
-      await ctx.db.insert("paymentObservations", {
-        paymentIntentId: payment._id,
-        authorization,
-      });
+        fail("WRONG_STATE", "Invalid or stale trusted observation");
+      await recordObservation(ctx, payment._id, authorization);
     }
     await ctx.db.patch(job._id, {
       state: providerId || authorization ? "complete" : "blocked",

@@ -2,9 +2,11 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   bindingFields,
+  chainPhaseValidator,
   deploymentObservationFields,
   frozenQuoteFields,
   imagePackPolicyFields,
+  literals,
   paymentAuthorization,
 } from "./admissionValidators";
 
@@ -13,9 +15,6 @@ const n = v.number();
 const b = v.boolean();
 const optS = v.optional(s);
 const optN = v.optional(n);
-
-const literals = <T extends string>(...values: T[]) =>
-  v.union(...values.map((value) => v.literal(value)));
 
 const PREPROD = v.literal("preprod");
 const ACTIVE_REVOKED = literals("active", "revoked");
@@ -107,15 +106,7 @@ export default defineSchema({
     address: s,
     nonce: s,
     artifactFingerprint: s,
-    phase: literals(
-      "DEPLOYED",
-      "RESERVED",
-      "ACCEPTED",
-      "SUBMITTED",
-      "DISPUTED",
-      "APPROVED",
-      "CANCELLED",
-    ),
+    phase: chainPhaseValidator,
     revision: n,
     deliveryManifest: v.optional(NULLABLE_S),
     terminal: b,
@@ -128,7 +119,11 @@ export default defineSchema({
     .index("by_order", ["orderId"])
     .index("by_address", ["address"])
     .index("by_quote", ["quoteId"])
-    .index("by_terminal", ["terminal"]),
+    .index("by_terminal", ["terminal"])
+    // The operator's dispute queue asks for non-terminal DISPUTED rows. Without
+    // this, `by_terminal` narrows to every live order and the phase is filtered
+    // in the range.
+    .index("by_terminal_phase", ["terminal", "phase"]),
   chainObservations: defineTable({
     orderId: s,
     phase: s,
@@ -142,9 +137,47 @@ export default defineSchema({
     scopeId: s,
     role: literals("buyer", "merchant", "operator"),
     status: ACTIVE_REVOKED,
+    studioName: optS,
   })
     .index("by_subject_scope", ["privySubject", "scopeId"])
+    .index("by_subject", ["privySubject"])
     .index("by_scope_role", ["scopeId", "role"]),
+  quoteDrafts: defineTable({
+    id: s,
+    scopeId: s,
+    studioName: s,
+    merchantSubject: s,
+    merchantAccountId: s,
+    title: s,
+    brief: s,
+    clientEmail: s,
+    amountUsd: n,
+    amountMinor: n,
+    currency: v.literal("USD"),
+    orderNonce: s,
+    merchantCommitment: s,
+    operatorCommitment: optS,
+    termsCommitment: s,
+    terms: v.object({
+      unitPrice: s,
+      total: s,
+      scopeDigest: s,
+      rightsDigest: s,
+      paymentPolicy: s,
+      salt: s,
+    }),
+    inviteToken: s,
+    buyerSubject: optS,
+    buyerAccountId: optS,
+    buyerCommitment: optS,
+    finalizedAt: optN,
+    createdAt: n,
+    updatedAt: n,
+  })
+    .index("by_quote", ["id"])
+    .index("by_merchant", ["merchantSubject"])
+    .index("by_merchant_nonce", ["merchantSubject", "orderNonce"])
+    .index("by_buyer", ["buyerSubject"]),
   orders: defineTable({
     id: s,
     buyerId: s,
@@ -168,7 +201,9 @@ export default defineSchema({
     ),
   })
     .index("by_order", ["orderId"])
-    .index("by_storage", ["storageId"]),
+    .index("by_storage", ["storageId"])
+    // The grant sweep asks only for grants past the grace window.
+    .index("by_expiry", ["expiresAt"]),
   deliveries: defineTable({
     orderId: s,
     merchantId: s,
@@ -193,7 +228,15 @@ export default defineSchema({
     stripePaymentIntentId: s,
     amountMinor: n,
     currency: s,
-    environment: v.literal("test"),
+    /**
+     * Which Stripe mode the intent was created in. Widened from the `"test"`
+     * literal so a live intent *can* be stored — the schema was the last
+     * deploy-blocking literal — but nothing enables live mode: `stripeMode()`
+     * refuses a live key in `holdPayment` before any write, and the webhook
+     * refuses a live event against a test key. The union is storage, not a
+     * permission.
+     */
+    environment: literals("test", "live"),
     network: PREPROD,
   })
     .index("by_quote", ["quoteId"])
@@ -206,11 +249,21 @@ export default defineSchema({
     eventType: s,
     digest: s,
     paymentIntentRef: NULLABLE_S,
+    /**
+     * `PaymentIntent.cancellation_reason` for a `payment_intent.canceled`
+     * event. Stripe distinguishes `expired` (the authorization lapsed on its
+     * own) from `requested_by_customer`/`abandoned`/`automatic` (a deliberate
+     * void), and those are different facts about the order: an expiry released
+     * nothing, a void gave the hold back. Stored so the distinction survives
+     * the request that observed it.
+     */
+    cancellationReason: optS,
     receivedAt: n,
     processedAt: optN,
   })
     .index("by_provider_event", ["provider", "accountId", "eventId"])
     .index("by_account", ["accountId"])
+    .index("by_received", ["receivedAt"])
     .index("by_intent", ["paymentIntentRef"]),
   settlementOps: defineTable({
     orderId: s,
@@ -241,6 +294,7 @@ export default defineSchema({
     lastReason: optS,
   })
     .index("by_intent", ["paymentIntentId"])
+    .index("by_intent_state", ["paymentIntentId", "state"])
     .index("by_identity", ["orderId", "action", "contractRevision"])
     .index("by_due", ["state", "nextAt"]),
 });
