@@ -6,7 +6,6 @@ import {
   INITIAL_VERIFIER_CIRCUITS,
   ORDER_CIRCUITS,
   type OrderCircuitName,
-  REMAINING_VERIFIER_CIRCUITS,
 } from "./order";
 import {
   assertAllCircuitsInstalled,
@@ -30,6 +29,13 @@ const generated = new URL(
 
 const keyFor = (circuit: string): Uint8Array =>
   new Uint8Array(readFileSync(new URL(`${circuit}.verifier`, generated)));
+
+/** The circuits the second transaction installs: everything the first did not.
+ * Derived here because no production code needs the list — the deploy reads the
+ * missing set from observed chain state. */
+const REMAINING_VERIFIER_CIRCUITS = ORDER_CIRCUITS.filter(
+  (name) => !INITIAL_VERIFIER_CIRCUITS.includes(name),
+);
 
 const keys: VerifierKeySet = new Map(
   ORDER_CIRCUITS.map((circuit) => [circuit, keyFor(circuit)]),

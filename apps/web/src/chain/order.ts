@@ -41,9 +41,6 @@ export const INITIAL_VERIFIER_CIRCUITS: readonly OrderCircuitName[] =
     DEPLOY_BATCH_SIZE,
   );
 
-export const REMAINING_VERIFIER_CIRCUITS: readonly OrderCircuitName[] =
-  ORDER_CIRCUITS.filter((name) => !INITIAL_VERIFIER_CIRCUITS.includes(name));
-
 export const ORDER_PHASES = [
   "DEPLOYED",
   "RESERVED",
@@ -105,7 +102,7 @@ export type DeployOrderResult = {
   readonly installedCircuits: readonly OrderCircuitName[];
 };
 
-export const BYTES32 = 32;
+const BYTES32 = 32;
 
 export type OrderTerms = {
   readonly serviceVersion: bigint;

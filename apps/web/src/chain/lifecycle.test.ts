@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import * as runtime from "@midnight-ntwrk/compact-runtime";
 import { Window } from "happy-dom";
 import * as Generated from "../../../../packages/contract/generated/contract/index.js";
@@ -928,5 +929,180 @@ describe("chain wasm loader", () => {
     } finally {
       globalThis.fetch = real.fetch;
     }
+  });
+});
+// ---------------------------------------------------------------------------
+// End-to-end order walk on the real contract runtime.
+//
+// The REAL generated circuits run against an in-memory chain: no network, no
+// wallet, no Lace, no proof server. The only fake is the connector, and it fakes
+// exactly what a wallet does — apply a submitted call to the stored contract
+// state and report that state back. A call's transcript program IS the circuit,
+// so applying a call means running the circuit. Commitments, argument encoding,
+// state decoding and serialization are all the shipped code.
+// ---------------------------------------------------------------------------
+
+/** address -> serialized ContractState. */
+const chain = new Map<string, Uint8Array>();
+
+const ledgerAt = (address: string) =>
+  Generated.ledger(
+    runtime.ContractState.deserialize(chain.get(address) as Uint8Array).data,
+  );
+
+/** Run one circuit against the stored state and commit the result. */
+const applyCall = (
+  address: string,
+  circuit: string,
+  args: readonly unknown[],
+  privateState: unknown,
+) => {
+  const stored = runtime.ContractState.deserialize(
+    chain.get(address) as Uint8Array,
+  );
+  const run = (
+    contract.provableCircuits as unknown as Record<
+      string,
+      (
+        ctx: unknown,
+        ...rest: unknown[]
+      ) => {
+        context: { currentQueryContext: { state: unknown } };
+      }
+    >
+  )[circuit];
+  const result = run(
+    runtime.createCircuitContext(
+      "00".repeat(32),
+      deployState().currentZswapLocalState,
+      stored,
+      privateState as never,
+    ),
+    ...args,
+  );
+  const next = new runtime.ContractState();
+  next.data = result.context.currentQueryContext.state as never;
+  next.maintenanceAuthority = stored.maintenanceAuthority;
+  for (const name of stored.operations()) {
+    const op = stored.operation(name);
+    if (op) next.setOperation(name, op);
+  }
+  chain.set(address, next.serialize());
+  return result;
+};
+
+/** Deploy a fresh order at a fixed address and return it. */
+const deployAt = (address: string, config = configuration) => {
+  chain.clear();
+  const context = runtime.createConstructorContext(buyerState, "aa".repeat(32));
+  const initial = contract.initialState(context, config);
+  chain.set(address, initial.currentContractState.serialize());
+  return address;
+};
+
+const merchantState = {
+  actor: "merchant" as const,
+  secret: secrets.merchant,
+  terms,
+  limit: 0n,
+};
+
+describe("end-to-end order walk on the real contract runtime", () => {
+  // The walk the forms drive, one row per circuit. Each row asserts the real
+  // circuit's ledger state AND the phase the server projection would store, so a
+  // disagreement between the two is a failure rather than a silent drift.
+  test("the order walks DEPLOYED to APPROVED on real circuits", () => {
+    const address = deployAt("ab".repeat(32));
+    const delivery = bytes32(0x5a);
+    const steps = [
+      ["reserve", [0n], buyerState, "RESERVED"],
+      ["accept", [1n], merchantState, "ACCEPTED"],
+      ["submitDelivery", [2n, delivery], merchantState, "SUBMITTED"],
+      ["approve", [3n, delivery], buyerState, "APPROVED"],
+    ] as const;
+
+    for (const [circuit, args, state, phase] of steps) {
+      applyCall(address, circuit, args, state);
+      // The chain's own decoder must agree with the raw ledger, and both must
+      // agree with the name the server projection stores.
+      expect([circuit, ledgerAt(address).phase]).toEqual([
+        circuit,
+        Generated.Phase[phase as keyof typeof Generated.Phase],
+      ]);
+      expect([
+        circuit,
+        decodeOrderState(
+          runtime.ContractState.deserialize(chain.get(address) as Uint8Array),
+        ).phase,
+      ]).toEqual([circuit, phase]);
+    }
+
+    const final = ledgerAt(address);
+    expect(final.revision).toBe(4n);
+    expect(final.deliveryCommitment).toEqual(delivery);
+    // APPROVED is terminal: no circuit accepts a further revision.
+    expect(() => applyCall(address, "reserve", [4n], buyerState)).toThrow(
+      /reserve requires deployed/,
+    );
+  }, 120_000);
+
+  test("a stale expectedRevision is refused and changes nothing", () => {
+    const address = deployAt("cd".repeat(32));
+    applyCall(address, "reserve", [0n], buyerState);
+    const before = chain.get(address) as Uint8Array;
+    // Replaying revision 0 when the chain is at 1 is the classic double-submit.
+    expect(() => applyCall(address, "accept", [0n], buyerState)).toThrow(
+      /stale revision/,
+    );
+    expect(chain.get(address)).toEqual(before);
+  }, 120_000);
+
+  // A past-deadline order can only use the timeout circuits. This is the honest
+  // statement of when C-04 bites: an order that never reached SUBMITTED cannot
+  // escalate at all, so the defect only strands an order that did.
+  test("a past-deadline order expires rather than escalating", () => {
+    const past = BigInt(Math.floor(Date.now() / 1000)) - 10_000n;
+    const address = deployAt("ef".repeat(32), {
+      ...configuration,
+      acceptanceDeadline: past,
+      deliveryDeadline: past + 1n,
+      reviewDeadline: past + 2n,
+      resolutionDeadline: past + 3n,
+    });
+    expect(ledgerAt(address).phase).toBe(Generated.Phase.DEPLOYED);
+    applyCall(address, "expireBootstrap", [0n], buyerState);
+    expect(ledgerAt(address).phase).toBe(Generated.Phase.CANCELLED);
+    expect(ledgerAt(address).evidenceCommitment).toEqual(new Uint8Array(32));
+  }, 120_000);
+
+  // C-04, asserted at its source rather than by executing escalate: the circuit
+  // gates on `reached(reviewDeadline)`, which reads real block time, so an order
+  // inside its deadlines cannot escalate in this harness. The defect is that the
+  // escalation body never assigns evidenceCommitment while resolve requires a
+  // non-default value equal to the stored one — jointly unsatisfiable.
+  //
+  // This test passes while the bug exists and FAILS the moment the held fix in
+  // .patches/r18-w4-D.patch lands, which is the signal to replace it with the
+  // positive walk. Verified by applying that fix and re-running.
+  test("KNOWN BUG C-04: escalate records no evidence, so resolve has no valid input", () => {
+    const source = readFileSync(
+      new URL(
+        "../../../../packages/contract/src/order.compact",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const escalate = source.slice(
+      source.indexOf("export circuit escalateUnreviewed"),
+      source.indexOf("export circuit expireDispute"),
+    );
+    expect(escalate).toContain("move(Phase.DISPUTED)");
+    expect(escalate).not.toContain("evidenceCommitment =");
+    const resolve = source.slice(
+      source.indexOf("export circuit resolve"),
+      source.indexOf("// Integer seconds"),
+    );
+    expect(resolve).toContain("empty resolution evidence");
+    expect(resolve).toContain("resolution evidence mismatch");
   });
 });

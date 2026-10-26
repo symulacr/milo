@@ -8,7 +8,7 @@ export const MIDNIGHT_CLIENT_ERROR_CODES = [
 export type MidnightClientErrorCode =
   (typeof MIDNIGHT_CLIENT_ERROR_CODES)[number];
 
-export type MidnightClientErrorDetail = Readonly<
+type MidnightClientErrorDetail = Readonly<
   Record<string, string | number | boolean | null | undefined>
 >;
 

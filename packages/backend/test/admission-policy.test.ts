@@ -3,7 +3,9 @@ import {
   type AdmissionBinding,
   type AdmissionTimingPolicy,
   type AdmissionTransaction,
+  type ChainOrderTruth,
   decideCanonicalAdmission,
+  decideObservationBinding,
   type FrozenQuote,
   type ObservedDeployment,
   type PaymentAuthorization,
@@ -529,5 +531,57 @@ describe("canonical admission decision", () => {
         address: "not-a-ledger-address",
       }).kind,
     ).toBe("rejected");
+  });
+});
+
+// The chain module and the server projection must agree on the phase vocabulary.
+// The chain reports the generated ledger's Phase enum; the projection stores a
+// string. If the two diverge, every observation after the first is rejected as
+// contradictory and the order page freezes on a stale phase.
+describe("the server projection accepts the phases the chain reports", () => {
+  const truth = (phase: string, revision: number): ChainOrderTruth => ({
+    orderId: "order_1",
+    address: "1".repeat(64),
+    nonce: "4".repeat(64),
+    artifactFingerprint: hash,
+    phase,
+    revision,
+  });
+  const owner = { orderId: "order_1" };
+
+  test("every forward move the chain can make binds", () => {
+    // The walk the forms drive, plus the two exits from SUBMITTED. Each step is
+    // one revision ahead, which is what the chain produces.
+    const moves = [
+      ["DEPLOYED", "RESERVED"],
+      ["RESERVED", "ACCEPTED"],
+      ["ACCEPTED", "SUBMITTED"],
+      ["SUBMITTED", "APPROVED"],
+      ["SUBMITTED", "DISPUTED"],
+      ["SUBMITTED", "CANCELLED"],
+    ] as const;
+    for (const [from, to] of moves) {
+      const verdict = decideObservationBinding(
+        truth(from, 1),
+        truth(to, 2),
+        owner,
+      );
+      expect([`${from}->${to}`, verdict.kind]).toEqual([
+        `${from}->${to}`,
+        "bind",
+      ]);
+    }
+  });
+
+  test("a replay of an older revision is refused, like the chain's own guard", () => {
+    // The chain refuses a stale expectedRevision; the projection must refuse the
+    // same thing rather than writing it back over newer state.
+    expect(
+      decideObservationBinding(
+        truth("APPROVED", 4),
+        truth("RESERVED", 1),
+        owner,
+      ).kind,
+    ).not.toBe("bind");
   });
 });
