@@ -354,6 +354,13 @@ Copy `.env.example` to `.env.local`. A Preprod run reads these variables (names 
 `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `MILO_PREPROD_GENESIS_HASH`, `MILO_OPERATOR_EMAILS`. The landing and the legal pages need none of them.
 
+Magic-link mail is sent by one of three providers, chosen with `MAIL_PROVIDER`
+(`resend` — the default — `agentmail`, or `brevo`), each reading its own key:
+`RESEND_API_KEY`, `AGENTMAIL_API_KEY`, `BREVO_API_KEY`. `MAIL_FROM` is the sender,
+and for AgentMail it is also the sending inbox. `MAIL_BASE_URL` (any provider) or
+`RESEND_BASE_URL` (Resend only) redirects the send at a local capture server such
+as Mailpit, which is how the e2e suite reads the link without a real send.
+
 ## Testing
 
 The gates, in CI order: `bun run lint`, `bun run typecheck`, `bun run test:unit`, `bun run build`

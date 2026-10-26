@@ -5,6 +5,8 @@ import {
   emailBody,
   emailFailureText,
   inviteFailureReason,
+  mailConfig,
+  mailProvider,
   sendEmail,
 } from "../src/email";
 
@@ -33,8 +35,72 @@ describe("the one email body", () => {
   });
 });
 
-describe("email delivery", () => {
-  test("posts to Resend with the configured sender and the link", async () => {
+/**
+ * The three providers, table-driven. Every free provider that can send without
+ * an owned domain has a different envelope, so the table is the whole difference
+ * between them; these rows pin the URL, the auth header and the body shape
+ * against each provider's own docs (verified 2026-10-26).
+ */
+const PROVIDER_ROWS = [
+  {
+    provider: "resend",
+    keyEnv: "RESEND_API_KEY",
+    url: "https://api.resend.com/emails",
+    authHeader: "authorization",
+    authValue: "Bearer re_test_key",
+    body: { from: "Milo <sign-in@milo.example>", to: ["buyer@example.com"] },
+  },
+  {
+    provider: "agentmail",
+    keyEnv: "AGENTMAIL_API_KEY",
+    // The inbox id IS the sending address, and the `@` must be encoded.
+    url: "https://api.agentmail.to/v0/inboxes/Milo%20%3Csign-in%40milo.example%3E/messages/send",
+    authHeader: "authorization",
+    authValue: "Bearer re_test_key",
+    body: { to: "buyer@example.com" },
+  },
+  {
+    provider: "brevo",
+    keyEnv: "BREVO_API_KEY",
+    url: "https://api.brevo.com/v3/smtp/email",
+    authHeader: "api-key",
+    authValue: "re_test_key",
+    body: {
+      sender: { email: "Milo <sign-in@milo.example>" },
+      to: [{ email: "buyer@example.com" }],
+    },
+  },
+] as const;
+
+/**
+ * Set env vars for the duration of `run`, then restore every one of them —
+ * including names that were previously unset. One helper, because every suite
+ * below needs exactly this and three copies of it drifted in earlier rounds.
+ */
+async function withEnv<T>(
+  vars: Record<string, string | undefined>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = Object.fromEntries(
+    Object.keys(vars).map((k) => [k, process.env[k]]),
+  );
+  for (const [k, v] of Object.entries(vars)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    return await run();
+  } finally {
+    for (const [k, v] of Object.entries(previous)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+/** Run `sendEmail` under one provider and capture the one request it made. */
+const capture = (provider: string) =>
+  withEnv({ MAIL_PROVIDER: provider }, async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const send = (async (url: string, init: RequestInit) => {
       calls.push({ url, init });
@@ -47,36 +113,64 @@ describe("email delivery", () => {
       from: "Milo <sign-in@milo.example>",
       send,
     });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe("https://api.resend.com/emails");
-    expect(calls[0]?.init.method).toBe("POST");
-    const headers = calls[0]?.init.headers as Record<string, string>;
-    expect(headers.authorization).toBe("Bearer re_test_key");
-    expect(headers["content-type"]).toBe("application/json");
-    const body = JSON.parse(String(calls[0]?.init.body)) as Record<
-      string,
-      unknown
-    >;
-    expect(body.from).toBe("Milo <sign-in@milo.example>");
-    expect(body.to).toEqual(["buyer@example.com"]);
-    expect(String(body.text)).toContain(URL);
-    expect(String(body.html)).toContain(URL);
+    return calls[0] as { url: string; init: RequestInit };
   });
 
-  test("refuses to send when the API key or sender is missing", async () => {
-    let called = false;
-    const send = (async () => {
-      called = true;
-      return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
-    await expect(
-      sendEmail({ to: "a@b.c", url: URL, apiKey: "", from: "x", send }),
-    ).rejects.toThrow(/RESEND_API_KEY/);
-    await expect(
-      sendEmail({ to: "a@b.c", url: URL, apiKey: "k", from: "", send }),
-    ).rejects.toThrow(/MAIL_FROM/);
-    expect(called).toBe(false);
+describe("email delivery", () => {
+  test.each(PROVIDER_ROWS)(
+    "$provider posts its own URL, auth header and body",
+    async (row) => {
+      const call = await capture(row.provider);
+      expect(call.url).toBe(row.url);
+      expect(call.init.method).toBe("POST");
+      const headers = call.init.headers as Record<string, string>;
+      expect(headers[row.authHeader]).toBe(row.authValue);
+      expect(headers["content-type"]).toBe("application/json");
+      const body = JSON.parse(String(call.init.body)) as Record<
+        string,
+        unknown
+      >;
+      // The provider-specific envelope, plus the link in both parts.
+      expect(body).toMatchObject(row.body);
+      expect(String(body.text ?? body.textContent)).toContain(URL);
+      expect(String(body.html ?? body.htmlContent)).toContain(URL);
+    },
+  );
+
+  test("an unknown MAIL_PROVIDER falls back to resend, not to nothing", async () => {
+    // A typo must not silently disable email; the default is the documented one.
+    expect((await capture("sendgrid")).url).toBe(
+      "https://api.resend.com/emails",
+    );
   });
+
+  // The message names the *selected* provider's variable, so an operator who
+  // switched to AgentMail is not told to set RESEND_API_KEY. Nothing is sent.
+  test.each(PROVIDER_ROWS)(
+    "a missing $keyEnv fails closed naming $keyEnv",
+    async (row) => {
+      let called = false;
+      const send = (async () => {
+        called = true;
+        return new Response(null, { status: 200 });
+      }) as unknown as typeof fetch;
+      const previous = process.env.MAIL_PROVIDER;
+      process.env.MAIL_PROVIDER = row.provider;
+      try {
+        await expect(
+          sendEmail({ to: "a@b.c", url: URL, apiKey: "", from: "x", send }),
+        ).rejects.toThrow(new RegExp(row.keyEnv));
+        // A missing sender is refused for every provider too.
+        await expect(
+          sendEmail({ to: "a@b.c", url: URL, apiKey: "k", from: "", send }),
+        ).rejects.toThrow(/MAIL_FROM/);
+      } finally {
+        if (previous === undefined) delete process.env.MAIL_PROVIDER;
+        else process.env.MAIL_PROVIDER = previous;
+      }
+      expect(called).toBe(false);
+    },
+  );
 
   test("surfaces a provider refusal without leaking the key", async () => {
     const send = (async () =>
@@ -92,52 +186,82 @@ describe("email delivery", () => {
     await expect(failure).rejects.not.toThrow(/re_secret_value/);
   });
 
-  /** A sender that always refuses with Resend's own body shape. */
-  const refusing = (status: number, message: string) =>
-    (async () =>
-      Response.json(
-        { name: "validation_error", message, statusCode: status },
-        { status },
-      )) as unknown as typeof fetch;
+  /** A sender that always refuses with a provider's own body shape. */
+  const refusing = (status: number, body: unknown) =>
+    (async () => Response.json(body, { status })) as unknown as typeof fetch;
 
-  // Resend's real bodies, from resend.com/docs/api-reference/errors. The
-  // message is what distinguishes the several 403 causes, so it must be read.
-  const REFUSALS: readonly (readonly [string, number, string, RegExp])[] = [
+  // Real bodies from each provider's error reference. The message is what
+  // distinguishes the several 403 causes, so it must be read; AgentMail's
+  // `code` is what separates a restricted sender from a suspension.
+  const REFUSALS: readonly (readonly [string, number, unknown, RegExp])[] = [
     [
-      "testing sender wrote to a third party",
+      "Resend: testing sender wrote to a third party",
       403,
-      "You can only send testing emails to your own email address (owner@studio.example). To send emails to other recipients, please verify a domain at resend.com/domains, and change the from address to an email using this domain.",
+      {
+        name: "validation_error",
+        message:
+          "You can only send testing emails to your own email address (owner@studio.example). To send emails to other recipients, please verify a domain at resend.com/domains, and change the from address to an email using this domain.",
+      },
       /verify a domain/i,
     ],
     [
-      "from domain not verified",
+      "Resend: from domain not verified",
       403,
-      "The milo.example domain is not verified. Please, add and verify your domain.",
+      {
+        name: "validation_error",
+        message:
+          "The milo.example domain is not verified. Please, add and verify your domain.",
+      },
       /has not verified/i,
     ],
     [
-      "required field missing",
-      422,
-      "The request body is missing one or more required fields.",
+      "AgentMail: org not verified",
+      403,
+      {
+        code: "message_rejected",
+        message: "Forbidden",
+        fix: "Verify your organization at console.agentmail.to/claim before sending to this recipient.",
+      },
+      /not verified.*console\.agentmail\.to\/claim/i,
+    ],
+    [
+      "AgentMail: account suspended",
+      403,
+      {
+        code: "account_suspended",
+        message: "Forbidden",
+        suspended_reason: "message.bounced",
+      },
       /refused this message/i,
     ],
     [
-      "rate limit hit",
+      "AgentMail: rate limited",
       429,
-      "Too many requests. Please limit the number of requests per second.",
+      { code: "rate_limit_exceeded", message: "Too many requests" },
       /rate limiting/i,
     ],
-    ["Resend down", 503, "API is temporarily unavailable", /unavailable/i],
+    [
+      "Brevo: required field missing",
+      400,
+      { code: "missing_parameter", message: "sender is required" },
+      /refused this message/i,
+    ],
+    [
+      "any provider down",
+      503,
+      { message: "temporarily unavailable" },
+      /unavailable/i,
+    ],
   ];
 
-  for (const [label, status, message, hint] of REFUSALS)
+  for (const [label, status, body, hint] of REFUSALS)
     test(`a ${status} refusal for ${label} is classified`, async () => {
       const failure = sendEmail({
         to: "a@b.c",
         url: URL,
         apiKey: "re_secret_value",
         from: "Milo <sign-in@milo.example>",
-        send: refusing(status, message),
+        send: refusing(status, body),
       });
       await expect(failure).rejects.toBeInstanceOf(EmailSendError);
       await expect(failure).rejects.toThrow(hint);
@@ -165,6 +289,7 @@ describe("email failure classification", () => {
   test("each cause maps to its own actionable sentence", () => {
     const cases = [
       ["testing-sender", /verify a domain/i],
+      ["sender-restricted", /console\.agentmail\.to\/claim/i],
       ["domain-unverified", /has not verified/i],
       ["rate-limited", /rate limiting/i],
       ["rejected", /refused this message/i],
@@ -210,73 +335,141 @@ describe("email failure classification", () => {
       "rejected",
     );
   });
+
+  // AgentMail keeps the legacy message `Forbidden` on several 403s, so the code
+  // is the only thing that separates them. Branching on `message` would report
+  // a suspended account as a restricted sender and send the operator to the
+  // wrong fix.
+  test("branches on AgentMail's code, not its generic message", () => {
+    const restricted = classifyFailure(403, {
+      code: "message_rejected",
+      message: "Forbidden",
+      fix: "Verify your organization.",
+    });
+    const suspended = classifyFailure(403, {
+      code: "account_suspended",
+      message: "Forbidden",
+    });
+    expect(restricted.failure).toBe("sender-restricted");
+    expect(suspended.failure).toBe("rejected");
+    // The `fix` is more specific than the message, so it is what an operator sees.
+    expect(restricted.detail).toBe("Verify your organization.");
+    expect(classifyFailure(403, { code: "domain_not_verified" }).failure).toBe(
+      "domain-unverified",
+    );
+  });
 });
 
 /**
- * ROUND 18 item 5 — the transport seam.
- *
- * `sendEmail` already accepted an injected `send`, but the URL was hardcoded, so
- * nothing could redirect a real send. `RESEND_BASE_URL` is the whole seam: point
- * it at a Mailpit-style `/api/v1/send` and the magic link becomes readable in a
- * test without a Resend account, a verified domain, or a real send.
+ * The provider selection itself: which one is active, and that a diagnostics
+ * read can report it by name without ever touching a value.
  */
-describe("ROUND18 item 5: RESEND_BASE_URL redirects the send", () => {
-  const withBase = async (
-    value: string | undefined,
-    run: () => Promise<void>,
-  ) => {
-    const previous = process.env.RESEND_BASE_URL;
-    if (value === undefined) delete process.env.RESEND_BASE_URL;
-    else process.env.RESEND_BASE_URL = value;
-    try {
-      await run();
-    } finally {
-      if (previous === undefined) delete process.env.RESEND_BASE_URL;
-      else process.env.RESEND_BASE_URL = previous;
-    }
-  };
-
-  const capture = async () => {
-    const urls: string[] = [];
-    const send = (async (url: string) => {
-      urls.push(url);
-      return new Response(null, { status: 200 });
-    }) as unknown as typeof fetch;
-    await sendEmail({
-      to: "buyer@example.com",
-      url: URL,
-      apiKey: "re_test_key",
-      from: "Milo <sign-in@milo.example>",
-      send,
-    });
-    return urls[0];
-  };
-
-  test("defaults to the real Resend API", async () => {
-    await withBase(undefined, async () => {
-      expect(await capture()).toBe("https://api.resend.com/emails");
+describe("mail provider selection", () => {
+  test("defaults to resend so nothing changes until MAIL_PROVIDER is set", async () => {
+    await withEnv({ MAIL_PROVIDER: undefined }, async () => {
+      expect(mailProvider()).toBe("resend");
     });
   });
 
-  test("an empty value falls back rather than posting to /emails", async () => {
-    // `env()` treats "" as absent, so a half-set var cannot produce a relative
-    // URL that fails at runtime with a confusing error.
-    await withBase("", async () => {
-      expect(await capture()).toBe("https://api.resend.com/emails");
+  test.each(["resend", "agentmail", "brevo"])(
+    "%s is selectable",
+    async (name) => {
+      await withEnv({ MAIL_PROVIDER: name }, async () => {
+        expect(mailProvider()).toBe(name);
+      });
+    },
+  );
+
+  test("an unknown value falls back to resend", async () => {
+    await withEnv({ MAIL_PROVIDER: "mailgun" }, async () => {
+      expect(mailProvider()).toBe("resend");
     });
   });
 
-  test("a local capture server receives the send", async () => {
-    await withBase("http://127.0.0.1:8025/api/v1", async () => {
-      expect(await capture()).toBe("http://127.0.0.1:8025/api/v1/emails");
-    });
+  // The diagnostics contract: names and a boolean, never a value. This is what
+  // makes it safe to log or show an operator.
+  test("mailConfig reports names and presence, never the key", async () => {
+    await withEnv(
+      {
+        MAIL_PROVIDER: "agentmail",
+        AGENTMAIL_API_KEY: "am_us_supersecret",
+        MAIL_FROM: "milo@agentmail.to",
+      },
+      async () => {
+        const config = mailConfig();
+        expect(config).toEqual({
+          provider: "agentmail",
+          keyEnv: "AGENTMAIL_API_KEY",
+          keyPresent: true,
+          from: "milo@agentmail.to",
+        });
+        expect(JSON.stringify(config)).not.toContain("am_us_supersecret");
+      },
+    );
   });
 
-  test("a trailing slash does not double up", async () => {
-    await withBase("http://mailpit:8025/api/v1/", async () => {
-      // A `//emails` path is a 404 on most servers, and a hand-typed env value
-      // very often ends in a slash, so the seam trims it.
-      expect(await capture()).toBe("http://mailpit:8025/api/v1/emails");
-    });
+  test("a missing key for the selected provider is reported as absent", async () => {
+    await withEnv(
+      { MAIL_PROVIDER: "brevo", BREVO_API_KEY: undefined },
+      async () => {
+        expect(mailConfig()).toMatchObject({
+          provider: "brevo",
+          keyEnv: "BREVO_API_KEY",
+          keyPresent: false,
+        });
+      },
+    );
+  });
+});
+
+/**
+ * The transport seam. `RESEND_BASE_URL` still redirects a Resend send, which is
+ * what W2's form-to-handler e2e captures mail through; `MAIL_BASE_URL` is the
+ * provider-agnostic form. Both are kept because the first already has a
+ * consumer and the second is what a non-Resend sandbox needs.
+ */
+describe("the transport seam", () => {
+  const urlFor = async (vars: Record<string, string | undefined>) =>
+    (
+      await withEnv({ MAIL_PROVIDER: "resend", ...vars }, () =>
+        capture("resend"),
+      )
+    ).url;
+
+  test.each([
+    [
+      "RESEND_BASE_URL redirects a Resend send (W2's e2e seam)",
+      { RESEND_BASE_URL: "http://127.0.0.1:8025/api/v1" },
+      "http://127.0.0.1:8025/api/v1/emails",
+    ],
+    // `env()` treats "" as absent, so a half-set var cannot post to a relative URL.
+    [
+      "an empty RESEND_BASE_URL falls back",
+      { RESEND_BASE_URL: "" },
+      "https://api.resend.com/emails",
+    ],
+    // A `//emails` path is a 404 on most servers, and hand-typed values often
+    // end in a slash.
+    [
+      "a trailing slash does not double up",
+      { RESEND_BASE_URL: "http://mailpit:8025/api/v1/" },
+      "http://mailpit:8025/api/v1/emails",
+    ],
+    // The generic form, so a Mailpit sandbox can capture any provider's send.
+    [
+      "MAIL_BASE_URL overrides the provider's host",
+      { MAIL_BASE_URL: "http://mailpit:8025", RESEND_BASE_URL: undefined },
+      "http://mailpit:8025/emails",
+    ],
+    [
+      "MAIL_BASE_URL wins over RESEND_BASE_URL when both are set",
+      {
+        MAIL_BASE_URL: "http://generic:8025",
+        RESEND_BASE_URL: "http://legacy:8025",
+      },
+      "http://generic:8025/emails",
+    ],
+  ])("%s", async (_label, vars, expected) => {
+    expect(await urlFor(vars)).toBe(expected);
   });
 });

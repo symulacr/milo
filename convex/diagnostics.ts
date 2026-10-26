@@ -4,7 +4,7 @@ import {
   makeFunctionReference,
 } from "convex/server";
 import { type GenericId, v } from "convex/values";
-import { sendEmail } from "../packages/backend/src/email";
+import { mailConfig, sendEmail } from "../packages/backend/src/email";
 import { env } from "../packages/backend/src/encoding";
 import {
   operatorEmails,
@@ -84,6 +84,17 @@ export const read = internalQueryGeneric({
         processed: v.boolean(),
       }),
     ),
+    /**
+     * Which mail provider this deployment would use, and whether its key is
+     * present. Names and a boolean only — `mailConfig()` never returns a value,
+     * so this is safe to show an operator or write to a log.
+     */
+    mail: v.object({
+      provider: v.string(),
+      keyEnv: v.string(),
+      keyPresent: v.boolean(),
+      from: v.union(v.string(), v.null()),
+    }),
   }),
   handler: async (ctx: ReadContext, args) => {
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
@@ -129,6 +140,7 @@ export const read = internalQueryGeneric({
         eventType: row.eventType,
         processed: row.processedAt !== undefined,
       })),
+      mail: mailConfig(),
     };
   },
 });
