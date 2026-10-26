@@ -8,6 +8,8 @@
 !/.env.example
 !/LICENSE
 !/README.md
+!/SECURITY.md
+!/CONTRIBUTING.md
 !/THIRD_PARTY_NOTICES.md
 !/package.json
 !/tsconfig.json
@@ -24,8 +26,14 @@
 !/convex/
 !/convex/**
 !/docs/
+!/docs/ARCHITECTURE.md
 !/docs/MIDNIGHT-INTEGRATION.md
+!/docs/PROVENANCE.md
 !/docs/RECEIPTS.md
+!/docs/adr/
+!/docs/adr/**
+!/docs/audit/
+!/docs/audit/**
 !/docs/media/
 !/docs/media/**
 !/docs/plan/
@@ -58,7 +66,6 @@ __pycache__/
 .scratch/
 hardening/
 midnight-level-db/
-convex/_generated/
 packages/contract/generated/
 apps/web/public/qa-build/
 apps/web/artwork/
@@ -99,7 +106,6 @@ e2e/**/out/
 /scripts/net-health.sh
 /scripts/next-task.sh
 /scripts/ownership-check.sh
-/scripts/post-push-verify.sh
 /scripts/pr7-axe*.mjs
 /scripts/preprod-observe.mjs
 /scripts/privy-test-login*.ts
