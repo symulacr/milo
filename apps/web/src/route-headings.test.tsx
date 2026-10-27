@@ -433,9 +433,14 @@ const GUARDS: readonly (readonly [string, string, string, string])[] = [
     "captures the card payment next",
   ],
   [
+    // The invariant is "the path, never the token-bearing href". It is read from
+    // the router rather than the global so it is the *routed* path (the shell
+    // renders this form outside the `:quoteId` route, and a MemoryRouter has no
+    // global location). `location.search` is refused too: G-17 keeps the token
+    // out of the callback by stashing it, not by putting it back in the URL.
     "D-01 sign-in sends the path, not the token-bearing href",
     "apps/web/src/routes/SignIn.tsx",
-    "location.pathname",
+    "useLocation().pathname",
     "location.href",
   ],
   [
@@ -483,6 +488,17 @@ describe("r15 behaviour guards", () => {
       expect(source).toContain(present);
       if (absent) expect(source).not.toContain(absent);
     });
+
+  test("D-01 the callback is the path, and never carries the token", () => {
+    const source = readFileSync("apps/web/src/routes/SignIn.tsx", "utf8");
+    // The callback handed to the mailer is the routed path.
+    expect(source).toContain("sendMagicLink(email, here)");
+    expect(source).toContain("const here = useLocation().pathname;");
+    // Neither the full href nor the query string may reach the mailer: the
+    // first leaks to the provider via Referer, the second re-opens D-01.
+    expect(source).not.toContain("location.href");
+    expect(source).not.toContain("location.search");
+  });
 
   test("D-02 the key is saved only after the server accepted it", () => {
     const source = readFileSync("apps/web/src/workspace/flows.ts", "utf8");
@@ -546,7 +562,7 @@ describe("a sign-in failure names what the user can do", () => {
 
   test("a consumed link is named, not blamed, and can be resent", () => {
     expect(used).toContain("Request a new link");
-    expect(used).toContain("Link already used or expired");
+    expect(used).toContain("already used");
     expect(used).not.toMatch(/you did something wrong|invalid user/i);
     expect(used).toContain('type="email"');
     expect(used).toContain("Email me a sign-in link");
@@ -1087,5 +1103,210 @@ describe("the service boundary shows what actually failed", () => {
     } finally {
       console.error = original;
     }
+  });
+});
+
+describe("an order action cannot be started twice", () => {
+  // `busy` is React state, so it only disables the button after a re-render.
+  // Two clicks in the same frame both reach run() and start two chain actions
+  // at one revision. The ref is synchronous, so the second click is refused.
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("run() refuses a second click before it does any work", () => {
+    const text = source();
+    const guard = text.indexOf("if (inFlight.current) return;");
+    expect(guard).toBeGreaterThan(-1);
+    // The guard must come before the first await, or the second click is only
+    // refused after the first action has already started.
+    const firstAwait = text.indexOf("void runAction({", guard);
+    expect(guard).toBeLessThan(firstAwait);
+  });
+
+  test("the guard is released on both settle paths", () => {
+    const text = source();
+    // Success and failure both clear it, or a failed action locks the page.
+    const releases = text.match(/inFlight\.current = false;/g) ?? [];
+    expect(releases.length).toBe(2);
+  });
+
+  test("the same guard shape as the quote form", () => {
+    // NewQuote solved this first (D-05); the order page must match it.
+    expect(readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8")).toContain(
+      "if (inFlight.current) return;",
+    );
+  });
+});
+
+describe("an emoji at the title boundary is not cut in half", () => {
+  // `slice(0, 80)` counts UTF-16 code units, so a surrogate pair straddling the
+  // boundary becomes a lone surrogate. The server's bound counts units too, so
+  // it accepts and stores the corrupted title, and the list renders a
+  // replacement glyph. Asserted on the pure derivation, which is where the bug
+  // is; driving the whole form would add async flakiness and prove nothing more.
+  const LONE_SURROGATE =
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  // Built from its code point: a literal emoji in source is flagged as UI, and
+  // this is test data.
+  const PAINT = String.fromCodePoint(0x1f3a8);
+
+  test("a title cut at 80 keeps a whole emoji", async () => {
+    const { titleFrom } = await import("./routes/NewQuote");
+    // 79 units, then an emoji (2 units) straddling index 80.
+    const title = titleFrom(`${"a".repeat(79)}${PAINT} rest of the brief`);
+    expect(LONE_SURROGATE.test(title)).toBe(false);
+    // Still a legal title for the server's own bound.
+    expect(title.length).toBeGreaterThanOrEqual(5);
+    expect(title.length).toBeLessThanOrEqual(80);
+  });
+
+  test("a title of only emoji is not truncated mid-pair", async () => {
+    const { titleFrom } = await import("./routes/NewQuote");
+    const title = titleFrom(PAINT.repeat(60));
+    expect(LONE_SURROGATE.test(title)).toBe(false);
+    expect(title.length).toBeLessThanOrEqual(80);
+  });
+
+  test("an ordinary title is unchanged", async () => {
+    const { titleFrom } = await import("./routes/NewQuote");
+    expect(titleFrom("Three hero images for the studio")).toBe(
+      "Three hero images for the studio",
+    );
+  });
+});
+
+describe("the sign-in page says what actually happened", () => {
+  // The link is single-use, and a mail scanner opening it burns it before the
+  // human clicks. The page used to say only "Link already used or expired",
+  // which names neither cause nor the window.
+  const used = render("/orders?error=INVALID_TOKEN", <SignIn />);
+
+  test("a burned link names the scanner cause", () => {
+    expect(used).toMatch(/scanner/i);
+    expect(used).toContain("already used");
+  });
+
+  test("the window is stated, and it is the order's own window", () => {
+    // G-16: the sign-in link gates an invite that only expires with the order's
+    // acceptance window, so the two must be the same number. The page derives
+    // its sentence from the constant, so this asserts the join rather than a
+    // literal that could drift.
+    const minutes = Math.round(ORDER_WINDOWS_MS.acceptance / 60_000);
+    expect(used).toContain(`${minutes} minutes`);
+    // The old 15-minute value would now be a mismatch.
+    expect(minutes).not.toBe(15);
+  });
+
+  test("a server-side failure still does not blame the user", () => {
+    const broken = render("/orders?error=failed_to_create_session", <SignIn />);
+    expect(broken).toContain("did not complete");
+    expect(broken).not.toContain("scanner");
+  });
+});
+
+describe("the sign-in link lives as long as the order it opens", () => {
+  // G-16: two clocks governed one flow. The order invite has no expiry of its
+  // own — only the acceptance window, one hour — while the sign-in link lived
+  // 15 minutes. A buyer who read the mail at minute 16 held a valid order and a
+  // dead sign-in link, and could never open it on the first try.
+  //
+  // The server value is now *derived* from the same constant, so the two cannot
+  // drift. This file mocks `convex/auth` (the scenario harness stubs the auth
+  // component), so the server half is asserted on the source — the same shape
+  // the D-* guards in this file already use. The value half is asserted through
+  // the rendered sentence, which is derived from the same constant.
+  const serverSource = () => readFileSync("convex/auth.ts", "utf8");
+
+  test("the server derives the expiry from the acceptance window", () => {
+    const source = serverSource();
+    expect(
+      source.includes("expiresIn: ORDER_WINDOWS_MS.acceptance / 1000"),
+    ).toBe(true);
+    // The literal that caused the mismatch must be gone.
+    expect(source.includes("expiresIn: 60 * 15")).toBe(false);
+  });
+
+  test("the page states that same window, not a literal", () => {
+    const source = readFileSync("apps/web/src/routes/SignIn.tsx", "utf8");
+    // The sentence is built from the constant, so a window change moves both.
+    expect(source.includes("ORDER_WINDOWS_MS.acceptance / 60_000")).toBe(true);
+    expect(
+      source.includes('"The link works once and expires in 15 minutes."'),
+    ).toBe(false);
+  });
+});
+
+describe("an invite survives the sign-in it needs", () => {
+  // The studio's email IS a magic link whose callback is the full invite path,
+  // so the first hop is fine. But that link is single-use and 15 minutes long,
+  // and when it is burned or expired the buyer lands on the invite URL signed
+  // OUT. The shell then renders <SignIn/> instead of the order route, and the
+  // form's callback is `location.pathname` — a pathname has no query string.
+  // So the token was dropped and the order became unreachable: every retry sent
+  // a new link that landed on /orders/<id> with no token, and OrderView fell
+  // through to "Page not found". The order was still valid the whole time.
+  //
+  // The fix keeps the token for the tab and restores it after the session
+  // exists, so the emailed callback stays token-free (D-01) *and* the order
+  // stays reachable. Both halves are asserted, because either alone is the bug.
+  // Namespace lookup with a permissive fallback, so a missing export fails on
+  // the *value* it produces rather than on a TypeError. A test that dies on
+  // "not a function" proves the export is absent, not that the behaviour is.
+  const keys = async () => {
+    const module = (await import("./workspace/keys")) as unknown as {
+      stashInvite?: (quoteId: string, token: string) => void;
+      stashedInvite?: (quoteId: string) => string | null;
+      clearInvite?: (quoteId: string) => void;
+    };
+    return {
+      stashInvite: module.stashInvite ?? (() => {}),
+      stashedInvite: module.stashedInvite ?? (() => null),
+      clearInvite: module.clearInvite ?? (() => {}),
+    };
+  };
+
+  test("the token is kept, and the callback still does not carry it", async () => {
+    const { stashInvite, stashedInvite } = await keys();
+    // What SignIn does on the signed-out invite page.
+    stashInvite("quote-1", "to".repeat(32));
+    expect(stashedInvite("quote-1")).toBe("to".repeat(32));
+    // D-01 is not undone: the token is not in the callback the form sends.
+    const source = readFileSync("apps/web/src/routes/SignIn.tsx", "utf8");
+    // `includes` rather than `toContain`: a failure then prints `false`, not the
+    // whole file, which is unreadable in a test report.
+    expect(source.includes("sendMagicLink(email, here)")).toBe(true);
+    expect(source.includes("sendMagicLink(email, location.search)")).toBe(
+      false,
+    );
+  });
+
+  test("one order's token is never offered to another", async () => {
+    const { stashInvite, stashedInvite } = await keys();
+    stashInvite("quote-a", "aa".repeat(32));
+    stashInvite("quote-b", "bb".repeat(32));
+    expect(stashedInvite("quote-a")).toBe("aa".repeat(32));
+    expect(stashedInvite("quote-b")).toBe("bb".repeat(32));
+    expect(stashedInvite("quote-c")).toBeNull();
+  });
+
+  test("a spent token is cleared, so the tab stops carrying it", async () => {
+    const { stashInvite, stashedInvite, clearInvite } = await keys();
+    stashInvite("quote-spent", "cc".repeat(32));
+    // Assert the stash first: without it this test would pass on a version that
+    // never stored anything, which is exactly the bug it is meant to catch.
+    expect(stashedInvite("quote-spent")).toBe("cc".repeat(32));
+    clearInvite("quote-spent");
+    expect(stashedInvite("quote-spent")).toBeNull();
+  });
+
+  test("the order page restores the token when the URL has none", () => {
+    // The restore half lives in OrderView: the URL is the first choice, the
+    // stash the second, so a normal invite link behaves exactly as before.
+    const source = readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+    expect(source.includes('params.get("invite")')).toBe(true);
+    expect(source.includes("stashInvite(quoteId, fromUrl)")).toBe(true);
+    expect(source.includes("stashedInvite(quoteId)")).toBe(true);
+    // The stash is keyed by the route's own id, never a global one.
+    expect(source.includes("stashedInvite()")).toBe(false);
   });
 });

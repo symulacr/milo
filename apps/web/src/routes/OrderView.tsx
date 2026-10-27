@@ -36,7 +36,12 @@ import {
   runAction,
   warmChain,
 } from "../workspace/flows";
-import { keyFor } from "../workspace/keys";
+import {
+  clearInvite,
+  keyFor,
+  stashedInvite,
+  stashInvite,
+} from "../workspace/keys";
 import {
   actionsFor,
   deadlineOf,
@@ -85,7 +90,17 @@ export function OrderView() {
   const [params, setParams] = useSearchParams();
   // D-01: the invite token is a bearer credential. Capture it once, then drop it
   // from the address bar so it stays out of history, copied links and Referer.
-  const [token] = useState(() => params.get("invite"));
+  //
+  // G-17: the token is also stashed for the tab, because the shell replaces this
+  // route with the sign-in form when there is no session — and the form's
+  // callback is a pathname, which cannot carry a query string. Without the stash
+  // a buyer whose sign-in link was burned or expired could never reopen the
+  // order: the new link would land on `/orders/<id>` with no token.
+  const [token] = useState(() => {
+    const fromUrl = params.get("invite");
+    if (fromUrl) stashInvite(quoteId, fromUrl);
+    return fromUrl ?? stashedInvite(quoteId);
+  });
   useEffect(() => {
     if (params.has("invite")) setParams({}, { replace: true });
   }, [params, setParams]);
@@ -162,7 +177,11 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
                 token,
                 preview,
                 () => {},
-              ).catch((cause) => setError(errorText(cause))),
+              )
+                // The token is spent once the claim succeeds, so the tab stops
+                // carrying a credential it can never use again.
+                .then(() => clearInvite(quoteId))
+                .catch((cause) => setError(errorText(cause))),
             );
           }}
         >
@@ -188,6 +207,8 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   const [steps, setSteps] = useState<Steps>({});
   const [plan, setPlan] = useState<readonly (readonly [string, string])[]>([]);
   const [busy, setBusy] = useState(false);
+  /** Synchronous double-click guard: `busy` is a render behind. */
+  const inFlight = useRef(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [picked, setPicked] = useState<File[]>([]);
@@ -265,6 +286,12 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
 
   const run = (action: OrderAction) => {
     if (!connected) return connectPreferred();
+    // `busy` only disables the button after a re-render, so two clicks in the
+    // same frame both reach here and start two chain actions at one revision.
+    // The ref is synchronous, so the second click is refused. NewQuote already
+    // guards its submit the same way (D-05); this is the same fix for actions.
+    if (inFlight.current) return;
+    inFlight.current = true;
     const from = order.contract?.revision ?? 0;
     // `busy` is set synchronously here, so the button paints its pending state
     // in the same frame as the click instead of one render later.
@@ -284,10 +311,12 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
       report,
     }).then(
       () => {
+        inFlight.current = false;
         setBusy(false);
         setPending({ from, at: Date.now() });
       },
       (cause) => {
+        inFlight.current = false;
         setBusy(false);
         setError(errorText(cause));
       },

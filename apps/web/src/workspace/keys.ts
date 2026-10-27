@@ -57,18 +57,100 @@ export async function sha256Hex(data: string | ArrayBuffer | Uint8Array) {
   );
 }
 
-export const readKeys = (subject: string): KeyRing =>
-  parse(ringSchema, localStorage.getItem(ringKey(subject)) ?? "{}") ?? {};
+export const readKeys = (subject: string): KeyRing => {
+  // The legacy single-entry ring first, then every per-order entry, which wins
+  // because it is the newer format.
+  const legacy =
+    parse(ringSchema, localStorage.getItem(ringKey(subject)) ?? "{}") ?? {};
+  const prefix = `${ringKey(subject)}:`;
+  const ring: KeyRing = { ...legacy };
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const name = localStorage.key(index);
+    if (!name?.startsWith(prefix)) continue;
+    const one = parse(keySchema, localStorage.getItem(name) ?? "");
+    if (one) ring[one.quoteId] = one;
+  }
+  return ring;
+};
 
 export const keyFor = (subject: string, quoteId: string) =>
   readKeys(subject)[quoteId] ?? null;
 
+/**
+ * One storage entry per order, not one entry for the whole ring.
+ *
+ * `localStorage` has no atomic read-modify-write. With a single ring entry, two
+ * tabs saving at the same moment each spread a snapshot taken before the other's
+ * key existed, so the later write deletes the earlier key — and the order key is
+ * the only thing that can sign for that order, so the loss is permanent.
+ *
+ * Writing each key under its own storage key removes the race by construction:
+ * two tabs saving *different* orders never touch the same entry, so neither can
+ * erase the other. No lock, no retry, nothing to detect. `navigator.locks` would
+ * also work but is absent in older Safari and in this project's test runtime, so
+ * a lock-based fix could not be proven here.
+ *
+ * The old single-entry ring is still read, so a browser that saved keys before
+ * this change keeps them.
+ */
+const keyEntry = (subject: string, quoteId: string) =>
+  `${ringKey(subject)}:${quoteId}`;
+
 export function saveKey(subject: string, key: OrderKey) {
-  localStorage.setItem(
-    ringKey(subject),
-    JSON.stringify({ ...readKeys(subject), [key.quoteId]: key }),
-  );
+  localStorage.setItem(keyEntry(subject, key.quoteId), JSON.stringify(key));
 }
+
+/**
+ * The invite token, carried across a sign-in.
+ *
+ * The studio's email IS a magic link whose callback is the full invite path, so
+ * the first hop needs no help. But that link is single-use and short-lived, and
+ * when it is burned or expires the buyer lands on the invite URL signed out. The
+ * shell then renders the sign-in form *instead of* the order route, and the form
+ * builds its callback from `location.pathname` — and a pathname has no query
+ * string, so the token would be dropped and the buyer could never reopen the
+ * order. Every retry repeats the loss.
+ *
+ * Why `localStorage` and not `sessionStorage`: a magic link is normally clicked
+ * from a mail client, which opens a **new tab**, and `sessionStorage` is
+ * per-tab — the stash would be empty exactly where it is needed. Why not the
+ * callback URL: D-01, that is what put the token in the mail provider's logs.
+ *
+ * What makes a persisted copy safe is that the token is not a bearer credential
+ * on its own. `orders.invite` admits a non-member only when the signed-in
+ * email equals the invited address (`convex/orders.ts`), and the token is
+ * single-use and rotated on claim. A copy left in a shared browser is therefore
+ * useless without the invited account, and is cleared as soon as it is spent.
+ *
+ * Keyed by quote id, so one order's token can never be offered to another.
+ */
+const inviteStash = (quoteId: string) => `milo:invite:${quoteId}`;
+
+export const stashInvite = (quoteId: string, token: string) => {
+  try {
+    if (quoteId) localStorage.setItem(inviteStash(quoteId), token);
+  } catch {
+    // Storage disabled: the first hop, which the studio's email carries, still
+    // works. Only the resend path degrades.
+  }
+};
+
+/** The token stashed for *this* order, or null. Never another order's. */
+export const stashedInvite = (quoteId: string): string | null => {
+  try {
+    return localStorage.getItem(inviteStash(quoteId)) || null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearInvite = (quoteId: string) => {
+  try {
+    localStorage.removeItem(inviteStash(quoteId));
+  } catch {
+    // Nothing to clear.
+  }
+};
 
 async function derive(password: string, salt: Uint8Array) {
   const base = await crypto.subtle.importKey(

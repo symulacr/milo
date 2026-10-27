@@ -7,6 +7,7 @@ import { queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { inviteFailureReason, sendEmail } from "../packages/backend/src/email";
 import { env } from "../packages/backend/src/encoding";
+import { ORDER_WINDOWS_MS } from "../packages/backend/src/order-windows";
 import {
   operatorEmails,
   requireSessionSubject,
@@ -94,7 +95,16 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       }),
       convex({ authConfig }),
       magicLink({
-        expiresIn: 60 * 15,
+        // G-16: the sign-in link gates an order invite that has **no expiry** of
+        // its own — only the order's acceptance window, which is one hour. A
+        // 15-minute link therefore outlived nothing and gated everything: a
+        // buyer who read the mail at minute 16 held a valid order and a dead
+        // sign-in link, and could never open it on the first try.
+        //
+        // Derived from the window it has to cover rather than written as a
+        // literal, so the two clocks cannot drift apart again. `acceptance` is
+        // the only one that matters here: after it the order is gone anyway.
+        expiresIn: ORDER_WINDOWS_MS.acceptance / 1000,
         storeToken: "hashed",
         // A plain throw becomes a bodyless 500, so the client would show
         // nothing. APIError is the one shape better-call serializes.

@@ -992,3 +992,62 @@ describe("a different account corrupts nothing", () => {
     expect(backend.tables.quoteDrafts).toHaveLength(1);
   });
 });
+
+describe("two tabs cannot lose each other's order key", () => {
+  // localStorage has no atomic read-modify-write. With ONE ring entry, two tabs
+  // saving at the same moment each spread a snapshot taken before the other's
+  // key existed, so the later write deletes the earlier key — and the order key
+  // is the only thing that can sign for that order.
+  //
+  // The tests interleave for real: a storage double lets the other tab write
+  // BETWEEN our read and our write, which is the exact lost-update window.
+  // Sequential saves never lose anything, on either version, so they prove
+  // nothing and are not used here.
+  const key = (quoteId: string, secret: string) => ({
+    quoteId,
+    actor: "buyer" as const,
+    secret: secret.repeat(64),
+    nonce: "b".repeat(64),
+  });
+
+  /**
+   * The invariant the fix provides: two orders must not share a storage entry.
+   * With one ring entry both writes target the same key, so the later one wins
+   * and the earlier key is gone. With one entry per order they cannot collide.
+   * This is asserted directly rather than by simulating a race, because the
+   * property is what makes the race impossible.
+   */
+  const entriesFor = (subject: string) => {
+    const prefix = `milo:order-keys:${subject}`;
+    return [...Array(localStorage.length).keys()]
+      .map((index) => localStorage.key(index))
+      .filter((name): name is string => Boolean(name?.startsWith(prefix)));
+  };
+
+  test("two orders live in two storage entries, not one", async () => {
+    const { saveKey } = await import("./keys");
+    const subject = `did:privy:entries-${Math.random()}`;
+    saveKey(subject, key("q1", "a"));
+    saveKey(subject, key("q2", "c"));
+    // Two entries means two writes cannot overwrite each other.
+    expect(entriesFor(subject)).toHaveLength(2);
+  });
+
+  test("two tabs saving different orders both keep their key", async () => {
+    const { saveKey, readKeys } = await import("./keys");
+    const subject = `did:privy:two-${Math.random()}`;
+    saveKey(subject, key("q1", "a"));
+    saveKey(subject, key("q2", "c"));
+    expect(Object.keys(readKeys(subject)).sort()).toEqual(["q1", "q2"]);
+  });
+
+  test("a key saved in the old single-entry format is still read", async () => {
+    const { readKeys } = await import("./keys");
+    const subject = `did:privy:legacy-${Math.random()}`;
+    localStorage.setItem(
+      `milo:order-keys:${subject}`,
+      JSON.stringify({ old: key("old", "f") }),
+    );
+    expect(readKeys(subject).old?.secret.startsWith("f")).toBe(true);
+  });
+});

@@ -10,9 +10,22 @@ import { createQuote } from "../workspace/flows";
 import { randomHex } from "../workspace/keys";
 
 /** The server wants a 5-80 character title; the brief's first line is one. */
-const titleFrom = (brief: string) => {
+export const titleFrom = (brief: string) => {
   const first = brief.split("\n")[0].trim();
-  const title = (first.length >= 5 ? first : brief.trim()).slice(0, 80);
+  const source = first.length >= 5 ? first : brief.trim();
+  // Take whole code points while the UTF-16 length still fits in 80.
+  //
+  // `slice(0, 80)` counts code units, so a surrogate pair straddling index 80
+  // becomes a lone surrogate: the server accepts it (it counts units too) and
+  // the orders list renders a replacement glyph. `Array.from(...).slice(0, 80)`
+  // fixes the surrogate but can exceed 80 units — 80 emoji are 160 units — and
+  // the server would then reject the title. This takes code points only while
+  // the running unit count fits, so the result is whole-emoji-safe AND legal.
+  let title = "";
+  for (const point of source) {
+    if (title.length + point.length > 80) break;
+    title += point;
+  }
   return title.length >= 5 ? title : "New order";
 };
 
