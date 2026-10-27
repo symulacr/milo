@@ -6,6 +6,7 @@ import {
 import { v } from "convex/values";
 import { paymentBindsQuote } from "../packages/backend/src/admission-policy";
 import {
+  imagePackPolicyFor,
   PROVIDER_LEASE_MS,
   PROVIDER_RETRY_WINDOW_MS,
   usableObservation,
@@ -80,7 +81,11 @@ export async function freezeApprovedQuote(
     fail("WRONG_STATE", "Quote version changed");
   const frozen = await frozenQuoteById(ctx, input.quoteId);
   const { _id, _creationTime, expiresAt, imagePackPolicy, ...quote } = approved;
-  validateImagePackPolicy(quote, imagePackPolicy);
+  // R21 I-05: a quote approved before `imagePackPolicy` existed has no such
+  // field, and was permanently unreadable. The policy is derived from the
+  // quote's own amount, so defaulting it reconstructs the only value it could
+  // ever have had.
+  validateImagePackPolicy(quote, imagePackPolicy ?? imagePackPolicyFor(quote));
   if (!validPublicConstructor(quote))
     fail("INVALID_INPUT", "Invalid versioned public constructor inputs");
   if (frozen) {

@@ -123,7 +123,10 @@ export default defineSchema({
     // The operator's dispute queue asks for non-terminal DISPUTED rows. Without
     // this, `by_terminal` narrows to every live order and the phase is filtered
     // in the range.
-    .index("by_terminal_phase", ["terminal", "phase"]),
+    .index("by_terminal_phase", ["terminal", "phase"])
+    // R22 I-04: the retention cron walks terminal orders oldest-first to find
+    // the ones past the promised window. Without this the sweep is a scan.
+    .index("by_terminal_observed", ["terminal", "observedAt"]),
   chainObservations: defineTable({
     orderId: s,
     phase: s,
@@ -157,6 +160,14 @@ export default defineSchema({
     orderNonce: s,
     merchantCommitment: s,
     operatorCommitment: optS,
+    /**
+     * R22 I-01: the operator signing secret for this order, generated at
+     * creation. Server-only: it is never in a `returns` validator, never in a
+     * public projection, and `operatorSecret` is the one action that reads it.
+     * Optional because orders created before this field fall back to the legacy
+     * `HMAC(MILO_OPERATOR_SECRET, nonce)` derivation.
+     */
+    operatorSecret: optS,
     termsCommitment: s,
     terms: v.object({
       unitPrice: s,

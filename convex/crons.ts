@@ -38,4 +38,12 @@ crons.daily(
   internalRef<"action">("diagnostics:digest"),
 );
 
+// R22 I-04: the retention the privacy page promises, actually enforced. Daily,
+// off the top of the hour, bounded per run.
+crons.daily(
+  "prune expired order content",
+  { hourUTC: 3 },
+  internalRef<"mutation">("diagnostics:pruneExpiredContent"),
+);
+
 export default crons;

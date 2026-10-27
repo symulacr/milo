@@ -25,6 +25,24 @@ export function validJobClock(
   );
 }
 
+/**
+ * The image-pack policy an approved quote implies when the row predates the
+ * field. `imagePackPolicy` was added as a required object in a later build, so a
+ * quote approved before that revision has no such field and was permanently
+ * unreadable (R21 I-05). The policy is *derived* from `amountMinor` anyway, so
+ * defaulting it is a reconstruction, not a guess: there is exactly one policy
+ * shape (`serviceVersion 1`, one pack, three outputs) and its price is the
+ * quote's own amount.
+ */
+export function imagePackPolicyFor(quote: { amountMinor: number }) {
+  return {
+    serviceVersion: 1 as const,
+    packQuantity: 1 as const,
+    outputCount: 3 as const,
+    unitPriceMinor: quote.amountMinor,
+  };
+}
+
 export function validateImagePackPolicy(
   quote: FrozenQuote,
   policy: {

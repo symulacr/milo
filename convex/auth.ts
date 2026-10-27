@@ -63,7 +63,19 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
     trustedOrigins: [required(ctx, "SITE_URL", "http://localhost:5173")],
     hooks: { after: noReferrerOnVerify },
     database: authComponent.adapter(ctx),
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
+    /**
+     * R22 I-07. `updateAge` is a refresh cadence: a session used after it has
+     * its expiry pushed to `now + expiresIn`. With a 1-day cadence and a 7-day
+     * expiry an ACTIVE session never ends, so the privacy page's "7 days, then
+     * you sign in again" was false and a stolen token stayed valid for as long
+     * as the account was used. `disableSessionRefresh` makes `expiresIn`
+     * absolute; the cost is a re-sign-in weekly, one click for a magic-link
+     * product. (`revokeSession`/`revokeSessions` remain the explicit paths.)
+     */
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      disableSessionRefresh: true,
+    },
     // Database-backed built-in limiter. Magic-link sends email, so it is
     // strictest; the wallet routes are public and unauthenticated, and each
     // `/wallet/verify` costs a signature check, so they need a cap too.

@@ -4,9 +4,16 @@ import {
   DIAGNOSTICS_BY_INTENT_LIMIT,
   DIGEST_WINDOW_MS,
   deadLetterCounts,
+  pruneExpiredContent,
+  RETENTION_DAYS,
   read,
 } from "./diagnostics";
-import { settlementDouble } from "./orderProjection.double";
+import type { Row } from "./orderProjection.double";
+import {
+  readSurface,
+  settlementDouble,
+  writeSurface,
+} from "./orderProjection.double";
 
 // The diagnostics read is session-gated, and `requireSessionSubject` compares
 // the identity's issuer against the deployment's own. Declare it here.
@@ -141,6 +148,129 @@ describe("ROUND18 item 7: the operator digest", () => {
     // `minuteUTC` is omitted so Convex spreads the run; pinning :00 is the
     // documented busiest moment.
     expect(source).not.toMatch(/hourUTC: 7,\s*minuteUTC/);
+  });
+});
+
+/**
+ * R22 I-04: the privacy page promises "Order brief and delivered files: 90 days
+ * after the order ends". Nothing enforced it. This pins the enforcement and,
+ * just as importantly, what it does NOT delete.
+ */
+describe("R22 I-04: retention is enforced, not just promised", () => {
+  const ctxFor = (tables: Record<string, Row[]>) =>
+    ({
+      db: { ...readSurface(tables), ...writeSurface(tables) },
+    }) as never;
+
+  const chain = (over: Record<string, unknown> = {}): Row => ({
+    _id: "c1",
+    orderId: "order-1",
+    quoteId: "quote-1",
+    terminal: true,
+    observedAt: Date.now() - (RETENTION_DAYS + 1) * 24 * 60 * 60_000,
+    phase: "APPROVED",
+    ...over,
+  });
+
+  const draft = (): Row => ({
+    _id: "d1",
+    id: "quote-1",
+    brief: "A short brief for the fixed-price image pack.",
+    title: "Three hero images",
+    clientEmail: "buyer@example.com",
+    amountMinor: 90_000,
+    currency: "USD",
+    updatedAt: 1,
+  });
+
+  const delivery = (): Row => ({
+    _id: "del1",
+    orderId: "order-1",
+    merchantId: "merchant-1",
+    revision: 1,
+    files: [{ grantId: "g", storageId: "s", sha256: "a".repeat(64) }],
+    manifest: "m",
+  });
+
+  const prune = async (tables: Record<string, Row[]>) =>
+    (
+      pruneExpiredContent as unknown as {
+        _handler: (c: never, a: Record<string, never>) => Promise<unknown>;
+      }
+    )._handler(ctxFor(tables), {});
+
+  test("a terminal order past the window is redacted, not deleted", async () => {
+    const tables = {
+      chainOrders: [chain()],
+      quoteDrafts: [draft()],
+      deliveries: [delivery()],
+    };
+    expect(await prune(tables)).toEqual({ quotes: 1, deliveries: 1 });
+    // The personal content is gone.
+    expect(tables.quoteDrafts[0].brief).toBe("");
+    expect(tables.quoteDrafts[0].clientEmail).toBe("");
+    expect(tables.deliveries[0].files).toEqual([]);
+    // The money record survives, because the page promises 7 years for tax.
+    expect(tables.quoteDrafts[0].amountMinor).toBe(90_000);
+    expect(tables.quoteDrafts).toHaveLength(1);
+  });
+
+  test("an order inside the window is untouched", async () => {
+    const tables = {
+      chainOrders: [chain({ observedAt: Date.now() - 24 * 60 * 60_000 })],
+      quoteDrafts: [draft()],
+      deliveries: [delivery()],
+    };
+    expect(await prune(tables)).toEqual({ quotes: 0, deliveries: 0 });
+    expect(tables.quoteDrafts[0].brief).not.toBe("");
+    expect(tables.deliveries[0].files).toHaveLength(1);
+  });
+
+  test("a non-terminal order is never touched, however old", async () => {
+    const tables = {
+      chainOrders: [chain({ terminal: false })],
+      quoteDrafts: [draft()],
+      deliveries: [delivery()],
+    };
+    expect(await prune(tables)).toEqual({ quotes: 0, deliveries: 0 });
+    expect(tables.quoteDrafts[0].brief).not.toBe("");
+  });
+
+  test("an order with no observedAt is not provably ended, so it is left alone", async () => {
+    const tables = {
+      chainOrders: [chain({ observedAt: undefined })],
+      quoteDrafts: [draft()],
+      deliveries: [delivery()],
+    };
+    expect(await prune(tables)).toEqual({ quotes: 0, deliveries: 0 });
+  });
+
+  test("the cron is registered daily", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./crons.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('"prune expired order content"');
+    expect(source).toContain("diagnostics:pruneExpiredContent");
+  });
+});
+
+/**
+ * R22 I-07: the session must actually end. `updateAge` made `expiresIn` a
+ * rolling window, so an active session renewed forever and the privacy page's
+ * "7 days, then you sign in again" was false.
+ */
+describe("R22 I-07: the session lifetime is absolute, not rolling", () => {
+  test("session refresh is disabled so expiresIn is an absolute lifetime", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./auth.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("disableSessionRefresh: true");
+    // `updateAge` is what made it rolling; it must not be back.
+    expect(source).not.toMatch(/updateAge:\s*60 \* 60 \* 24\b/);
   });
 });
 

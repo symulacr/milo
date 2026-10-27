@@ -17,8 +17,8 @@ import {
   bytesToHex,
   HEX64,
   hexToBytes,
+  randomHex,
 } from "../packages/backend/src/encoding";
-import { invitePath } from "../packages/backend/src/invite-link";
 import { stripeMode } from "../packages/backend/src/stripe-mode";
 import {
   normalizeTestPayment,
@@ -94,10 +94,30 @@ const DRAFT = makeFunctionReference<"mutation">(
   "trustedProvisioning:writeQuoteDraft",
 );
 
-const operatorSecretFor = (nonce: string): string =>
+/**
+ * R22 I-01: the legacy derivation, kept ONLY so an order created before
+ * per-order secrets still resolves. New orders never reach it — their secret is
+ * generated at creation and stored server-side.
+ */
+const legacyOperatorSecretFor = (nonce: string): string =>
   createHmac("sha256", hexToBytes(requiredEnv("MILO_OPERATOR_SECRET", HEX64)))
     .update(hexToBytes(nonce))
     .digest("hex");
+
+/**
+ * The operator signing secret for one order.
+ *
+ * `stored` is the per-order secret written at creation. When it is present the
+ * env secret is not read at all, so a leak of `MILO_OPERATOR_SECRET` derives
+ * nothing for any order created after this change. The fallback exists so the
+ * orders already deployed on chain keep working; it is the only path that still
+ * touches the env var.
+ */
+const operatorSecretFor = (nonce: string, stored?: string | null): string =>
+  stored ?? legacyOperatorSecretFor(nonce);
+
+/** 32 random bytes as hex: the per-order operator secret (R22 I-01). */
+const randomSecret = randomHex;
 
 const capability = async (
   network: string,
@@ -142,13 +162,18 @@ async function writeAndInvite(
   ctx: ActionCtx,
   quote: QuoteInput & { studioName?: string },
 ) {
+  // R22 I-01 (V1): the operator secret is random per order and lives only in
+  // the server-side draft. The commitment the contract checks is derived from
+  // it, so a leak of MILO_OPERATOR_SECRET derives nothing for this order.
+  const operatorSecret = randomSecret();
   const draft = await ctx.runMutation(DRAFT, {
     ...quote,
+    operatorSecret,
     operatorCommitment: await capability(
       "preprod",
       quote.orderNonce,
       2,
-      operatorSecretFor(quote.orderNonce),
+      operatorSecret,
     ),
   });
   try {
@@ -156,7 +181,11 @@ async function writeAndInvite(
     await auth.api.signInMagicLink({
       body: {
         email: quote.clientEmail,
-        callbackURL: invitePath(draft.quoteId, draft.inviteToken),
+        // R21 I-11 removed `inviteToken` from the mutation's result, so the
+        // callback is taken from the URL that carries it. Reading the old
+        // field left `callbackURL` undefined and broke every invite.
+        callbackURL:
+          new URL(draft.inviteUrl).pathname + new URL(draft.inviteUrl).search,
         metadata: { quoteId: draft.quoteId },
       },
       headers,
@@ -226,7 +255,7 @@ export const createStudioAndQuote = actionGeneric({
 const NONCE_FOR_QUOTE = makeFunctionReference<
   "query",
   { quoteId: string },
-  { orderNonce: string } | null
+  { orderNonce: string; operatorSecret: string | null } | null
 >("trustedProvisioning:orderNonceFor");
 
 const FREEZE = makeFunctionReference<"mutation">("provisioning:freeze");
@@ -284,7 +313,7 @@ export const holdPayment = actionGeneric({
       "preprod",
       nonce.orderNonce,
       2,
-      operatorSecretFor(nonce.orderNonce),
+      operatorSecretFor(nonce.orderNonce, nonce.operatorSecret),
     );
     const finalized = await ctx.runMutation(FINALIZE, {
       quoteId: args.quoteId,
@@ -384,7 +413,11 @@ export const holdPayment = actionGeneric({
 const OPERATOR_EMAILS = makeFunctionReference<
   "query",
   { quoteId: string },
-  { allowed: boolean; orderNonce: string | null }
+  {
+    allowed: boolean;
+    orderNonce: string | null;
+    operatorSecret: string | null;
+  }
 >("trustedProvisioning:operatorAccess");
 
 export const operatorSecret = actionGeneric({
@@ -415,7 +448,9 @@ export const operatorSecret = actionGeneric({
       "operator-key-issued",
       JSON.stringify({ quoteId: args.quoteId }),
     );
-    return { secret: operatorSecretFor(access.orderNonce) };
+    return {
+      secret: operatorSecretFor(access.orderNonce, access.operatorSecret),
+    };
   },
 });
 

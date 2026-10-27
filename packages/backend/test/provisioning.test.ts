@@ -27,6 +27,7 @@ import type {
 } from "../src/admission-policy";
 import { HEX64 } from "../src/encoding";
 import {
+  imagePackPolicyFor,
   PROVIDER_LEASE_MS,
   PROVIDER_RETRY_WINDOW_MS,
   usableObservation,
@@ -172,6 +173,58 @@ async function queued() {
   const jobId = await request(db.ctx, consent);
   return { ...db, jobId };
 }
+
+/**
+ * R21 I-05: `approvedQuotes.imagePackPolicy` was added as a REQUIRED object in a
+ * later build, so a quote approved before that revision had no such field and
+ * was permanently unreadable — `validateImagePackPolicy` refused it before
+ * anything could be written, and no handler could repair it.
+ *
+ * The policy is derived from the quote's own `amountMinor`, so a defaulting read
+ * reconstructs the only value it could ever have had. This drives the REAL
+ * `freezeApprovedQuote` over a row shaped exactly like the pre-field build wrote
+ * it (verified against `git show a293ad4~1:convex/schema.ts`).
+ */
+describe("R21 I-05: an approved quote from an earlier build is readable", () => {
+  test("a row with no imagePackPolicy freezes via the derived default", async () => {
+    const db = fixture();
+    // The pre-field shape: everything the old build wrote, and no policy.
+    delete (db.tables.approvedQuotes[0] as Record<string, unknown>)
+      .imagePackPolicy;
+    expect(
+      (db.tables.approvedQuotes[0] as Record<string, unknown>).imagePackPolicy,
+    ).toBeUndefined();
+    await expect(
+      freezeApprovedQuote(db.ctx, { quoteId: "quote", expectedVersion: 1 }),
+    ).resolves.toBeDefined();
+    expect(db.tables.frozenQuotes).toHaveLength(1);
+  });
+
+  test("a row WITH a policy still validates it strictly (no weakening)", async () => {
+    const db = fixture();
+    // A present-but-wrong policy must still be refused: the default only fills
+    // an absent field, it does not bypass the check.
+    (db.tables.approvedQuotes[0] as Record<string, unknown>).imagePackPolicy = {
+      serviceVersion: 1,
+      packQuantity: 2,
+      outputCount: 3,
+      unitPriceMinor: 1200,
+    };
+    await expect(
+      freezeApprovedQuote(db.ctx, { quoteId: "quote", expectedVersion: 1 }),
+    ).rejects.toThrow("Approved USD image-pack policy required");
+    expect(db.tables.frozenQuotes).toHaveLength(0);
+  });
+
+  test("the derived default is the policy the amount implies", () => {
+    expect(imagePackPolicyFor({ amountMinor: 1200 })).toEqual({
+      serviceVersion: 1,
+      packQuantity: 1,
+      outputCount: 3,
+      unitPriceMinor: 1200,
+    });
+  });
+});
 
 /**
  * The first job taken from `queued()` to a completed creation. Eight tests

@@ -1,5 +1,6 @@
 import {
   internalActionGeneric,
+  internalMutationGeneric,
   internalQueryGeneric,
   makeFunctionReference,
 } from "convex/server";
@@ -10,7 +11,7 @@ import {
   operatorEmails,
   requireSessionSubject,
 } from "../packages/backend/src/session-identity";
-import type { ReadContext, ReadDb } from "./admissionContext";
+import type { AdmissionContext, ReadContext, ReadDb } from "./admissionContext";
 
 const deadLetterCountsRef = makeFunctionReference<
   "query",
@@ -185,6 +186,64 @@ export const deadLetterCounts = internalQueryGeneric({
         .map(([eventType, count]) => ({ eventType, count }))
         .sort((a, b) => b.count - a.count),
     };
+  },
+});
+
+/**
+ * R22 I-04: the retention the privacy page promises, enforced.
+ *
+ * `InfoPage.tsx` promises "Order brief and delivered files: 90 days after the
+ * order ends" and "Order and payment records: 7 years, for tax". Nothing
+ * enforced either. This is one daily mutation, the same bounded-batch shape as
+ * the `paymentInbox` prune: it **redacts** the personal content of a terminal
+ * order past the window and **keeps** the row and its money fields, so the
+ * 7-year promise survives the 90-day one.
+ */
+export const RETENTION_DAYS = 90;
+export const RETENTION_BATCH = 50;
+
+export const pruneExpiredContent = internalMutationGeneric({
+  args: {},
+  returns: v.object({ quotes: v.number(), deliveries: v.number() }),
+  handler: async (ctx: AdmissionContext) => {
+    const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60_000;
+    // Terminal orders only, oldest first, bounded per run: the next run
+    // continues where this one stopped.
+    const expired = await ctx.db
+      .query("chainOrders")
+      .withIndex("by_terminal_observed", (q) => q.eq("terminal", true))
+      .take(RETENTION_BATCH);
+    let quotes = 0;
+    let deliveries = 0;
+    for (const chain of expired) {
+      // `observedAt` is when the chain last moved; a row with none is not yet
+      // provably ended, so it is left alone.
+      if (typeof chain.observedAt !== "number" || chain.observedAt > cutoff)
+        continue;
+      const draft = await ctx.db
+        .query("quoteDrafts")
+        .withIndex("by_quote", (q) => q.eq("id", chain.quoteId))
+        .unique();
+      if (draft && draft.brief !== "") {
+        // Redact the personal content, keep the money record.
+        await ctx.db.patch(draft._id, {
+          brief: "",
+          title: "(retained for tax)",
+          clientEmail: "",
+          updatedAt: Date.now(),
+        });
+        quotes += 1;
+      }
+      const delivery = await ctx.db
+        .query("deliveries")
+        .withIndex("by_order", (q) => q.eq("orderId", chain.orderId))
+        .first();
+      if (delivery && delivery.files.length > 0) {
+        await ctx.db.patch(delivery._id, { files: [] });
+        deliveries += 1;
+      }
+    }
+    return { quotes, deliveries };
   },
 });
 

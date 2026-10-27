@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import type { AdmissionContext } from "../../../convex/admissionContext";
 import { requireMembership } from "../../../convex/auth/identity";
 import {
   type AdmissionInput,
   admitCanonical,
 } from "../../../convex/canonicalAdmission";
+import { order } from "../../../convex/orders";
 import {
   begin,
   finish,
@@ -731,6 +733,170 @@ describe("workspace studio and invite flow", () => {
     expect(audit[0]).toContain("quote-1");
     // The key itself must never be in the log.
     expect(audit[0]).not.toMatch(/[a-f0-9]{64}/);
+  });
+
+  // R22 I-01: the critical one. The operator key used to be
+  // `HMAC(MILO_OPERATOR_SECRET, nonce)` — and the nonce is PUBLIC (it is in
+  // `orders.order`, in the invite URL, and on chain). So anyone holding the env
+  // secret could derive every order's operator key without touching the
+  // database, and the derivation could not be rotated per order.
+  //
+  // After V1 the secret is random per order and lives only in the server-side
+  // draft. These tests assert the property that matters: knowing the env secret
+  // and the public nonce is NOT enough.
+  describe("the operator key is not derivable from the env secret + public nonce", () => {
+    /** The pre-V1 derivation, reproduced here as the attacker's best guess. */
+    const legacyGuess = (envSecret: string, nonce: string) =>
+      createHmac("sha256", Buffer.from(envSecret, "hex"))
+        .update(Buffer.from(nonce, "hex"))
+        .digest("hex");
+
+    const fetchSecret = async (access: {
+      allowed: boolean;
+      orderNonce: string | null;
+      operatorSecret: string | null;
+    }) => {
+      const previous = process.env.MILO_OPERATOR_EMAILS;
+      const previousSecret = process.env.MILO_OPERATOR_SECRET;
+      process.env.MILO_OPERATOR_EMAILS = "ops@studio.example";
+      process.env.MILO_OPERATOR_SECRET = "a".repeat(64);
+      const realWarn = console.warn;
+      console.warn = () => {};
+      try {
+        const ctx = {
+          runQuery: async () => access,
+        } as unknown as AdmissionContext;
+        const out = await (
+          operatorSecretAction as unknown as {
+            _handler: (
+              c: AdmissionContext,
+              a: { quoteId: string },
+            ) => Promise<{ secret?: string; ok?: false }>;
+          }
+        )._handler(ctx, { quoteId: "quote-1" });
+        return out.secret;
+      } finally {
+        console.warn = realWarn;
+        if (previous === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+        else process.env.MILO_OPERATOR_EMAILS = previous;
+        if (previousSecret === undefined)
+          delete process.env.MILO_OPERATOR_SECRET;
+        else process.env.MILO_OPERATOR_SECRET = previousSecret;
+      }
+    };
+
+    test("a per-order secret is returned as-is, not derived", async () => {
+      const perOrder = "c".repeat(64);
+      const nonce = "a".repeat(64);
+      const got = await fetchSecret({
+        allowed: true,
+        orderNonce: nonce,
+        operatorSecret: perOrder,
+      });
+      expect(got).toBe(perOrder);
+      // The attacker's guess, with the env secret and the public nonce, is a
+      // DIFFERENT value. This is the fail-before/pass-after gate: on the old
+      // code `got` WAS this guess.
+      expect(got).not.toBe(legacyGuess("a".repeat(64), nonce));
+    });
+
+    test("two orders under one env secret get unrelated keys", async () => {
+      const a = await fetchSecret({
+        allowed: true,
+        orderNonce: "a".repeat(64),
+        operatorSecret: "1".repeat(64),
+      });
+      const b = await fetchSecret({
+        allowed: true,
+        orderNonce: "b".repeat(64),
+        operatorSecret: "2".repeat(64),
+      });
+      expect(a).toBe("1".repeat(64));
+      expect(b).toBe("2".repeat(64));
+      expect(a).not.toBe(b);
+    });
+
+    test("a legacy order still resolves through the documented fallback", async () => {
+      const nonce = "a".repeat(64);
+      const got = await fetchSecret({
+        allowed: true,
+        orderNonce: nonce,
+        operatorSecret: null,
+      });
+      // Only this path touches the env secret, and only for orders that predate
+      // the per-order field. Documented, not accidental.
+      expect(got).toBe(legacyGuess("a".repeat(64), nonce));
+    });
+
+    test("a new quote stores a per-order secret and derives the commitment from it", async () => {
+      const f = workspaceFixture();
+      const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+      const previous = process.env.MILO_OPERATOR_SECRET;
+      process.env.MILO_OPERATOR_SECRET = "a".repeat(64);
+      try {
+        // Drive the REAL action so the commitment is computed the way it is in
+        // production: from the per-order secret, not from the env secret.
+        const ctx = {
+          runMutation: async (_ref: unknown, args: unknown) =>
+            handlerOf<Record<string, unknown>, unknown, AdmissionContext>(
+              writeQuoteDraft,
+            )(f.ctx, args as never),
+          runQuery: async () => null,
+          runAction: async () => null,
+        } as unknown as AdmissionContext;
+        await (
+          createQuote as unknown as {
+            _handler: (c: AdmissionContext, a: unknown) => Promise<unknown>;
+          }
+        )._handler(ctx, quoteArgs(studio.scopeId));
+        const row = f.tables.quoteDrafts[0];
+        // A random per-order secret was generated and stored.
+        expect(row.operatorSecret).toMatch(/^[a-f0-9]{64}$/);
+        // And the commitment is a hash of THAT, not of the env secret + nonce.
+        expect(row.operatorCommitment).toMatch(/^[a-f0-9]{64}$/);
+        expect(row.operatorCommitment).not.toBe(
+          legacyGuess("a".repeat(64), "a".repeat(64)),
+        );
+      } finally {
+        if (previous === undefined) delete process.env.MILO_OPERATOR_SECRET;
+        else process.env.MILO_OPERATOR_SECRET = previous;
+      }
+    });
+
+    test("the stored secret never reaches a public projection", async () => {
+      // `orders.order` is the projection a client can read. It must not carry
+      // the secret in any field. Uses a value that cannot collide with any
+      // other hex field in the fixture.
+      const secret = "0123456789abcdef".repeat(4);
+      const f = workspaceFixture("did:privy:buyer");
+      f.tables.memberships.push({
+        _id: "m1",
+        privySubject: "did:privy:buyer",
+        scopeId: "scope-1",
+        accountId: "buyer-1",
+        role: "buyer",
+        status: "active",
+      });
+      const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+      const previous = process.env.MILO_OPERATOR_SECRET;
+      process.env.MILO_OPERATOR_SECRET = "a".repeat(64);
+      try {
+        const draft = await writeQuoteDraftHandler(
+          f.ctx,
+          quoteArgs(studio.scopeId, { operatorSecret: secret }),
+        );
+        expect(f.tables.quoteDrafts[0].operatorSecret).toBe(secret);
+        const detail = await handlerOf<
+          { quoteId: string },
+          unknown,
+          AdmissionContext
+        >(order)(f.ctx, { quoteId: draft.quoteId });
+        expect(JSON.stringify(detail)).not.toContain(secret);
+      } finally {
+        if (previous === undefined) delete process.env.MILO_OPERATOR_SECRET;
+        else process.env.MILO_OPERATOR_SECRET = previous;
+      }
+    });
   });
 
   test("createQuote requires an active merchant in the scope", async () => {
