@@ -61,7 +61,12 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
   betterAuth({
     baseURL: env("CONVEX_SITE_URL"),
     secret: required(ctx, "BETTER_AUTH_SECRET", "unconfigured-probe", 32),
-    trustedOrigins: [required(ctx, "SITE_URL", "http://localhost:5173")],
+    // One env var, a list of origins. A second Vercel domain (a preview, or a
+    // custom domain during cutover) is a comma in SITE_URL, not a code change.
+    trustedOrigins: required(ctx, "SITE_URL", "http://localhost:5173")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     hooks: { after: noReferrerOnVerify },
     database: authComponent.adapter(ctx),
     /**

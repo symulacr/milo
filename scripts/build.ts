@@ -118,6 +118,34 @@ await Bun.write(`${outdir}/404.html`, Bun.file(`${outdir}/public-app.html`));
 
 await Bun.write(`${outdir}/api/public-config`, JSON.stringify(browserConfig));
 
+// Crawler files are build output, not repo files: the sitemap names the
+// deployment's own origin, which only the build knows (same `siteOrigin` the
+// canonical link uses). `/orders` and `/account` carry a signed-in workspace, so
+// they stay out of the index.
+await Bun.write(
+  `${outdir}/robots.txt`,
+  [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /orders",
+    "Disallow: /account",
+    "Disallow: /api/",
+    ...(siteOrigin ? [`Sitemap: ${siteOrigin}/sitemap.xml`] : []),
+    "",
+  ].join("\n"),
+);
+if (siteOrigin)
+  await Bun.write(
+    `${outdir}/sitemap.xml`,
+    [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      `  <url><loc>${siteOrigin}/</loc></url>`,
+      "</urlset>",
+      "",
+    ].join("\n"),
+  );
+
 const publicDirectory = "apps/web/public";
 const QA_ONLY = [/^qa-/];
 

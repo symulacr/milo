@@ -1,10 +1,10 @@
 import { Route, Routes } from "react-router";
-import { ignoreExtensionNoise, mount } from "./bootstrap";
+import { installRecovery, mount } from "./bootstrap";
 import { InfoPage } from "./routes/InfoPage";
 import { NotFound } from "./routes/NotFound";
 import { PublicShell } from "./shells/PublicShell";
 
-ignoreExtensionNoise();
+installRecovery();
 
 export function PublicApp() {
   return (

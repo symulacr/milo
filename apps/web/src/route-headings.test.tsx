@@ -166,6 +166,49 @@ describe("a tab open across a deploy", () => {
   });
 });
 
+describe("a stale chunk after a deploy", () => {
+  // A tab older than the deployment asks for a hashed chunk the new build no
+  // longer has. The import rejects, and without a handler the user sees a dead
+  // route. One guarded reload fixes it; the guard stops a broken chunk looping.
+  test("a failed dynamic import reloads once, and only once", async () => {
+    const boot = globalThis as unknown as {
+      location: { reload: () => void };
+      sessionStorage: Storage;
+      dispatchEvent: (e: Event) => boolean;
+    };
+    let reloads = 0;
+    const originalReload = boot.location.reload;
+    boot.location.reload = () => {
+      reloads += 1;
+    };
+    boot.sessionStorage.clear();
+    const { installRecovery } = await import("./bootstrap");
+    installRecovery();
+    // happy-dom has no PromiseRejectionEvent; the listener only reads `reason`,
+    // so a plain cancelable Event carrying one is the same input.
+    const stale = () => {
+      const event = new Event("unhandledrejection", { cancelable: true });
+      Object.defineProperty(event, "reason", {
+        value: new TypeError(
+          "Failed to fetch dynamically imported module: /chunk-old.js",
+        ),
+      });
+      return event;
+    };
+    try {
+      boot.dispatchEvent(stale());
+      expect(reloads).toBe(1);
+      // A second failure must not reload again, or a genuinely broken chunk
+      // would loop forever.
+      boot.dispatchEvent(stale());
+      expect(reloads).toBe(1);
+    } finally {
+      boot.location.reload = originalReload;
+      boot.sessionStorage.clear();
+    }
+  });
+});
+
 const RESEND_403 =
   "You can only send testing emails to your own email address (owner@example.com). To send emails to other recipients, please verify a domain.";
 const RAW = "order is not in RESERVED";

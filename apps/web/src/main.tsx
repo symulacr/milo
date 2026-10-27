@@ -1,5 +1,5 @@
 import { App } from "./App";
-import { ignoreExtensionNoise, mount } from "./bootstrap";
+import { installRecovery, mount } from "./bootstrap";
 
-ignoreExtensionNoise();
+installRecovery();
 mount(App);
