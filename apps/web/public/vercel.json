@@ -150,7 +150,7 @@
       ]
     },
     {
-      "source": "/(.*)-[a-z0-9]{8}.(webp|png|avif|jpg)",
+      "source": "/(.*)-([a-z0-9]{8})\\.(webp|png|avif|jpg)",
       "headers": [
         {
           "key": "Cache-Control",
