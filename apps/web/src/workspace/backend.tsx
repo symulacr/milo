@@ -11,6 +11,7 @@ import {
 import type { PublicConfig } from "../../../../packages/backend/src/public-config";
 import { api } from "../api";
 import { authClientFor } from "../auth-client";
+import { Button } from "../components/ui/button";
 import { Loading } from "../components/ui/status";
 import { Alert } from "../components/workspace";
 import { loadPublicConfig } from "../notice";
@@ -32,6 +33,31 @@ const Notice = ({ title, body }: { title: string; body: string }) => (
   <main className="grid min-h-svh place-content-center gap-3 p-6">
     <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
     <Alert>{body}</Alert>
+  </main>
+);
+
+/**
+ * A query that failed because the tab is older than the deployment. Same
+ * `Notice` shape as the other workspace notices, plus the one action that fixes
+ * it: a reload.
+ */
+export const StaleBuild = ({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) => (
+  <main className="grid min-h-svh place-content-center gap-3 p-6">
+    <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+    <Alert>{body}</Alert>
+    <Button
+      variant="outline"
+      className="w-fit"
+      onClick={() => location.reload()}
+    >
+      Reload
+    </Button>
   </main>
 );
 

@@ -140,6 +140,32 @@ describe("route heading accessibility", () => {
   });
 });
 
+describe("a tab open across a deploy", () => {
+  // `useQuery` resolves a failure to `{error, status:"error"}`, not `undefined`.
+  // The orders list used to fall through to `orders.map` and throw, so the user
+  // saw the generic boundary instead of being told to reload. This pins the
+  // error branch: the route must render the stale-build notice, not crash.
+  test("a failed orders query says to reload instead of throwing", async () => {
+    const { Orders } = await import("./routes/Orders");
+    const key = JSON.stringify([getFunctionName(api.orders), {}]);
+    const previous = QUERIES.get(key);
+    QUERIES.set(key, {
+      error: new Error("[CONVEX M(orders:list)] Server Error: not found"),
+      status: "error",
+    });
+    try {
+      const markup = render("/orders", <Orders />);
+      expect(markup).toContain("Reload");
+      expect(markup).toMatch(/updated while this tab was open/i);
+      // The old failure mode: a TypeError from `orders.map` inside the boundary.
+      expect(markup).not.toContain("The order service is not available");
+    } finally {
+      if (previous === undefined) QUERIES.delete(key);
+      else QUERIES.set(key, previous);
+    }
+  });
+});
+
 const RESEND_403 =
   "You can only send testing emails to your own email address (owner@example.com). To send emails to other recipients, please verify a domain.";
 const RAW = "order is not in RESERVED";

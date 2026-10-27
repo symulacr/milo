@@ -11,7 +11,7 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["bun-types", "node"],
+    "types": ["bun", "node"],
     "noImplicitOverride": true,
     "paths": { "@/*": ["./apps/web/src/*"] }
   },

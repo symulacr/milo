@@ -15,3 +15,11 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+        # These cannot ride in a batch: the midnight cohort is asserted
+        # against the compiled contract, and better-auth/convex own auth and
+        # backend behaviour. A grouped bump took compact-runtime 0.16.0 ->
+        # 0.20.0 and turned CI red (run 40496385118).
+        exclude-patterns:
+          - "@midnight-ntwrk/*"
+          - "better-auth"
+          - "convex"

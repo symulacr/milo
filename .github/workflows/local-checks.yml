@@ -51,6 +51,15 @@ jobs:
       - name: Verify compiler and runtime cohort
         run: npm run contract:cohort
 
+      # The compiler is the slowest step (~166 s cold). Its receipt names the
+      # source hash, so the cache key is that hash: an unchanged contract
+      # restores in ~2 s, any edit to order.compact misses.
+      - name: Restore compiled contract artifacts
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: packages/contract/generated
+          key: contract-${{ hashFiles('packages/contract/src/order.compact') }}-0.31.1
+
       # Generated modules and verifier keys are ignored by Git and needed by tests.
       - name: Compile full contract and verify all circuit artifacts
         timeout-minutes: 60

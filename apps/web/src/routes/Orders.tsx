@@ -7,7 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Loading, Mark } from "../components/ui/status";
 import { badgeTone, usd, useAgo } from "../lib/format";
-import { useMe } from "../workspace/backend";
+import { StaleBuild, useMe } from "../workspace/backend";
 import { STAGE_LABEL, yourTurn } from "../workspace/stages";
 
 const ROW =
@@ -47,6 +47,17 @@ function OrderRow({ order }: { order: OrderSummary }) {
 export function Orders() {
   const { me } = useMe();
   const orders = useQuery(api.orders, {});
+  // A failed query resolves to `{error, status:"error"}`, not `undefined`, so
+  // the `orders === undefined` branch fell through to `orders.map` and threw.
+  // A tab open across a deploy saw the generic boundary instead of being told
+  // to reload.
+  if (orders !== undefined && "status" in orders && orders.status === "error")
+    return (
+      <StaleBuild
+        title="Orders did not load"
+        body="Milo may have been updated while this tab was open. Reload to get the current version."
+      />
+    );
   return (
     <>
       <PageTitle
