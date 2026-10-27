@@ -13,6 +13,16 @@ concurrency:
   group: local-checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The build reads deployment config, and Bun auto-loads `.env.local` on a dev
+# machine but not here. Without this block CI builds a *different* policy than
+# production ships (the narrowing is skipped when BETTER_AUTH_URL is unset), so a
+# green CI run did not mean a green deploy. These are deliberately fake origins:
+# they exist to make CI take the same branch, not to reach anything.
+env:
+  BETTER_AUTH_URL: https://ci.invalid.convex.site
+  CONVEX_URL: https://ci.invalid.convex.cloud
+  MIDNIGHT_NETWORK: preprod
+
 jobs:
   local-checks:
     name: Compiler, local tests and build (Node 26.11.1 / Bun 1.4.2)
@@ -66,3 +76,16 @@ jobs:
 
       - name: Build web app
         run: npm run build
+
+      # A build that silently skipped CSP narrowing would pass every other gate.
+      # This asserts the emitted policy actually took the configured branch, so
+      # "the build succeeded" cannot hide a different artifact than production.
+      - name: Assert the build used the configured deployment origins
+        run: |
+          test -f dist/vercel.json
+          grep -q 'ci.invalid.convex.site' dist/vercel.json
+          if grep -q 'https://\*\.convex\.cloud' dist/vercel.json; then
+            echo 'CSP was left as shipped (wildcard origins): narrowing did not run.' >&2
+            exit 1
+          fi
+          echo 'CSP narrowed to the configured origins.'

@@ -363,14 +363,27 @@ as Mailpit, which is how the e2e suite reads the link without a real send.
 
 ## Testing
 
-The gates, in CI order: `bun run lint`, `bun run typecheck`, `bun run test:unit`, `bun run build`
-(static output in `dist/`).
+The gates, in CI order (`.github/workflows/local-checks.yml`):
+`contract:cohort`, `contract:compile`, `lint`, `typecheck`, `check:plan`,
+`test:unit`, `test:integration`, `build`.
 
-- `bun run test:unit`: 1,332 tests, run with `--parallel`.
+`bun run ci` runs that same order locally with the deployment environment
+cleared, which is the point: Bun auto-loads `.env.local`, so a plain local build
+reads configuration CI does not have and the two can diverge silently.
+
+- `bun run test:unit`: 1,433 tests, run with `--parallel`.
 - `bun run test:integration`: provisions the pinned Node runtime and runs the
   `packages/integration` tests.
 - `bun run test:native-network`: local Midnight node lane (see the
   [integration README](packages/integration/README.md)).
+
+## Deploy order
+
+**Backend first, then the frontend built against it:** `npx convex deploy --cmd
+'bun run build'`, then host `dist/`. A frontend deployed first can call a
+function the backend does not have yet, and a failed `useQuery` renders as an
+endless `Loading orders` rather than an error. Never remove a Convex function in
+the same deploy that stops calling it.
 
 The strict unused-symbol pass must also report zero errors:
 

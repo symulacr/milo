@@ -15,11 +15,14 @@
 # release checks, not per-save checks. Run them before a release:
 #   bash scripts/g4-negative-controls.sh && bash scripts/net-health.sh
 #
-# Usage: bash scripts/post-push-verify.sh [--force] [--no-cache] [--quiet] [--release] [--backup]
+# Usage: bash scripts/post-push-verify.sh [--force] [--no-cache] [--quiet] [--release] [--backup] [--ci]
 #   --force     ignore the cache and run every step
 #   --no-cache  run everything and do not write a cache entry
 #   --quiet     only print the summary
 #   --release   also run the two slow release checks
+#   --ci        mirror .github/workflows/local-checks.yml in its order, with the
+#               deployment environment cleared, so a green run here means a green
+#               run there. Use this before pushing, not just before deploying.
 #   --backup    export the production database to a local zip, then exit.
 #               Needs MILO_BACKUP_CONFIRM=1 (see the block below). Never uploads.
 #
@@ -35,6 +38,7 @@ NOCACHE=0
 QUIET=0
 RELEASE=0
 BACKUP=0
+CI=0
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
@@ -42,6 +46,7 @@ for arg in "$@"; do
     --quiet) QUIET=1 ;;
     --release) RELEASE=1 ;;
     --backup) BACKUP=1 ;;
+    --ci) CI=1 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -119,6 +124,50 @@ run() {
 }
 
 say "--- starting checks"
+# `--ci` mirrors .github/workflows/local-checks.yml in its order, with the
+# deployment environment cleared. That is the point: Bun auto-loads `.env.local`,
+# so a plain local build reads 21 variables CI does not have, and the two builds
+# diverge silently. Clearing them here reproduces CI's inputs.
+if [ "$CI" -eq 1 ]; then
+  say "--- ci mode: clearing deployment env so this matches the workflow"
+  # Bun auto-loads `.env.local` from the working directory for every child, so
+  # `unset` alone is not enough — the build would read the values again.
+  # `--no-env-file` is the documented switch that disables it (measured: with it,
+  # a probe var in .env.local is unset; BUN_ENV_FILE and moving HOME are not).
+  # Every gate below therefore goes through `bun --no-env-file`.
+  BUN_NOENV="--no-env-file"
+  # Also unset in this shell so any non-Bun step sees the CI shape too.
+  unset BETTER_AUTH_URL CONVEX_URL CONVEX_SITE_URL SITE_URL MIDNIGHT_NETWORK \
+        STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET \
+        MAIL_PROVIDER MAIL_FROM RESEND_API_KEY AGENTMAIL_API_KEY BREVO_API_KEY \
+        MILO_OPERATOR_EMAILS MILO_TRUSTED_PROVISIONING_AUTHORITIES \
+        PROVER_SERVER_URI CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT
+  export BUN_NOENV
+  run cohort sh scripts/with-bun.sh $BUN_NOENV scripts/verify-compact-cohort.ts
+  wait
+  run plan sh scripts/with-bun.sh $BUN_NOENV scripts/check-plan.ts
+  run biome sh scripts/with-bun.sh $BUN_NOENV node_modules/@biomejs/biome/bin/biome check .
+  run strict sh scripts/with-bun.sh $BUN_NOENV node_modules/typescript/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters
+  wait
+  run unit sh scripts/with-bun.sh $BUN_NOENV test --parallel apps/web packages/domain packages/contract packages/backend packages/midnight-client convex e2e scripts/*.test.ts
+  wait
+  run integration sh scripts/with-bun.sh $BUN_NOENV scripts/test-integration.ts
+  run build sh scripts/with-bun.sh $BUN_NOENV scripts/build.ts
+  wait
+  say "--- checks finished"
+  failed=0
+  total=0
+  for name in cohort plan biome strict unit integration build; do
+    code=$(cat "$LOG_DIR/$name.log.code" 2>/dev/null || echo 1)
+    total=$((total + 1))
+    if [ "$code" -eq 0 ]; then say "PASS $name"; else
+      say "FAIL $name  (log: $LOG_DIR/$name.log)"; failed=$((failed + 1)); fi
+  done
+  say "=== ci: $((total - failed))/$total passed ==="
+  [ "$failed" -eq 0 ]
+  exit $?
+fi
+
 # `unit` is the long pole (~11 s) and the only suite with timing-sensitive
 # tests, so it runs alone in the first wave; the four cheap checks overlap in
 # the second. Running all five at once made four route-heading tests flake.

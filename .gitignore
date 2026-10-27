@@ -8,6 +8,7 @@
 !/.env.example
 !/LICENSE
 !/README.md
+!/RUNBOOKS.md
 !/SECURITY.md
 !/CONTRIBUTING.md
 !/THIRD_PARTY_NOTICES.md
@@ -84,8 +85,11 @@ e2e/**/out/
 # Local-only tooling, scratch and campaign notes. They stay on disk for local
 # work; none is needed to build, test or run the shipped app.
 # check.yml repeats local-checks.yml and adds test:native-network, which needs
-# local Midnight services.
+# local Midnight services, so it would fail on a hosted runner.
 /.github/workflows/check.yml
+# `judging-minimum.sh` and `gates/` are NOT local-only: `scripts/post-push-verify.sh`
+# runs the former, so ignoring it made `bun run ship` fail on every machine but
+# the one that wrote it. Both ship now.
 /apps/web/public/_redirects
 /apps/web/public/watch.html
 /apps/web/public/qa-*
@@ -98,9 +102,7 @@ e2e/**/out/
 /packages/midnight-client/scripts/
 /scripts/convex-local-*
 !/scripts/convex-local-lifecycle-check.py
-/scripts/gates/
 /scripts/g4-negative-controls.sh
-/scripts/judging-minimum.sh
 /scripts/m11-verify*.mjs
 /scripts/master-ledger-rebuild.sh
 /scripts/net-health.sh
