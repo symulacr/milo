@@ -4,6 +4,7 @@
  * an operator sees disputed orders. Identity is the shared Privy gate.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { Row } from "./orderProjection.double";
 
 // AUDIT15 A-01: no privy.io fallback, so declare the issuer under test.
@@ -644,6 +645,49 @@ const inviteHandler = (
     ) => Promise<{ claimed: boolean; orderNonce: string } | null>;
   }
 )._handler;
+
+/**
+ * R25 R-04: the nonce-reuse guard lives in `writeQuoteDraft`, the one mutation
+ * that inserts a `quoteDrafts` row, and both provisioning paths reach it
+ * (`trustedProvisioning` directly, `stripeProvisioning` through the `DRAFT`
+ * function reference). Round 24 recorded this as a gap on the Stripe path; that
+ * was wrong, and this test pins the invariant so it cannot regress silently.
+ */
+describe("order nonce reuse", () => {
+  const source = readFileSync(
+    new URL("./trustedProvisioning.ts", import.meta.url),
+    "utf8",
+  );
+
+  test("the guard runs before the only quoteDrafts insert", () => {
+    const guard = source.indexOf('"Order nonce already used"');
+    const insert = source.indexOf('ctx.db.insert("quoteDrafts"');
+    expect(guard).toBeGreaterThan(-1);
+    expect(insert).toBeGreaterThan(-1);
+    // One insert, and the guard precedes it. A second insert added anywhere
+    // after the guard would not be covered by this check, so count them.
+    expect(source.split('ctx.db.insert("quoteDrafts"').length - 1).toBe(1);
+    expect(guard).toBeLessThan(insert);
+  });
+
+  test("the guard reads the by_merchant_nonce index, not a table scan", () => {
+    const guardAt = source.indexOf('"Order nonce already used"');
+    const window = source.slice(Math.max(0, guardAt - 600), guardAt);
+    expect(window).toContain('withIndex("by_merchant_nonce"');
+    expect(window).toContain("merchantSubject");
+    expect(window).toContain("orderNonce");
+  });
+
+  test("the Stripe path routes through the same mutation", () => {
+    const stripe = readFileSync(
+      new URL("./stripeProvisioning.ts", import.meta.url),
+      "utf8",
+    );
+    // The Stripe path must not insert a draft itself; it calls the shared one.
+    expect(stripe).not.toContain('ctx.db.insert("quoteDrafts"');
+    expect(stripe).toContain('"trustedProvisioning:writeQuoteDraft"');
+  });
+});
 
 describe("orders.invite", () => {
   test("a wrong token is null", async () => {
