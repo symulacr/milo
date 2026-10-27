@@ -60,6 +60,13 @@ const ACTIVE: { backend: ReturnType<typeof realBackend> | null } = {
  * loop, so no nested `act`.
  */
 const QUERIES = new Map<string, unknown>();
+/** The object form, which returns a status instead of throwing (G-12). */
+const asState = (value: unknown) =>
+  value instanceof Error
+    ? { status: "error" as const, error: value }
+    : value === undefined
+      ? { status: "pending" as const }
+      : { status: "success" as const, data: value };
 mock.module("convex/react", () => ({
   ConvexReactClient: class {},
   useConvex: () => ACTIVE.backend?.client,
@@ -71,6 +78,15 @@ mock.module("convex/react", () => ({
         getFunctionName(ref as FunctionReference<"query">),
         args,
       ]),
+    ),
+  useQuery_experimental: (options: { query: unknown; args: unknown }) =>
+    asState(
+      QUERIES.get(
+        JSON.stringify([
+          getFunctionName(options.query as FunctionReference<"query">),
+          options.args,
+        ]),
+      ),
     ),
   ConvexProvider: ({ children }: { children: unknown }) => children,
 }));
@@ -141,18 +157,20 @@ describe("route heading accessibility", () => {
 });
 
 describe("a tab open across a deploy", () => {
-  // `useQuery` resolves a failure to `{error, status:"error"}`, not `undefined`.
-  // The orders list used to fall through to `orders.map` and throw, so the user
-  // saw the generic boundary instead of being told to reload. This pins the
-  // error branch: the route must render the stale-build notice, not crash.
+  // G-12: the positional `useQuery` throws on an error result, so this route's
+  // reload notice was unreachable and one failed query replaced the whole
+  // workspace through `ServiceBoundary`. The route now uses the object form,
+  // which returns `{status:"error", error}` instead of throwing. The cache
+  // holds the raw value (an `Error` here) and the mock turns it into the state
+  // the real hook would return, so this still drives the route, not the mock.
   test("a failed orders query says to reload instead of throwing", async () => {
     const { Orders } = await import("./routes/Orders");
     const key = JSON.stringify([getFunctionName(api.orders), {}]);
     const previous = QUERIES.get(key);
-    QUERIES.set(key, {
-      error: new Error("[CONVEX M(orders:list)] Server Error: not found"),
-      status: "error",
-    });
+    QUERIES.set(
+      key,
+      new Error("[CONVEX M(orders:list)] Server Error: not found"),
+    );
     try {
       const markup = render("/orders", <Orders />);
       expect(markup).toContain("Reload");
@@ -162,6 +180,22 @@ describe("a tab open across a deploy", () => {
     } finally {
       if (previous === undefined) QUERIES.delete(key);
       else QUERIES.set(key, previous);
+    }
+  });
+
+  test("a pending query still shows the loading state, not the notice", async () => {
+    // The object form has three states, and collapsing "pending" into "error"
+    // would show a reload button to a user whose data is simply on its way.
+    const { Orders } = await import("./routes/Orders");
+    const key = JSON.stringify([getFunctionName(api.orders), {}]);
+    const previous = QUERIES.get(key);
+    QUERIES.delete(key);
+    try {
+      const markup = render("/orders", <Orders />);
+      expect(markup).toMatch(/Loading orders/i);
+      expect(markup).not.toContain("Reload");
+    } finally {
+      if (previous !== undefined) QUERIES.set(key, previous);
     }
   });
 });
@@ -1385,5 +1419,135 @@ describe("an invite survives the sign-in it needs", () => {
     expect(source.includes("stashedInvite(quoteId)")).toBe(true);
     // The stash is keyed by the route's own id, never a global one.
     expect(source.includes("stashedInvite()")).toBe(false);
+  });
+});
+
+describe("G-07 an invite on the wrong account names the account", () => {
+  // The token was accepted (the page got this far), so a null preview means the
+  // signed-in email is not the invited one. The old copy said "This link does
+  // not work. Ask the studio for a new one." — which would fail identically.
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("the refusal names the address the user is signed in as", () => {
+    const text = source();
+    expect(text.includes("Sign in as the invited account")).toBe(true);
+    expect(text.includes("me.email")).toBe(true);
+    // The misleading sentence must be gone.
+    expect(text.includes("This link does not work. Ask the studio")).toBe(
+      false,
+    );
+  });
+
+  test("a claimed order still says it was claimed, not that it is invalid", () => {
+    // The two causes must stay distinct: one is recoverable by signing in as
+    // the right account, the other needs a new link from the studio.
+    expect(source().includes("Order already accepted")).toBe(true);
+  });
+});
+
+describe("G-08 restoring a backup never overwrites a newer key", () => {
+  // `restoreBackup` used to loop `saveKey` over every key in the file, so a
+  // backup taken last week replaced the key saved yesterday. The key is the only
+  // thing that can sign for its order, so the order became unsignable while the
+  // file looked fine.
+  const keys = async () => {
+    const module = (await import("./workspace/keys")) as unknown as {
+      restoreBackup?: (
+        subject: string,
+        text: string,
+        password: string,
+      ) => Promise<{ restored: number; kept: number }>;
+      sealBackup?: (
+        ring: Record<string, unknown>,
+        password: string,
+      ) => Promise<string>;
+      readKeys?: (subject: string) => Record<string, { secret: string }>;
+    };
+    return module;
+  };
+  const KEY = {
+    quoteId: "q1",
+    actor: "buyer" as const,
+    secret: "aa".repeat(32),
+    nonce: "bb".repeat(32),
+  };
+
+  test("an older file leaves the newer key alone and says so", async () => {
+    const { restoreBackup, sealBackup, readKeys } = await keys();
+    if (!restoreBackup || !sealBackup || !readKeys) throw new Error("missing");
+    localStorage.setItem(
+      "milo:order-keys:subject-g08:q1",
+      JSON.stringify({ ...KEY, secret: "cc".repeat(32) }),
+    );
+    const text = await sealBackup({ q1: KEY }, "correct horse battery");
+    const result = await restoreBackup(
+      "subject-g08",
+      text,
+      "correct horse battery",
+    );
+    // Both numbers, because "0 restored" and "0 needed" mean opposite things.
+    expect(result).toEqual({ restored: 0, kept: 1 });
+    expect(readKeys("subject-g08").q1.secret).toBe("cc".repeat(32));
+  });
+});
+
+describe("G-09 a typed note survives a session expiry", () => {
+  // A session that expires mid-flow re-renders the order page signed out and
+  // back in. The note is a string, so one storage entry keeps it. The picked
+  // files are `File` objects and are deliberately NOT persisted.
+  const keys = async () => {
+    const module = (await import("./workspace/keys")) as unknown as {
+      readDraft?: (quoteId: string) => string;
+      writeDraft?: (quoteId: string, note: string) => void;
+    };
+    return {
+      readDraft: module.readDraft ?? (() => ""),
+      writeDraft: module.writeDraft ?? (() => {}),
+    };
+  };
+
+  test("a written note reads back for the same order only", async () => {
+    const { readDraft, writeDraft } = await keys();
+    writeDraft("quote-g09", "The third image is the wrong crop.");
+    expect(readDraft("quote-g09")).toBe("The third image is the wrong crop.");
+    expect(readDraft("quote-other")).toBe("");
+  });
+
+  test("an empty note clears the draft instead of storing one", async () => {
+    const { readDraft, writeDraft } = await keys();
+    writeDraft("quote-g09b", "something");
+    writeDraft("quote-g09b", "");
+    expect(readDraft("quote-g09b")).toBe("");
+  });
+
+  test("the page says the images are not kept", () => {
+    // Losing three chosen files silently is worse than being told first.
+    const text = readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+    expect(text.includes("Your chosen images are not kept")).toBe(true);
+  });
+});
+
+describe("M-01 the invite cannot be claimed twice", () => {
+  // `startTransition` runs its callback synchronously and marks the update
+  // non-urgent, so `busy` is not set before a second click in the same frame.
+  // The FIRST claim rotates the invite token, so the second is refused — and the
+  // buyer sees "This order link does not work." for an order just claimed.
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("the claim is guarded before it does any work", () => {
+    const text = source();
+    const guard = text.indexOf("if (claiming.current) return;");
+    expect(guard).toBeGreaterThan(-1);
+    // It must precede the call that claims, or the second click has already run.
+    expect(guard).toBeLessThan(text.indexOf("openOrder(", guard));
+  });
+
+  test("the guard is released on both settle paths", () => {
+    const text = source();
+    // A `.finally` covers success and failure in one place.
+    expect(text.includes("claiming.current = false;")).toBe(true);
+    expect(text.includes(".finally(() => {")).toBe(true);
   });
 });

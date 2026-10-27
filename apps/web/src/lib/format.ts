@@ -40,12 +40,22 @@ let ticker: ReturnType<typeof setInterval> | undefined;
 const listeners = new Set<() => void>();
 const readClock = () => clock;
 
+/**
+ * Re-read the clock and notify every subscriber.
+ *
+ * Exported so a caller that needs a different cadence (the order page's 30 s
+ * deadline countdown) can drive this one store instead of running a second
+ * ticker. Two tickers meant two sources of "now" for two numbers on the same
+ * screen, which could disagree by up to a tick.
+ */
+export const tickClock = () => {
+  clock = Date.now();
+  for (const notify of listeners) notify();
+};
+
 function subscribeClock(listener: () => void) {
   listeners.add(listener);
-  ticker ??= setInterval(() => {
-    clock = Date.now();
-    for (const notify of listeners) notify();
-  }, 60_000);
+  ticker ??= setInterval(tickClock, 60_000);
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0 && ticker) {
@@ -68,6 +78,11 @@ export function useAgo(value: number | null | undefined) {
   const now = useSyncExternalStore(subscribeClock, readClock, readClock);
   return value == null ? "" : relativeTo(value, now);
 }
+
+/** The shared clock store, for a caller that wants the same "now" as `useAgo`
+ * but with its own tick cadence. */
+export const useClock = () =>
+  useSyncExternalStore(subscribeClock, readClock, readClock);
 
 export const ROLE_NAME: Record<Role, string> = {
   buyer: "Client",

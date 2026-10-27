@@ -39,8 +39,10 @@ import {
 import {
   clearInvite,
   keyFor,
+  readDraft,
   stashedInvite,
   stashInvite,
+  writeDraft,
 } from "../workspace/keys";
 import {
   actionsFor,
@@ -123,6 +125,14 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
   const config = usePublicConfig();
   const preview = useQuery(api.invite, { quoteId, token });
   const [busy, startBusy] = useTransition();
+  // M-01: `startTransition` runs the callback synchronously and marks the update
+  // non-urgent, so `busy` is not set before a second click in the same frame.
+  // Both clicks then reach `openOrder` → `acceptInvite`, and the FIRST claim
+  // rotates the invite token, so the second is refused with "This order link
+  // does not work." — an error shown for an order that was just claimed
+  // successfully. The ref is synchronous, so the second click is refused before
+  // it does anything. Same shape as G-06 on the order actions.
+  const claiming = useRef(false);
   const [error, setError] = useState("");
   const isConnected = Boolean(connected);
   useEffect(() => {
@@ -130,14 +140,21 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
   }, [isConnected]);
   if (preview === undefined) return <Loading label="Loading the invitation…" />;
   if (!preview || preview.claimed) {
+    // G-07: a null preview has two very different causes, and the old copy named
+    // only one of them. The token was accepted (we got this far), so the refusal
+    // is either "another account already claimed it" or "you are signed in as
+    // someone else". `me.email` is already here — the shell only renders this
+    // page for a signed-in user — so naming the account costs no request and no
+    // new state. Saying "this link does not work" sent the buyer to the studio
+    // for a new link that would have failed the same way.
     const [title, body] = preview
       ? [
           "Order already accepted",
           "Another account opened this order. Sign in as that account, or ask for a new link.",
         ]
       : [
-          "Invitation not valid",
-          "This link does not work. Ask the studio for a new one.",
+          "Sign in as the invited account",
+          `This link is for another address. You are signed in as ${me.email ?? "a different account"}. Sign out and open the link again with the address the studio emailed.`,
         ];
     return (
       <PageTitle title={title}>
@@ -167,6 +184,8 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
           pending={busy}
           onClick={() => {
             if (!connected) return connectPreferred();
+            if (claiming.current) return;
+            claiming.current = true;
             setError("");
             startBusy(() =>
               openOrder(
@@ -181,7 +200,11 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
                 // The token is spent once the claim succeeds, so the tab stops
                 // carrying a credential it can never use again.
                 .then(() => clearInvite(quoteId))
-                .catch((cause) => setError(errorText(cause))),
+                .catch((cause) => setError(errorText(cause)))
+                // Released on both paths, or a failed claim locks the button.
+                .finally(() => {
+                  claiming.current = false;
+                }),
             );
           }}
         >
@@ -210,7 +233,13 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   /** Synchronous double-click guard: `busy` is a render behind. */
   const inFlight = useRef(false);
   const [error, setError] = useState("");
-  const [note, setNote] = useState("");
+  // G-09: a session that expires mid-flow re-renders this page signed out and
+  // then back in, which threw away the note the user had typed. The note is a
+  // string, so keeping it costs one storage entry and no new machinery. The
+  // picked files are `File` objects — not serializable — so they are NOT
+  // persisted; the page says so instead, because silently losing three chosen
+  // images is worse than being told before you pick them.
+  const [note, setNote] = useState(() => readDraft(order.quoteId));
   const [picked, setPicked] = useState<File[]>([]);
   const [pending, setPending] = useState<{ from: number; at: number } | null>(
     null,
@@ -219,7 +248,16 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
     files: [],
     manifest: null,
   });
-  const now = useNow();
+  // G-04: the deadline decisions use the server's clock when the payload
+  // carries one, so a skewed device is offered the action the server would
+  // accept. Read through a cast because the field is W5's to add to the
+  // `orders.order` returns validator; until it lands this is `undefined` and
+  // `useNow` falls back to the local clock exactly as before, so the change is
+  // safe in both directions and needs no follow-up edit here.
+  const now = useNow(
+    30_000,
+    (order as { serverNow?: number | null }).serverNow,
+  );
   const latest = useRef(order);
   latest.current = order;
   const report: Report = (id, state, detail) =>
@@ -314,6 +352,10 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
         inFlight.current = false;
         setBusy(false);
         setPending({ from, at: Date.now() });
+        // The note is spent once the action that used it succeeded, so the draft
+        // does not outlive the reason it was written for.
+        setNote("");
+        writeDraft(order.quoteId, "");
       },
       (cause) => {
         inFlight.current = false;
@@ -496,9 +538,20 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 placeholder="Give at least 10 characters. The other party reads this."
                 minLength={10}
                 value={note}
-                onChange={(event) => setNote(event.target.value)}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  // G-09: keep it as it is typed, so an expiring session costs
+                  // the user nothing.
+                  writeDraft(order.quoteId, event.target.value);
+                }}
               />
             </details>
+          )}
+          {needs("files") && picked.length < 3 && (
+            <Note>
+              Your chosen images are not kept if you sign in again. Pick them
+              just before you send.
+            </Note>
           )}
           {order.stage === "QUOTE" && config?.paymentsMode === "test" && (
             <Note>{TEST_CARD}</Note>

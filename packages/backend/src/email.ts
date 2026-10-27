@@ -134,7 +134,13 @@ export function classifyFailure(
   return { failure, status, detail: body.fix ?? message };
 }
 
-/** The sentence an operator or client should see for a failure. */
+/**
+ * The sentence for a failure, with the provider's status in it.
+ *
+ * This is the *log* sentence: `EmailSendError`'s message carries it, so a
+ * refusal stays diagnosable by its status. It is not what a buyer should read —
+ * see `inviteFailureReason` for the buyer-facing form.
+ */
 export const emailFailureText = (error: EmailError): string =>
   `${FAILURE_TEXT[error.failure]} (${error.status})`;
 
@@ -143,10 +149,16 @@ export const emailFailureText = (error: EmailError): string =>
  * not. The quote and its invite link are still valid, so this is a partial
  * success, never a failure: a thrown error would make the client retry and
  * create a second quote.
+ *
+ * G-11: this is rendered verbatim in the buyer's order page ("Not emailed. …
+ * Send it to … yourself."), so it must be a sentence. `emailFailureText`
+ * appends the provider's HTTP status for the log; the status is an internal
+ * detail the buyer cannot act on, and it was the one fragment of that copy that
+ * was not prose. The failure kind already selects a sentence naming the fix.
  */
 export const inviteFailureReason = (cause: unknown): string =>
   cause instanceof EmailSendError
-    ? emailFailureText(cause.info)
+    ? FAILURE_TEXT[cause.info.failure]
     : "Milo could not send the email.";
 
 /**

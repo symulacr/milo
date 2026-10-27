@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react";
+import { useQuery_experimental as useQuery } from "convex/react";
 import { CircleDot, Plus } from "lucide";
 import { Link } from "react-router";
 import { api, type OrderSummary } from "../api";
@@ -46,18 +46,22 @@ function OrderRow({ order }: { order: OrderSummary }) {
 
 export function Orders() {
   const { me } = useMe();
-  const orders = useQuery(api.orders, {});
-  // A failed query resolves to `{error, status:"error"}`, not `undefined`, so
-  // the `orders === undefined` branch fell through to `orders.map` and threw.
-  // A tab open across a deploy saw the generic boundary instead of being told
-  // to reload.
-  if (orders !== undefined && "status" in orders && orders.status === "error")
+  // G-12: the positional `useQuery` throws on an error result before this
+  // component can branch, so the reload notice below was dead code and one
+  // failed query replaced the whole workspace through `ServiceBoundary`. The
+  // object form is the same hook with `throwOnError: false` by default: it
+  // returns `{status:"error", error}` instead of throwing, which is what makes
+  // the branch reachable. It is the installed client's own API — no new
+  // dependency, no wrapper.
+  const state = useQuery({ query: api.orders, args: {} });
+  if (state.status === "error")
     return (
       <StaleBuild
         title="Orders did not load"
         body="Milo may have been updated while this tab was open. Reload to get the current version."
       />
     );
+  const orders = state.status === "success" ? state.data : undefined;
   return (
     <>
       <PageTitle

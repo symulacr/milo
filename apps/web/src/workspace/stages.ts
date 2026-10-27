@@ -11,12 +11,12 @@ import {
   Upload,
   X,
 } from "lucide";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { EXPIRY_GRACE_MS } from "../../../../packages/backend/src/order-windows";
 import type { OrderDetail, Role, Stage } from "../api";
 import type { OrderCircuitName } from "../chain";
 
-import { ROLE_NAME } from "../lib/format";
+import { ROLE_NAME, tickClock, useClock } from "../lib/format";
 
 export const STAGE_LABEL: Record<Stage, string> = {
   QUOTE: "Quote",
@@ -248,18 +248,38 @@ export function turnOf(
   };
 }
 
-export function useNow(intervalMs = 30_000) {
-  const [now, setNow] = useState(() => Date.now());
+/**
+ * The clock the deadline decisions are made against.
+ *
+ * G-04: `actionsFor` compares `now` with server-issued deadlines, and `now` came
+ * straight from `Date.now()`. A device 10 minutes fast was offered the expiry
+ * action while the server still accepted the normal one; 10 minutes slow and the
+ * window looked open after it had closed. The chain enforces the real deadline,
+ * so this was never a way to act illegally — it was the wrong button offered.
+ *
+ * `serverNow` is the server's own millisecond clock, carried on the order
+ * payload. When it is present the offset is applied to the local clock, so the
+ * countdown and the action list agree with the server without polling: the
+ * offset is captured once per payload and the local ticker keeps running, which
+ * is what makes this cost no extra request. When it is absent (an older
+ * deployment) the local clock is used unchanged, so this degrades to today's
+ * behaviour instead of breaking.
+ */
+export function useNow(intervalMs = 30_000, serverNow?: number | null) {
+  // A ref, not state: the offset must not cost a render, and re-capturing it on
+  // every tick would make the countdown jitter with the network.
+  const skew = useRef(0);
+  if (serverNow != null) skew.current = serverNow - Date.now();
+  const local = useClock();
   useEffect(() => {
-    const sync = () => setNow(Date.now());
-    const timer = setInterval(sync, intervalMs);
+    const timer = setInterval(tickClock, intervalMs);
     // Browsers throttle timers in a hidden tab, so without this a returning
     // tab shows a stale countdown until the next tick.
-    document.addEventListener("visibilitychange", sync);
+    document.addEventListener("visibilitychange", tickClock);
     return () => {
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", sync);
+      document.removeEventListener("visibilitychange", tickClock);
     };
   }, [intervalMs]);
-  return now;
+  return local + skew.current;
 }

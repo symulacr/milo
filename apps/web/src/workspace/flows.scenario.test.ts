@@ -54,6 +54,13 @@ mock.module("../../../../convex/auth", () => ({
  * backend is set per test.
  */
 const ACTIVE = { backend: null as ReturnType<typeof realBackend> | null };
+/** The object form, which returns a status instead of throwing (G-12). */
+const asState = (value: unknown) =>
+  value instanceof Error
+    ? { status: "error" as const, error: value }
+    : value === undefined
+      ? { status: "pending" as const }
+      : { status: "success" as const, data: value };
 mock.module("convex/react", () => ({
   ConvexReactClient: class {},
   useConvex: () => ACTIVE.backend?.client,
@@ -63,6 +70,15 @@ mock.module("convex/react", () => ({
     ACTIVE.backend
       ? ACTIVE.backend.client.query(ref as FunctionReference<"query">, args)
       : undefined,
+  useQuery_experimental: (options: { query: unknown; args: unknown }) =>
+    asState(
+      ACTIVE.backend
+        ? ACTIVE.backend.client.query(
+            options.query as FunctionReference<"query">,
+            options.args,
+          )
+        : undefined,
+    ),
   ConvexProvider: ({ children }: { children: unknown }) => children,
 }));
 

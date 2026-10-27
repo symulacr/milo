@@ -28,8 +28,41 @@ describe("order key backup", () => {
     );
     const text = await (await backupBlob("user-1", PASSWORD)).text();
     localStorage.clear();
-    expect(await restoreBackup("user-1", text, PASSWORD)).toBe(1);
+    expect(await restoreBackup("user-1", text, PASSWORD)).toEqual({
+      restored: 1,
+      kept: 0,
+    });
     expect(readKeys("user-1").q1).toEqual(GOOD_KEY);
+  });
+
+  // G-08: a backup is a snapshot from an earlier moment. Restoring an old file
+  // used to replace a newer key with the stale one, and the key is the only
+  // thing that can sign for that order — so the order became unsignable while
+  // the file looked fine. Filling gaps is the whole job.
+  test("an older backup does not overwrite a newer key", async () => {
+    const newer = { ...GOOD_KEY, secret: "cc".repeat(32) };
+    localStorage.setItem("milo:order-keys:user-1:q1", JSON.stringify(newer));
+    const text = await sealBackup({ q1: GOOD_KEY }, PASSWORD);
+    expect(await restoreBackup("user-1", text, PASSWORD)).toEqual({
+      restored: 0,
+      kept: 1,
+    });
+    expect(readKeys("user-1").q1.secret).toBe("cc".repeat(32));
+  });
+
+  test("a backup fills the gaps it can and keeps what is newer", async () => {
+    const newer = { ...GOOD_KEY, secret: "cc".repeat(32) };
+    localStorage.setItem("milo:order-keys:user-1:q1", JSON.stringify(newer));
+    const text = await sealBackup(
+      { q1: GOOD_KEY, q2: { ...GOOD_KEY, quoteId: "q2" } },
+      PASSWORD,
+    );
+    expect(await restoreBackup("user-1", text, PASSWORD)).toEqual({
+      restored: 1,
+      kept: 1,
+    });
+    expect(readKeys("user-1").q1.secret).toBe("cc".repeat(32));
+    expect(readKeys("user-1").q2?.quoteId).toBe("q2");
   });
 
   test("the wrong password is reported, not swallowed", async () => {

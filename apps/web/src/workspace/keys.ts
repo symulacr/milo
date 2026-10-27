@@ -152,6 +152,38 @@ export const clearInvite = (quoteId: string) => {
   }
 };
 
+/**
+ * The dispute note, kept across a session expiry.
+ *
+ * G-09: a session that expires mid-flow re-renders the order page signed out and
+ * then back in, which discarded the note the user had typed. The note is a
+ * string, so one storage entry keeps it; `sessionStorage` is enough because the
+ * loss happens within one tab and the note is not a credential.
+ *
+ * The picked files are deliberately NOT here: they are `File` objects, which do
+ * not survive serialization, and a half-restored delivery (a note but no images)
+ * would be worse than an honest "pick them again". The page says so.
+ */
+const draftKey = (quoteId: string) => `milo:draft:${quoteId}`;
+
+export const readDraft = (quoteId: string): string => {
+  try {
+    return sessionStorage.getItem(draftKey(quoteId)) ?? "";
+  } catch {
+    return "";
+  }
+};
+
+export const writeDraft = (quoteId: string, note: string) => {
+  try {
+    // An empty note is a cleared draft, not a stored empty string.
+    if (note) sessionStorage.setItem(draftKey(quoteId), note);
+    else sessionStorage.removeItem(draftKey(quoteId));
+  } catch {
+    // Storage disabled: the note lives only in this render, as before.
+  }
+};
+
 async function derive(password: string, salt: Uint8Array) {
   const base = await crypto.subtle.importKey(
     "raw",
@@ -217,6 +249,16 @@ export async function restoreBackup(
   }
   const restored = parse(ringSchema, new TextDecoder().decode(plain));
   if (!restored) throw new Error(NOT_A_BACKUP);
-  for (const key of Object.values(restored)) saveKey(subject, key);
-  return Object.keys(restored).length;
+  // G-08: never overwrite a key this browser already holds. A backup is a
+  // snapshot from some earlier moment, so restoring an old file used to replace
+  // a newer key with the stale one — and the key is the only thing that can sign
+  // for that order, so the order became unsignable while the file looked fine.
+  // Filling gaps is the whole job: an order this browser can already sign needs
+  // nothing from the file, and one it cannot is exactly what the file is for.
+  const keys = Object.values(restored);
+  const missing = keys.filter((key) => !keyFor(subject, key.quoteId));
+  for (const key of missing) saveKey(subject, key);
+  // Both numbers, because "0 keys restored" and "0 keys needed" look identical
+  // to a user and mean opposite things.
+  return { restored: missing.length, kept: keys.length - missing.length };
 }

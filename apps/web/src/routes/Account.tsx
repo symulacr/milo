@@ -117,11 +117,22 @@ export function Account() {
                 void file
                   .text()
                   .then((text) => restoreBackup(subject, text, restorePassword))
-                  .then((restored) => {
+                  .then(({ restored, kept }) => {
                     setVersion((v) => v + 1);
                     setRestorePassword("");
+                    // G-08: say what was kept, not only what was added. A file
+                    // whose keys are all already here used to report the same
+                    // number as one that replaced them, so a user could not tell
+                    // a no-op from a silent overwrite.
                     setStatus(
-                      `${restored} order ${restored === 1 ? "key is" : "keys are"} back in this browser.`,
+                      [
+                        restored > 0 &&
+                          `${restored} order ${restored === 1 ? "key is" : "keys are"} back in this browser.`,
+                        kept > 0 &&
+                          `${kept} ${kept === 1 ? "key was" : "keys were"} already here and left alone.`,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || "That file had no order keys in it.",
                     );
                   })
                   .catch((cause) => setError(errorText(cause)));
