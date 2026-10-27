@@ -63,7 +63,6 @@
     padding: 8px 12px;
     font-size: 14px;
     font-weight: 600;
-    transition: top 0.15s;
   }
   .skip-link:focus {
     top: 12px;
@@ -79,7 +78,6 @@
   .wordmark-star {
     width: 0.62em;
     height: 0.62em;
-    transition: rotate 0.7s var(--ease-out);
   }
   .wordmark:hover .wordmark-star {
     rotate: 120deg;
@@ -111,11 +109,9 @@
     padding: 0 1.5rem;
     font-weight: 600;
     color: #000;
-    transition: transform 0.25s var(--ease-out);
   }
   .arrow {
     display: inline-block;
-    transition: translate 0.3s var(--ease-out);
   }
   :is(a, button):hover > .arrow {
     translate: 4px 0;
@@ -134,6 +130,20 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Every transition lives here: a user who asked for reduced motion gets the
+     finished state, not a slide. */
+  .skip-link {
+    transition: top 0.15s;
+  }
+  .wordmark-star {
+    transition: rotate 0.7s var(--ease-out);
+  }
+  .cta {
+    transition: transform 0.25s var(--ease-out);
+  }
+  .arrow {
+    transition: translate 0.3s var(--ease-out);
+  }
   .rise {
     opacity: 1;
     transform: none;

@@ -59,6 +59,9 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
     linkError || (expired ? CODE_TEXT.UNAUTHENTICATED : ""),
   );
   const [busy, setBusy] = useState(false);
+  // The email format is the one failure that belongs to this field rather than
+  // to the request; everything else stays in the Outcome alert below.
+  const fieldError = error && /email/i.test(error) ? error : "";
   return (
     <div className="grid items-start gap-6 lg:min-h-[calc(100svh-11rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:items-stretch lg:gap-10">
       <div className="grid max-w-xl content-center gap-6">
@@ -103,13 +106,16 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
               .finally(() => setBusy(false));
           }}
         >
-          <Field label="Email">
+          <Field label="Email" id="signin-email" error={fieldError}>
             <Input
+              id="signin-email"
               type="email"
               required
               autoComplete="email"
               enterKeyHint="send"
               inputMode="email"
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? "signin-email-error" : undefined}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />

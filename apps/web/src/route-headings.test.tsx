@@ -1120,6 +1120,40 @@ describe("the service boundary shows what actually failed", () => {
     await form.done();
   });
 
+  test("a failed chunk says the tab is old, not that the service is down", async () => {
+    // Chrome's message for a dynamic import whose file a deploy removed. The
+    // order service is fine; the tab is older than the deployment.
+    const form = await mountBoundary(
+      new TypeError(
+        "Failed to fetch dynamically imported module: /OrderView-x.js",
+      ),
+    );
+    expect(form.text()).toContain("Milo was updated");
+    expect(form.text()).toContain("older than the current version");
+    expect(form.text()).not.toContain("The order service is not available");
+    // The one action that fixes it must still be there.
+    expect(form.container.querySelector("button")?.textContent).toContain(
+      "Reload",
+    );
+    await form.done();
+  });
+
+  test("Safari's wording also counts as a failed chunk", async () => {
+    const form = await mountBoundary(
+      new TypeError("Importing a module script failed."),
+    );
+    expect(form.text()).toContain("Milo was updated");
+    await form.done();
+  });
+
+  test("a real fault keeps the service message", async () => {
+    // The regression guard: the chunk wording must not swallow genuine errors.
+    const form = await mountBoundary(new Error("the proof server refused"));
+    expect(form.text()).toContain("The order service is not available");
+    expect(form.text()).not.toContain("Milo was updated");
+    await form.done();
+  });
+
   test("it keeps a Reload button and never renders a stack", async () => {
     const form = await mountBoundary(
       new Error("boom\n    at secret (x.js:1:2)"),

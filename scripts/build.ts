@@ -194,8 +194,11 @@ const referenced = new Set(
 );
 
 for (const output of result.outputs) {
-  if (!output.path.endsWith(".wasm")) continue;
+  // A wasm nothing references is dead weight; so is the 0-byte JS chunk Bun's
+  // splitter emits for a fully tree-shaken module. Same loop, one condition.
   const name = output.path.split("/").pop() as string;
-  if (referenced.has(name)) continue;
+  const empty = output.path.endsWith(".js") && output.size === 0;
+  if (!empty && !output.path.endsWith(".wasm")) continue;
+  if (!empty && referenced.has(name)) continue;
   await Bun.$`rm -f ${output.path}`;
 }

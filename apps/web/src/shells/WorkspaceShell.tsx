@@ -13,7 +13,7 @@ import { Loading } from "../components/ui/status";
 import { Wordmark } from "../components/Wordmark";
 import { errorText } from "../components/workspace";
 import { SignIn } from "../routes/SignIn";
-import { useMe } from "../workspace/backend";
+import { StaleBuild, useMe } from "../workspace/backend";
 import { shortAddress, walletConnector } from "../workspace/wallet";
 
 const NAV = [
@@ -40,13 +40,21 @@ const isOnline = () => navigator.onLine;
  * line only when the error has nothing to say. The raw error goes to
  * `console.error` so it stays diagnosable without being rendered.
  */
+/** A dynamic import that 404'd because the deploy replaced the chunk. The
+ * message is the only signal a bundler-less build gets: Chrome and Firefox say
+ * "Failed to fetch dynamically imported module", Safari "Importing a module
+ * script failed". Anything else is a real fault and keeps the generic sentence. */
+const CHUNK_LOAD =
+  /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+
 export class ServiceBoundary extends Component<
   { children: ReactNode },
-  { failed: boolean; message: string }
+  { failed: boolean; stale: boolean; message: string }
 > {
-  override state = { failed: false, message: "" };
+  override state = { failed: false, stale: false, message: "" };
   static getDerivedStateFromError = (error: unknown) => ({
     failed: true,
+    stale: CHUNK_LOAD.test(errorText(error)),
     message: errorText(error),
   });
   override componentDidCatch(error: unknown) {
@@ -55,6 +63,15 @@ export class ServiceBoundary extends Component<
   }
   override render() {
     if (!this.state.failed) return this.props.children;
+    // A deploy replaced the chunk this tab asked for. The order service is fine;
+    // the tab is old, and a reload is the whole fix.
+    if (this.state.stale)
+      return (
+        <StaleBuild
+          title="Milo was updated"
+          body="This tab is older than the current version. Reload to get it."
+        />
+      );
     return (
       <div className="mx-auto grid max-w-xl gap-2 p-6">
         <h1 tabIndex={-1} className="text-2xl font-extrabold tracking-tight">
@@ -103,7 +120,11 @@ export function WorkspaceShell() {
           role="status"
           className="bg-warning-soft px-4 py-1.5 text-center text-sm text-warning"
         >
-          Offline. Milo reconnects on its own.
+          {/* Two different failures. The browser knows which one it is, so say
+              it: "offline" sends a user to check a connection that is fine. */}
+          {online
+            ? "Live updates paused. Reload if this stays."
+            : "Offline. Milo reconnects on its own."}
         </p>
       )}
       <header className="sticky top-0 z-30 bg-white print:hidden">
