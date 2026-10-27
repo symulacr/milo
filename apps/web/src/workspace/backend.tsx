@@ -3,6 +3,7 @@ import { ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -29,17 +30,31 @@ export function useMe() {
   };
 }
 
-const Notice = ({ title, body }: { title: string; body: string }) => (
+const Notice = ({
+  title,
+  body,
+  action,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  action?: string;
+  onAction?: () => void;
+}) => (
   <main className="grid min-h-svh place-content-center gap-3 p-6">
     <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
     <Alert>{body}</Alert>
+    {action && onAction ? (
+      <Button variant="outline" className="w-fit" onClick={onAction}>
+        {action}
+      </Button>
+    ) : null}
   </main>
 );
 
 /**
- * A query that failed because the tab is older than the deployment. Same
- * `Notice` shape as the other workspace notices, plus the one action that fixes
- * it: a reload.
+ * A query that failed because the tab is older than the deployment: the same
+ * `Notice` shape, plus the one action that fixes it.
  */
 export const StaleBuild = ({
   title,
@@ -47,28 +62,21 @@ export const StaleBuild = ({
 }: {
   title: string;
   body: string;
-}) => (
-  <main className="grid min-h-svh place-content-center gap-3 p-6">
-    <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-    <Alert>{body}</Alert>
-    <Button
-      variant="outline"
-      className="w-fit"
-      onClick={() => location.reload()}
-    >
-      Reload
-    </Button>
-  </main>
-);
+}) => <Notice title={title} body={body} action="Reload" onAction={reload} />;
+
+const reload = () => location.reload();
 
 export function Backend({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    // The request is shared and never aborted, so a late resolve is harmless:
-    // React ignores a setState on an unmounted component.
+  // The request is shared and never aborted, so a late resolve is harmless:
+  // React ignores a setState on an unmounted component. Calling it again really
+  // re-fetches: `loadPublicConfig` drops its cached rejection.
+  const load = useCallback(() => {
+    setFailed(false);
     loadPublicConfig().then(setConfig, () => setFailed(true));
   }, []);
+  useEffect(load, [load]);
   const client = useMemo(
     () =>
       config?.convexUrl
@@ -80,7 +88,9 @@ export function Backend({ children }: { children: ReactNode }) {
     return (
       <Notice
         title="Milo cannot start"
-        body="The site configuration did not load. Check your connection, then reload the page."
+        body="The site configuration did not load. Check your connection, then try again."
+        action="Try again"
+        onAction={load}
       />
     );
   // The config is one small request, but rendering nothing until it lands

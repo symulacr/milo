@@ -6,15 +6,15 @@ reproduce the claims instead of trusting them.
 
 ## What each gate proves
 
-| Gate | Command | Proves | Pass looks like |
-|---|---|---|---|
-| Substance gate | `bash scripts/gates/gate.sh <stage>` | The stage's checks hold at `HEAD`. Stages: `prototype` (8 checks), `demo` (9), `mvp` (12), `production` (9). | `STAGE_AT_HEAD=<stage>`, exit 0, and `gates/<stage>-<ts>.json` with `fail: 0` |
-| Gate self-test | `bash scripts/gates/gate-selftest.sh` | The substance gate can fail. Each of 11 checks is fed a mutated input and must go red. | `SELFTEST_EXIT=0`, exit 0 |
+| Gate                   | Command                                | Proves                                                                                                                                      | Pass looks like                                                                                        |
+| ---------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Substance gate         | `bash scripts/gates/gate.sh <stage>`   | The stage's checks hold at `HEAD`. Stages: `prototype` (8 checks), `demo` (9), `mvp` (12), `production` (9).                                | `STAGE_AT_HEAD=<stage>`, exit 0, and `gates/<stage>-<ts>.json` with `fail: 0`                          |
+| Gate self-test         | `bash scripts/gates/gate-selftest.sh`  | The substance gate can fail. Each of 11 checks is fed a mutated input and must go red.                                                      | `SELFTEST_EXIT=0`, exit 0                                                                              |
 | Negative controls (G4) | `bash scripts/g4-negative-controls.sh` | Seven security modules are protected by tests that pass on real code and fail on a deliberate mutation applied in a throwaway git worktree. | `G4_PASS`, `tests-with-negative-control 7 of 7`, `modules-signed 7 of 7`, `leftover_worktrees_under=0` |
-| Judging minimum | `bash scripts/judging-minimum.sh` | The J1-J6 submission requirements, reported MET / NOT MET. | `=== unmet: 0 ===`, exit 0 |
-| Post-push verify | `bash scripts/post-push-verify.sh` | The shipped checks pass in sequence and the exit code reflects it. | `=== failed: 0 ===`, exit 0 |
-| M11 independent verify | `node scripts/m11-verify-all.mjs` | Recorded circuit tx hashes are re-queried against the local indexer rather than trusted from the receipt file. | `{"found":<n>,"total":<n>}` with `found == total` |
-| PR7 axe (all routes) | `node scripts/pr7-axe-all.mjs` | Every route in the route table is served over loopback and scanned for serious/critical axe violations at 1280 and 375. | `PR7_AXE_ALL_PASS`, `seriousTotal=0` |
+| Judging minimum        | `bash scripts/judging-minimum.sh`      | The J1-J6 submission requirements, reported MET / NOT MET.                                                                                  | `=== unmet: 0 ===`, exit 0                                                                             |
+| Post-push verify       | `bash scripts/post-push-verify.sh`     | The shipped checks pass in sequence and the exit code reflects it.                                                                          | `=== failed: 0 ===`, exit 0                                                                            |
+| M11 independent verify | `node scripts/m11-verify-all.mjs`      | Recorded circuit tx hashes are re-queried against the local indexer rather than trusted from the receipt file.                              | `{"found":<n>,"total":<n>}` with `found == total`                                                      |
+| PR7 axe (all routes)   | `node scripts/pr7-axe-all.mjs`         | Every route in the route table is served over loopback and scanned for serious/critical axe violations at 1280 and 375.                     | `PR7_AXE_ALL_PASS`, `seriousTotal=0`                                                                   |
 
 `gate.sh` writes `gates/<stage>-<timestamp>.json` (that directory is local output,
 not tracked). On a clean `prototype` run it also moves the `stage/prototype-<sha>`
@@ -49,9 +49,9 @@ The gates read evidence by path from `audit/discovery/`. Tracked evidence:
 Two paths that `gate.sh` requires are **not present in the tree**, so the checks
 that read them fail:
 
-| Path | Check that needs it |
-|---|---|
-| `audit/discovery/E2E-01-three-pass.md` | `D9_e2e_or_preprod` (demo) |
+| Path                                        | Check that needs it                         |
+| ------------------------------------------- | ------------------------------------------- |
+| `audit/discovery/E2E-01-three-pass.md`      | `D9_e2e_or_preprod` (demo)                  |
 | `audit/discovery/D2c-preprod-happy-path.md` | `preprod_real_fee_table` (demo, production) |
 
 `demo` therefore fails on `D9_e2e_or_preprod` until that evidence exists. That is

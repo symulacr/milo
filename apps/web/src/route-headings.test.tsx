@@ -88,7 +88,6 @@ mock.module("convex/react", () => ({
         ]),
       ),
     ),
-  ConvexProvider: ({ children }: { children: unknown }) => children,
 }));
 /** Resolve a query into the cache, so the next render sees it synchronously. */
 const prime = async (ref: unknown, args: unknown) => {
@@ -110,6 +109,10 @@ const { api } = await import("./api");
 // The shell reaches react-dom/client, so it must load after the boot window
 // (see the note above): a static import here would latch canUseDOM false.
 const { ServiceBoundary } = await import("./shells/WorkspaceShell");
+/** Throws whatever it is given, so the boundary's fallback can be driven. */
+const Boom = ({ error }: { error: unknown }) => {
+  throw error;
+};
 
 const render = (path: string, node: React.ReactNode) =>
   renderToStaticMarkup(
@@ -1115,10 +1118,6 @@ describe("the service boundary shows what actually failed", () => {
   // The old boundary said "The order service is not available" for every
   // failure, which hid the cause. It must show the error's own sentence, keep a
   // Reload button, and log the error so it stays diagnosable.
-  const Boom = ({ error }: { error: unknown }) => {
-    throw error;
-  };
-
   const mountBoundary = async (error: unknown) => {
     const form = await mount(
       "/orders",

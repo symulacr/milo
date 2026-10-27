@@ -23,3 +23,7 @@ updates:
           - "@midnight-ntwrk/*"
           - "better-auth"
           - "convex"
+          # A formatter bump needs a migration commit (2.6 formats Markdown and
+          # adds `noComponentHookFactories`), which a bot PR cannot carry, so a
+          # grouped bump lands red. Same mechanism as the cohort above.
+          - "@biomejs/biome"

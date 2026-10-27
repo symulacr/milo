@@ -543,7 +543,11 @@ describe("watching the order contract", () => {
       store.state = next;
       for (const listener of listeners) listener();
     };
-    const useChainState = () =>
+    // Lowercase on purpose: these are inline fixtures, and biome 2.6's
+    // `noComponentHookFactories` flags any capitalised definition inside a
+    // function. This file builds elements with `React.createElement`, not JSX,
+    // so a lowercase name is still a plain function reference.
+    const chainState = () =>
       React.useSyncExternalStore(
         (listener: () => void) => {
           listeners.add(listener);
@@ -553,9 +557,9 @@ describe("watching the order contract", () => {
         () => store.state,
       );
     let commits = 0;
-    const OrderPhaseLine = () => {
+    const orderPhaseLine = () => {
       commits += 1;
-      const state = useChainState();
+      const state = chainState();
       return React.createElement(
         "p",
         null,
@@ -566,7 +570,7 @@ describe("watching the order contract", () => {
     window.document.body.appendChild(container);
     const root = createRoot(container as unknown as Element);
     try {
-      act(() => root.render(React.createElement(OrderPhaseLine)));
+      act(() => root.render(React.createElement(orderPhaseLine)));
       expect(commits).toBe(1);
 
       const run = watch({ onState: publish });

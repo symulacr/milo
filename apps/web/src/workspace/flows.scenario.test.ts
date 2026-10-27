@@ -79,7 +79,6 @@ mock.module("convex/react", () => ({
           )
         : undefined,
     ),
-  ConvexProvider: ({ children }: { children: unknown }) => children,
 }));
 
 // Scenario suite: each test walks one named user path through the real
