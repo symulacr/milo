@@ -148,7 +148,7 @@ const ROWS: Record<Stage, Row> = {
   ],
   DISPUTED: [
     "operator",
-    "resolve the dispute",
+    "resolve the dispute, or expire it if no evidence was recorded",
     RESOLUTION,
     {
       operator: [

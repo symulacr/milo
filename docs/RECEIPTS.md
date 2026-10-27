@@ -2,18 +2,18 @@
 
 Verified against Midnight Preprod indexer GraphQL  
 `https://indexer.preprod.midnight.network/api/v4/graphql`  
-Read date: 2026-09-29. Method: `contractAction(address:)` + `block.height`.
+Read date: 2026-10-22. Method: `contractAction(address:)` + `block.height`.
 
 ## On-chain facts
 
 | Fact | Value | Status |
 |---|---|---|
 | Network | Midnight Preprod | VERIFIED-ONCHAIN |
-| Contract address | `b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586` | VERIFIED-ONCHAIN |
-| Latest action type | `ContractUpdate` | VERIFIED-ONCHAIN |
-| Latest tx hash | `5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58` | VERIFIED-ONCHAIN |
-| Block height (state) | `2639638` | VERIFIED-ONCHAIN |
-| Chain height at read | `2765910` | VERIFIED-ONCHAIN |
+| Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | VERIFIED-ONCHAIN |
+| Latest action type | `ContractDeploy` + one `ContractUpdate` (staged 7+7) | VERIFIED-ONCHAIN |
+| Deploy tx | `000516b28419ab4ab957d6411cf957fb2be472bd8c5eaae7bc1afe784d2070da23` | VERIFIED-ONCHAIN |
+| Maintenance insert tx | `00b80c3ad0e375cb2373a6514996c1a72c5d3356b48c3a1b8a1bd1db640562e0e5` | VERIFIED-ONCHAIN |
+| Block height (state) | `3095269` | VERIFIED-ONCHAIN |
 | Network label in state | `preprod` (ASCII in contract state) | VERIFIED-ONCHAIN |
 | Circuit names in state | reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed | VERIFIED-ONCHAIN (state bytes) |
 
@@ -58,7 +58,7 @@ Delta sealed variant vs v0.0.1 is `export sealed ledger` on protocolVersion/conf
 
 ```graphql
 query {
-  contractAction(address: "b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586") {
+  contractAction(address: "09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb") {
     __typename address state transaction { hash block { height } }
   }
 }
@@ -81,9 +81,6 @@ Explorer links: confirm before publishing. Indexer GraphQL is the source of trut
 | Maintenance | locked | VERIFIED |
 | Label | SDK-connector / harness | — |
 
-## D5 re-query (2026-09-30)
-Preprod 0xb95c…e74586 still ContractUpdate tx 5ce74cb9… block 2639638. Chain height 2769087.
-
 ## Spend ledger cross-ref (D2b)
 
 The spend tables below list hash, purpose, fee, block and chain height.
@@ -98,11 +95,11 @@ Fee estimates were taken **before** submission. Seed material is never printed.
 | `40ade7947a0f70cb78eaa715b10d422650f838cd00d16e95993ea85ccc2b6a39` | MID-T01-staged-lock | 1 | 707 | 707 |
 | **Total** | 3 staged txs | **60** | | |
 
-### Preprod (this file, on-chain facts above)
+### Preprod
 
-| hash | purpose | fee | block | chain height |
-|---|---|---|---|---|
-| `5ce74cb9406e2d9398b0d3c5c949b2d86d5a3068e7b621ca5f0d1b6ee479cd58` | ContractUpdate (replaceAuthority) | not captured | 2639638 | 2765910 (read) |
+The 2026-10-22 staged deploy's fees are in its own section below. No earlier Preprod
+transaction is listed here: the retained 2026-09-30 receipts record `"status":"failed"` on
+`Wallet.InsufficientFunds`, so there is no successful earlier transaction to report.
 
 ## Preprod D2c happy-path attempt (2026-09-30) — SDK-connector / harness
 

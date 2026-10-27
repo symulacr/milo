@@ -26,14 +26,23 @@ const publicRoutes = Object.fromEntries(
   ]),
 );
 
+const zkVersion = (
+  (await Bun.file(`${zkDirectory}/compile-receipt.json`).json()) as {
+    sourceSha256: string;
+  }
+).sourceSha256.slice(0, 16);
+
 const zkRoutes = Object.fromEntries(
   (["keys", "zkir"] as const).flatMap((directory) =>
-    Array.from(new Bun.Glob("*").scanSync(`${zkDirectory}/${directory}`)).map(
-      (path) => [
-        `/zk/${directory}/${path}`,
-        Bun.file(`${zkDirectory}/${directory}/${path}`),
-      ],
-    ),
+    Array.from(
+      new Bun.Glob("*").scanSync(`${zkDirectory}/${directory}`),
+    ).flatMap((path) => {
+      const file = Bun.file(`${zkDirectory}/${directory}/${path}`);
+      return [
+        [`/zk/${directory}/${path}`, file],
+        [`/zk/${zkVersion}/${directory}/${path}`, file],
+      ];
+    }),
   ),
 );
 

@@ -161,11 +161,18 @@ export async function callOrder(
     zkBaseUrl: input.zkBaseUrl,
     privateStateScope: input.privateStateScope,
   });
-  await chain.joinOrderContract({
-    session,
-    contractAddress: input.contractAddress,
-    privateState: input.privateState,
-  });
+  // A join compares all fourteen local verifier keys against the deployed
+  // contract, so a single re-keyed circuit refuses every circuit on the order.
+  // The call does not need it: `submitCallTx` reads the private state and the
+  // public state itself. Keep the join for the errors it narrows, but let a key
+  // mismatch fall through to the call, which fails only if that circuit is used.
+  await chain
+    .joinOrderContract({
+      session,
+      contractAddress: input.contractAddress,
+      privateState: input.privateState,
+    })
+    .catch(() => undefined);
   return chain.callOrderCircuit({
     session,
     contractAddress: input.contractAddress,

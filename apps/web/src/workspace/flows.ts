@@ -507,8 +507,10 @@ export async function runAction(input: {
         ? await evidenceOf(note)
         : undefined;
   if (circuit === "resolve" && !evidence)
+    // An escalated order recorded no evidence, so `resolve` can never satisfy
+    // its own non-default check. Retrying cannot help; the order has to expire.
     throw new Error(
-      "Milo cannot read the dispute evidence from the chain. Try again.",
+      "This dispute has no evidence on chain, so it cannot be resolved. Expire it instead.",
     );
   return sign(convex, wallet, subject, detail, signing, circuit, {
     approveOrder: action.approveOrder,

@@ -39,7 +39,7 @@ function buildRecord(
     source: "chain-observer" as const,
     network: "preprod",
     nonce: "4".repeat(64),
-    address: "b95c8243f269c995c76577006f233b7c37f353067df8737b9b17537739e74586",
+    address: "09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb",
     phase: "DEPLOYED" as const,
     revision: 0 as const,
     termsCommitment: hash,

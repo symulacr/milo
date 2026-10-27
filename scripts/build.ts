@@ -172,12 +172,21 @@ await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 const zkSource = "packages/contract/generated";
 
+// Artifacts are addressed by circuit name alone, so replacing them in place
+// would silently swap the keys an already-deployed order was created with.
+// Emit a second, content-addressed copy under the compile receipt's source hash
+// so an old order can keep asking for the set it was deployed against.
+const zkVersion = (
+  (await Bun.file(`${zkSource}/compile-receipt.json`).json()) as {
+    sourceSha256: string;
+  }
+).sourceSha256.slice(0, 16);
+
 for (const directory of ["keys", "zkir"] as const) {
   for (const path of new Bun.Glob("*").scanSync(`${zkSource}/${directory}`)) {
-    await Bun.write(
-      `${outdir}/zk/${directory}/${path}`,
-      Bun.file(`${zkSource}/${directory}/${path}`),
-    );
+    const file = Bun.file(`${zkSource}/${directory}/${path}`);
+    await Bun.write(`${outdir}/zk/${directory}/${path}`, file);
+    await Bun.write(`${outdir}/zk/${zkVersion}/${directory}/${path}`, file);
   }
 }
 
