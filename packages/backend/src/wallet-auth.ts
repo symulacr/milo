@@ -1,5 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, hexToBytes, timingSafeEqualHex } from "./encoding";
+import { bytesToHex, hexToBytes, timingSafeEqualHex } from "./encoding.ts";
 
 export const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
 export const WALLET_MESSAGE_DOMAIN = "milo";
