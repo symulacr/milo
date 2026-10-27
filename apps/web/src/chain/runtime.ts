@@ -140,6 +140,37 @@ const absoluteZkBaseUrl = (baseUrl: string): string => {
   return resolved.toString();
 };
 
+/**
+ * The proof server answers `429 JobQueueFull` when its worker pool is saturated,
+ * and the docs say to wait and retry. The installed provider
+ * (`midnight-js-http-client-proof-provider@4.1.1`) retries `[500, 503]` but not
+ * `429`, and it never reads the response body, so a caller cannot tell a busy
+ * server from a broken one. This adds the missing case and nothing else: the
+ * budget is two retries, the delay reuses `backoffDelay` from this file, and any
+ * other failure is rethrown untouched so upstream behaviour is unchanged.
+ */
+const PROOF_RETRY_LIMIT = 2;
+
+const proofQueueFull = (error: unknown): boolean =>
+  /code="429"|JobQueueFull|Job Queue full/i.test(
+    error instanceof Error ? `${error.name} ${error.message}` : String(error),
+  );
+
+export const withProofRetry = async <T>(
+  prove: () => Promise<T>,
+): Promise<T> => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await prove();
+    } catch (error) {
+      if (attempt >= PROOF_RETRY_LIMIT || !proofQueueFull(error)) throw error;
+      await new Promise((done) =>
+        setTimeout(done, backoffDelay(attempt + 1, 1_000)),
+      );
+    }
+  }
+};
+
 export async function openChainSession(
   input: OpenSessionInput,
 ): Promise<ChainSession> {
@@ -153,8 +184,13 @@ export async function openChainSession(
       privateStateProvider,
       createZkConfigProvider: (baseUrl, fetchFunc) =>
         new FetchZkConfigProvider<string>(baseUrl, fetchFunc),
-      createHttpProofProvider: (url, zkConfigProvider) =>
-        httpClientProofProvider(url, zkConfigProvider),
+      createHttpProofProvider: (url, zkConfigProvider) => {
+        const provider = httpClientProofProvider(url, zkConfigProvider);
+        return {
+          proveTx: (tx, options) =>
+            withProofRetry(() => provider.proveTx(tx, options)),
+        };
+      },
       createWalletProofProvider: async (api, zkConfigProvider) =>
         createProofProvider(
           await api.getProvingProvider(

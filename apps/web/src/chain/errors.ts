@@ -5,6 +5,7 @@ export type ChainErrorCode =
   | "WALLET_DISCONNECTED"
   | "INVALID_REQUEST"
   | "WRONG_NETWORK"
+  | "WRONG_ACCOUNT"
   | "INSUFFICIENT_DUST"
   | "MISSING_PROOF_SERVER"
   | "ZK_ARTIFACT_UNAVAILABLE"
@@ -38,6 +39,8 @@ const MESSAGES: Record<ChainErrorCode, string> = {
     "Your wallet did not accept the transaction. Milo did not send it.",
   WRONG_NETWORK:
     "Set your wallet to Midnight Preprod. Milo does not use other networks.",
+  WRONG_ACCOUNT:
+    "A different wallet account is connected. Switch back to the account you used for this order.",
   INSUFFICIENT_DUST:
     "Your wallet has no tDUST for the fee. In your wallet, press Generate tDUST and keep it open a minute. If you have no tNIGHT yet, get some from the Preprod faucet first.",
   MISSING_PROOF_SERVER:

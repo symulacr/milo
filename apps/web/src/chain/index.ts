@@ -1,4 +1,5 @@
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
+import { ChainError } from "./errors.ts";
 import type {
   OrderCircuitName,
   OrderConfiguration,
@@ -144,6 +145,8 @@ export type CallOrderInput = {
   readonly approveOrder?: boolean;
   readonly zkBaseUrl?: string;
   readonly privateStateScope: string;
+  /** The address this session signed in with, if known. */
+  readonly expectedAddress?: string;
 };
 
 export type CallOrderResult = {
@@ -152,9 +155,32 @@ export type CallOrderResult = {
   readonly blockHeight: number;
 };
 
+/** The last 16 characters of a wallet address, which is what the session stores.
+ * `convex/auth.ts` keeps `wallet-<last16>@wallet.milo.local`, so a suffix match
+ * is the comparison available on this side. It catches a switched account and is
+ * not a security check: the contract's capability asserts are. */
+const sameAccount = (connected: string, expected: string): boolean =>
+  connected.toLowerCase().endsWith(expected.toLowerCase().slice(-16));
+
 export async function callOrder(
   input: CallOrderInput,
 ): Promise<CallOrderResult> {
+  // The order page already hides its actions when the connected account is not
+  // the one the session signed in with, but that is a render guard: a stale tab,
+  // a second tab, or a direct call still reaches the chain. Without this the user
+  // gets an opaque capability rejection; with it they get the sentence that says
+  // what to do.
+  if (input.expectedAddress && input.connected.getUnshieldedAddress) {
+    const { unshieldedAddress } = await input.connected.getUnshieldedAddress();
+    if (
+      unshieldedAddress &&
+      !sameAccount(unshieldedAddress, input.expectedAddress)
+    )
+      throw new ChainError(
+        "WRONG_ACCOUNT",
+        "A different wallet account is connected. Switch back to the account you used for this order.",
+      );
+  }
   const chain = await loadChainRuntime();
   const session = await chain.openChainSession({
     connected: input.connected,

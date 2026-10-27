@@ -334,6 +334,8 @@ export async function sign(
     expectedDelivery?: Uint8Array;
     evidence?: Uint8Array;
     approveOrder?: boolean;
+    /** The address this session signed in with, if known. */
+    expectedAddress?: string;
   } = {},
 ) {
   if (!detail.contract)
@@ -497,9 +499,21 @@ export async function runAction(input: {
   readonly note: string;
   readonly files: File[];
   readonly report: Report;
+  /** The address this session signed in with, if known. */
+  readonly expectedAddress?: string;
 }) {
-  const { convex, wallet, subject, detail, key, action, note, files, report } =
-    input;
+  const {
+    convex,
+    wallet,
+    subject,
+    detail,
+    key,
+    action,
+    note,
+    files,
+    report,
+    expectedAddress,
+  } = input;
   const { circuit } = action;
   if (circuit === "start" || circuit === "submitDelivery") {
     if (!key) throw new Error("This browser has no key for this order.");
@@ -525,6 +539,7 @@ export async function runAction(input: {
   return sign(convex, wallet, subject, detail, signing, circuit, {
     approveOrder: action.approveOrder,
     evidence,
+    expectedAddress,
     expectedDelivery:
       action.needs === "delivery" && detail.delivery.manifest
         ? fromHex(detail.delivery.manifest)

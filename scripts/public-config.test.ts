@@ -51,6 +51,52 @@ describe("shipped cache policy", () => {
     // The config endpoint must never be cached: it names the live origins.
     expect(cacheFor("/api/public-config")).toBe("no-store");
   });
+
+  /**
+   * Vercel applies the LAST matching rule, so a rule's position decides whether
+   * it wins. `cacheFor` above matches an exact `source` string and so cannot see
+   * precedence at all — which is exactly how K-07 happened. This resolves a real
+   * path against every rule in order and keeps the last match.
+   *
+   * The matcher is written out rather than pulled from `path-to-regexp`: the
+   * shipped rules use only three forms, and spelling them out keeps the test
+   * honest about what it does and does not model.
+   */
+  const ruleMatches = (source: string, path: string): boolean => {
+    if (source === "/(.*)") return true;
+    const wildcardSuffix = source.match(/^\/\(\.\*\)(\.[a-z]+)$/);
+    if (wildcardSuffix) return path.endsWith(wildcardSuffix[1]);
+    if (source === "/zk/([0-9a-f]{16})/(.*)")
+      return /^\/zk\/[0-9a-f]{16}\//.test(path);
+    return source === path;
+  };
+
+  const cacheForPath = (path: string): string => {
+    let value = "";
+    for (const rule of manifest.headers) {
+      if (!ruleMatches(rule.source, path)) continue;
+      const header = rule.headers.find((h) => h.key === "Cache-Control");
+      if (header) value = header.value;
+    }
+    return value;
+  };
+
+  test("the content-addressed artifact path is immutable and wins over the shell", () => {
+    const versioned = "/zk/453af640523557a4/keys/escalateUnreviewed.verifier";
+    const unversioned = "/zk/keys/escalateUnreviewed.verifier";
+    expect(cacheForPath(versioned)).toContain("immutable");
+    expect(cacheForPath(versioned)).toContain("max-age=31536000");
+    expect(cacheForPath(unversioned)).toContain("must-revalidate");
+    expect(cacheForPath(unversioned)).not.toContain("immutable");
+  });
+
+  test("the immutable rule sits after the catch-all, so it can win", () => {
+    const sources = manifest.headers.map((rule) => rule.source);
+    const catchAll = sources.indexOf("/(.*)");
+    const versioned = sources.indexOf("/zk/([0-9a-f]{16})/(.*)");
+    expect(catchAll).toBeGreaterThan(-1);
+    expect(versioned).toBeGreaterThan(catchAll);
+  });
 });
 
 describe("browser public configuration", () => {

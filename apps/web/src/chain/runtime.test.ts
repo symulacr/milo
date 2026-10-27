@@ -8,6 +8,7 @@ import {
   deployOrderContract,
   joinOrderContract,
   openChainSession,
+  withProofRetry,
 } from "./runtime";
 
 const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
@@ -297,5 +298,62 @@ describe("joinOrderContract", () => {
         }),
       ).rejects.toThrow(/32 bytes/);
     });
+  });
+});
+
+/**
+ * V-05: the proof server answers `429 JobQueueFull` when its worker pool is
+ * saturated, and the docs say to wait and retry. The installed provider retries
+ * `[500, 503]` but not `429`, so a busy server looked permanent. These drive the
+ * wrapper directly, with no network and no proof server.
+ */
+describe("proof-server queue-full retry", () => {
+  const queueFull = () =>
+    new Error(
+      'Failed Proof Server response: url="http://127.0.0.1:6300/prove", code="429", status="Too Many Requests"',
+    );
+
+  test("a 429 is retried and the next success is returned", async () => {
+    let calls = 0;
+    const result = await withProofRetry(async () => {
+      calls += 1;
+      if (calls < 2) throw queueFull();
+      return "proved";
+    });
+    expect(result).toBe("proved");
+    expect(calls).toBe(2);
+  });
+
+  test("the retry budget is bounded, so a wedged server still fails", async () => {
+    let calls = 0;
+    await expect(
+      withProofRetry(async () => {
+        calls += 1;
+        throw queueFull();
+      }),
+    ).rejects.toThrow("429");
+    expect(calls).toBe(3);
+  });
+
+  test("a non-429 failure is rethrown untouched and not retried", async () => {
+    let calls = 0;
+    await expect(
+      withProofRetry(async () => {
+        calls += 1;
+        throw new Error('code="400", status="Bad Request"');
+      }),
+    ).rejects.toThrow("400");
+    expect(calls).toBe(1);
+  });
+
+  test("a body-level JobQueueFull message is also retried", async () => {
+    let calls = 0;
+    const result = await withProofRetry(async () => {
+      calls += 1;
+      if (calls < 2) throw new Error("Job Queue full");
+      return 1;
+    });
+    expect(result).toBe(1);
+    expect(calls).toBe(2);
   });
 });

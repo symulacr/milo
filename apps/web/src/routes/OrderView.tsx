@@ -336,6 +336,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
       note,
       files: picked,
       report,
+      expectedAddress: me.walletAddress ?? undefined,
     }).then(
       () => {
         inFlight.end();
