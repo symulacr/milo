@@ -20,6 +20,7 @@ import {
   WALLET_NETWORK,
   WALLET_NONCE_TTL_MS,
   walletBoundToAddress,
+  walletMessageDomain,
   walletNonceIdentifier,
 } from "../src/wallet-auth";
 
@@ -248,11 +249,77 @@ describe("wallet sign-in message", () => {
 
   test("carries the domain, network, and expiry the server checks", () => {
     const message = buildWalletSignInMessage(request);
-    expect(message).toContain(`domain: ${WALLET_MESSAGE_DOMAIN}`);
+    expect(message).toContain(`domain: ${walletMessageDomain()}`);
     expect(message).toContain(`network: ${WALLET_NETWORK}`);
     expect(message).toContain(
       `expires-at: ${new Date(request.expiresAt).toISOString()}`,
     );
+  });
+
+  // R23 J-02: the `domain:` line used to be the literal "milo", so the signed
+  // text carried no deployment and a signature made for one Milo deployment was
+  // textually valid at any other. The client signs whatever the server returns
+  // (`auth-client.ts:115-130`), so this is fixed server-side with no release.
+  describe("the signed domain binds the deployment (R23 J-02)", () => {
+    const withSite = async (
+      value: string | undefined,
+      run: () => Promise<void>,
+    ) => {
+      const previous = process.env.SITE_URL;
+      if (value === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = value;
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) delete process.env.SITE_URL;
+        else process.env.SITE_URL = previous;
+      }
+    };
+
+    test("the signed domain is the deployment host, not a constant", async () => {
+      await withSite("https://milo-nine-delta.vercel.app", async () => {
+        expect(walletMessageDomain()).toBe("milo-nine-delta.vercel.app");
+        const message = buildWalletSignInMessage(request);
+        expect(message).toContain("domain: milo-nine-delta.vercel.app");
+        // And it round-trips against the same value it was built with.
+        expect(parseWalletSignInMessage(message)).toEqual(request);
+      });
+    });
+
+    test("a message built for another deployment no longer parses", async () => {
+      // Deployment A builds a message; deployment B must reject it. The build
+      // and the parse happen under different SITE_URL values, so the two must
+      // not be nested.
+      const previous = process.env.SITE_URL;
+      let forA = "";
+      try {
+        process.env.SITE_URL = "https://a.example";
+        forA = buildWalletSignInMessage(request);
+        process.env.SITE_URL = "https://b.example";
+        expect(parseWalletSignInMessage(forA)).toBeNull();
+        // Control: under A it parses, so the rejection above is the domain.
+        process.env.SITE_URL = "https://a.example";
+        expect(parseWalletSignInMessage(forA)).toEqual(request);
+      } finally {
+        if (previous === undefined) delete process.env.SITE_URL;
+        else process.env.SITE_URL = previous;
+      }
+    });
+
+    test("an unset origin falls back to the old literal, not to a crash", async () => {
+      await withSite(undefined, async () => {
+        expect(walletMessageDomain()).toBe(WALLET_MESSAGE_DOMAIN);
+        expect(
+          parseWalletSignInMessage(buildWalletSignInMessage(request)),
+        ).toEqual(request);
+      });
+    });
+
+    test("a malformed origin falls back rather than throwing", async () => {
+      await withSite("not a url", async () => {
+        expect(walletMessageDomain()).toBe(WALLET_MESSAGE_DOMAIN);
+      });
+    });
   });
 
   test("rejects a wrong header, wrong domain, wrong network, and unknown fields", () => {

@@ -386,6 +386,15 @@ export const MAGIC_LINK_COOLDOWN_MS = 10 * 60_000;
 /** Bounds the cooldown read even for a merchant with years of history. */
 const COOLDOWN_SCAN_LIMIT = 32;
 
+/**
+ * R23 H-11: how many distinct new recipients one studio may invite per rolling
+ * day, and how many of its drafts the check reads. The scan bound is larger than
+ * the cap so one busy day cannot hide the count, and small enough that the read
+ * stays cheap.
+ */
+export const DAILY_RECIPIENT_CAP = 20;
+const DAILY_RECIPIENT_SCAN_LIMIT = 200;
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inviteUrlFor = inviteUrl;
@@ -545,6 +554,26 @@ export const writeQuoteDraft = internalMutationGeneric({
       fail(
         "RATE_LIMITED",
         `An invite was already sent to this address. Try again in ${Math.ceil(waitMs / 60_000)} minute(s).`,
+      );
+    // R23 H-11: the per-pair cooldown stops a repeat to ONE address; it does not
+    // stop a merchant mailing a different address each time. Daily quota over the
+    // existing `by_merchant` index — one bounded read, no new index. "New"
+    // excludes the address being quoted now: re-quoting an existing recipient is
+    // what the cap must NOT block, since it is not a new person receiving mail.
+    const today = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_merchant", (q) => q.eq("merchantSubject", subject))
+      .take(DAILY_RECIPIENT_SCAN_LIMIT);
+    const dayAgo = Date.now() - 24 * 60 * 60_000;
+    const recentRecipients = new Set(
+      today
+        .filter((row) => row.createdAt > dayAgo && row.clientEmail !== email)
+        .map((row) => row.clientEmail),
+    );
+    if (recentRecipients.size >= DAILY_RECIPIENT_CAP)
+      fail(
+        "RATE_LIMITED",
+        `This studio has invited ${DAILY_RECIPIENT_CAP} new clients in the last day. Try again tomorrow.`,
       );
     const token = randomHex();
     const quoteId = `quote_${bytesToHex(

@@ -255,7 +255,12 @@ export const pruneExpiredContent = internalMutationGeneric({
  */
 export const digest = internalActionGeneric({
   args: {},
-  returns: v.object({ emailed: v.number(), unprocessed: v.number() }),
+  returns: v.object({
+    emailed: v.number(),
+    unprocessed: v.number(),
+    /** R23 H-06: surfaced so a silent skip is visible in the cron log. */
+    skipped: v.union(v.literal("no-operator"), v.literal("clean"), v.null()),
+  }),
   handler: async (ctx) => {
     const recipients = operatorEmails();
     const counts = (await ctx.runQuery(deadLetterCountsRef, {})) as {
@@ -263,8 +268,25 @@ export const digest = internalActionGeneric({
       recent: number;
       byType: Array<{ eventType: string; count: number }>;
     };
-    if (recipients.length === 0 || counts.unprocessed === 0)
-      return { emailed: 0, unprocessed: counts.unprocessed };
+    // R23 H-06: a misconfigured deployment used to look identical to a healthy
+    // one — the digest returned quietly and the queue grew unseen. Both skips are
+    // now distinguishable in the return value, and the dangerous one is logged.
+    if (recipients.length === 0) {
+      console.warn(
+        "digest-skipped",
+        JSON.stringify({
+          reason: "no-operator",
+          unprocessed: counts.unprocessed,
+        }),
+      );
+      return {
+        emailed: 0,
+        unprocessed: counts.unprocessed,
+        skipped: "no-operator" as const,
+      };
+    }
+    if (counts.unprocessed === 0)
+      return { emailed: 0, unprocessed: 0, skipped: "clean" as const };
     const text = [
       `${counts.unprocessed} of ${counts.recent} events in the last day were never reconciled.`,
       ...counts.byType.map((row) => `  ${row.count} x ${row.eventType}`),
@@ -284,6 +306,39 @@ export const digest = internalActionGeneric({
         // One bad recipient must not stop the rest; the next run is the retry.
       }
     }
-    return { emailed, unprocessed: counts.unprocessed };
+    return { emailed, unprocessed: counts.unprocessed, skipped: null };
+  },
+});
+
+/**
+ * R23 I-10: reap `paymentInbox` rows that were never processed.
+ *
+ * `settlement.ts` deletes a row once `processedAt` is set, so a row that never
+ * processes is kept forever. The digest reports them; this is the reaping half,
+ * over the existing `by_received` index, bounded per run like the grant sweep.
+ * The window is long because an unprocessed row is evidence for a while, and the
+ * digest has already reported it many times before it goes.
+ */
+export const INBOX_REAP_DAYS = 30;
+export const INBOX_REAP_BATCH = 200;
+
+export const reapPaymentInbox = internalMutationGeneric({
+  args: {},
+  returns: v.object({ removed: v.number() }),
+  handler: async (ctx: AdmissionContext) => {
+    const cutoff = Date.now() - INBOX_REAP_DAYS * 24 * 60 * 60_000;
+    const stale = await ctx.db
+      .query("paymentInbox")
+      .withIndex("by_received", (q) => q.lt("receivedAt", cutoff))
+      .take(INBOX_REAP_BATCH);
+    let removed = 0;
+    for (const row of stale) {
+      // Only unprocessed rows: a processed row is already deleted by
+      // `settlement.ts`, and a row that processed late must not be lost here.
+      if (row.processedAt !== undefined) continue;
+      await ctx.db.delete(row._id);
+      removed += 1;
+    }
+    return { removed };
   },
 });

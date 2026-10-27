@@ -4,9 +4,12 @@ import {
   DIAGNOSTICS_BY_INTENT_LIMIT,
   DIGEST_WINDOW_MS,
   deadLetterCounts,
+  digest,
+  INBOX_REAP_DAYS,
   pruneExpiredContent,
   RETENTION_DAYS,
   read,
+  reapPaymentInbox,
 } from "./diagnostics";
 import type { Row } from "./orderProjection.double";
 import {
@@ -148,6 +151,118 @@ describe("ROUND18 item 7: the operator digest", () => {
     // `minuteUTC` is omitted so Convex spreads the run; pinning :00 is the
     // documented busiest moment.
     expect(source).not.toMatch(/hourUTC: 7,\s*minuteUTC/);
+  });
+});
+
+/**
+ * R23 I-10: unprocessed inbox rows are reaped, not kept forever.
+ */
+describe("R23 I-10: the dead-letter queue has a reaping half", () => {
+  const ctxFor = (tables: Record<string, Row[]>) =>
+    ({ db: { ...readSurface(tables), ...writeSurface(tables) } }) as never;
+
+  const row = (over: Record<string, unknown> = {}): Row => ({
+    _id: "i1",
+    provider: "stripe",
+    accountId: "acct",
+    eventId: "evt_1",
+    eventType: "payment_intent.succeeded",
+    digest: "d",
+    paymentIntentRef: null,
+    receivedAt: Date.now() - (INBOX_REAP_DAYS + 1) * 24 * 60 * 60_000,
+    ...over,
+  });
+
+  const reap = async (tables: Record<string, Row[]>) =>
+    (
+      reapPaymentInbox as unknown as {
+        _handler: (c: never, a: Record<string, never>) => Promise<unknown>;
+      }
+    )._handler(ctxFor(tables), {});
+
+  test("a stale unprocessed row is removed", async () => {
+    const tables = { paymentInbox: [row()] };
+    expect(await reap(tables)).toEqual({ removed: 1 });
+    expect(tables.paymentInbox).toHaveLength(0);
+  });
+
+  test("a recent row is kept", async () => {
+    const tables = { paymentInbox: [row({ receivedAt: Date.now() })] };
+    expect(await reap(tables)).toEqual({ removed: 0 });
+    expect(tables.paymentInbox).toHaveLength(1);
+  });
+
+  test("a stale row that DID process is never reaped here", async () => {
+    // `settlement.ts` owns processed rows; deleting one here could lose a late
+    // reconcile.
+    const tables = { paymentInbox: [row({ processedAt: Date.now() })] };
+    expect(await reap(tables)).toEqual({ removed: 0 });
+    expect(tables.paymentInbox).toHaveLength(1);
+  });
+
+  test("the cron is registered daily", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./crons.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('"reap unprocessed payment inbox"');
+    expect(source).toContain("diagnostics:reapPaymentInbox");
+  });
+});
+
+/**
+ * R23 H-06: a digest that cannot be delivered must not look like a clean run.
+ */
+describe("R23 H-06: the digest distinguishes its two skips", () => {
+  const run = async (recipients: string | undefined, unprocessed: number) => {
+    const previous = process.env.MILO_OPERATOR_EMAILS;
+    if (recipients === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+    else process.env.MILO_OPERATOR_EMAILS = recipients;
+    const warned: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) =>
+      warned.push(args.map(String).join(" "));
+    try {
+      const out = await (
+        digest as unknown as {
+          _handler: (
+            c: never,
+            a: Record<string, never>,
+          ) => Promise<{ skipped: string | null; emailed: number }>;
+        }
+      )._handler(
+        {
+          runQuery: async () => ({
+            unprocessed,
+            recent: unprocessed,
+            byType: [],
+          }),
+        } as never,
+        {},
+      );
+      return { out, warned };
+    } finally {
+      console.warn = realWarn;
+      if (previous === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+      else process.env.MILO_OPERATOR_EMAILS = previous;
+    }
+  };
+
+  test("no operator configured is reported and logged, not silent", async () => {
+    const { out, warned } = await run(undefined, 5);
+    expect(out.skipped).toBe("no-operator");
+    expect(out.emailed).toBe(0);
+    expect(warned.join("\n")).toContain("digest-skipped");
+    expect(warned.join("\n")).toContain("no-operator");
+    // The count is in the log, so the operator can see the size of the gap.
+    expect(warned.join("\n")).toContain("5");
+  });
+
+  test("nothing to report is a distinct, quiet skip", async () => {
+    const { out, warned } = await run("ops@studio.example", 0);
+    expect(out.skipped).toBe("clean");
+    expect(warned).toEqual([]);
   });
 });
 

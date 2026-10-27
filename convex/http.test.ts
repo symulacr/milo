@@ -248,6 +248,39 @@ describe("verifyStripeSignature (HMAC-SHA256, ±5 min, 256KB, whsec_ only)", () 
 });
 
 /**
+ * R23 K-08: a preflight to the report endpoint must not 404.
+ *
+ * `httpRouter` takes one method per route, so an unmatched OPTIONS is a 404 —
+ * which a browser reports as a *failed* report delivery, hiding the policy
+ * violation the report was about.
+ */
+describe("R23 K-08: /csp-report answers a preflight", () => {
+  test("the router declares an OPTIONS route on the same path", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./http.ts", import.meta.url),
+      "utf8",
+    );
+    // Both methods on the one path, so neither can be added without the other.
+    expect(source).toContain('path: "/csp-report",\n  method: "POST"');
+    expect(source).toContain('path: "/csp-report",\n  method: "OPTIONS"');
+  });
+
+  test("the preflight answer is a bodiless 204", async () => {
+    // The handler is a plain 204: the endpoint is deliberately origin-agnostic,
+    // so there is no allowlist to echo and no body to keep PII-free.
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./http.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toMatch(
+      /method: "OPTIONS",\s*\n\s*handler: httpActionGeneric\(\s*\n?\s*async \(\) => new Response\(null, \{ status: 204 \}\)/,
+    );
+  });
+});
+
+/**
  * ROUND 18 item 8 — the CSP report receiver.
  *
  * Report-Only with no `report-to`/`report-uri` collects nothing, so the header

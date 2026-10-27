@@ -46,4 +46,12 @@ crons.daily(
   internalRef<"mutation">("diagnostics:pruneExpiredContent"),
 );
 
+// R23 I-10: the reaping half of the dead-letter queue. The digest reports
+// unprocessed inbox rows; this removes the ones that are provably stale.
+crons.daily(
+  "reap unprocessed payment inbox",
+  { hourUTC: 4 },
+  internalRef<"mutation">("diagnostics:reapPaymentInbox"),
+);
+
 export default crons;

@@ -503,6 +503,12 @@ export const storeAndAttachUploadAction = internalActionGeneric({
 export const freezeMutation = mutationGeneric({
   args: { orderId: v.string(), files: v.array(proposedV) },
   returns: v.object({ deliveryId: v.string(), manifest: v.string() }),
+  // R23 J-04: `v.array` has no per-field max, so the platform bound is Convex's
+  // own (8192 values, ~4 MiB per mutation). The order model needs exactly three,
+  // and `freeze` authenticates before it reads `input.files`, so the only cost a
+  // caller can impose is the parser's — which the platform already caps. The
+  // semantic bound (exactly three) is enforced in `deliveryCommitment`, which
+  // refuses any other length. Recorded rather than adding a redundant check.
   handler: freeze as never,
 });
 

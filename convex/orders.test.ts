@@ -11,15 +11,12 @@ process.env.CONVEX_SITE_URL ??= "privy.io";
 
 const EMAIL = { value: undefined as string | undefined };
 
-const allowed = (email: string | null | undefined) => {
-  const configured = (process.env.MILO_OPERATOR_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter((value) => value.length > 0);
-  return (
-    configured.length > 0 && configured.includes((email ?? "").toLowerCase())
-  );
-};
+// R23 I-08: this file used to carry its OWN copy of the allowlist comparison
+// (split / trim / lowercase / includes), so the tests exercised the copy, not
+// `operatorAllowed` — which is how the identity-side trim gap survived. The
+// real function is imported and passed to the mock, so there is one
+// implementation and the tests cover it.
+const { operatorAllowed: allowed } = await import("./auth");
 
 mock.module("./auth", () => ({
   authComponent: {
@@ -581,6 +578,20 @@ describe("P2 an operator sees disputed orders", () => {
     expect(operatorAllowed(null)).toBe(false);
     process.env.MILO_OPERATOR_EMAILS = "";
     expect(operatorAllowed("ops@milo.example")).toBe(false);
+  });
+
+  // R23 I-08: the env side was trimmed, the identity side was not, so a padded
+  // identity was refused by an allowlist that had been trimmed.
+  test("a padded identity matches the trimmed allowlist (R23 I-08)", () => {
+    withAllowlist(" ops@milo.example ");
+    expect(operatorAllowed("ops@milo.example")).toBe(true);
+    expect(operatorAllowed("  ops@milo.example  ")).toBe(true);
+    expect(operatorAllowed("OPS@MILO.EXAMPLE")).toBe(true);
+    // The comparison is still an exact match, so a suffix cannot impersonate.
+    expect(operatorAllowed("ops@milo.example.evil")).toBe(false);
+    // A plus-address is the same mailbox but NOT the same principal: folding it
+    // would silently widen who is an operator, so it stays refused.
+    expect(operatorAllowed("ops+oncall@milo.example")).toBe(false);
   });
 
   test("an operator resolves disputes across studios", async () => {

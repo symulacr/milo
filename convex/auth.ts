@@ -183,7 +183,7 @@ export function operatorAllowed(
   email: string | null | undefined,
   configured = operatorEmails(),
 ): boolean {
-  return configured.includes((email ?? "").toLowerCase());
+  return configured.includes((email ?? "").trim().toLowerCase());
 }
 
 export async function isOperator(ctx: QueryCtx): Promise<boolean> {

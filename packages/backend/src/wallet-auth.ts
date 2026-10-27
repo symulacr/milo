@@ -1,8 +1,29 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, hexToBytes, timingSafeEqualHex } from "./encoding.ts";
+import { bytesToHex, env, hexToBytes, timingSafeEqualHex } from "./encoding.ts";
 
 export const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
+/**
+ * R23 J-02: the `domain:` line a wallet shows, and the value the server checks.
+ * It used to be the literal "milo", which binds nothing: the signed text carried
+ * no deployment, so a signature for one Milo deployment was textually valid at
+ * any other. The client signs whatever message the server returns
+ * (`auth-client.ts:115-130` passes `challenge.data.message` straight to
+ * `signData`), so the audience is fixed server-side with no client release. It
+ * reads the deployment's own origin — the same value `trustedOrigins` uses — so
+ * the two cannot disagree.
+ */
 export const WALLET_MESSAGE_DOMAIN = "milo";
+
+/** The host a wallet should see, e.g. `milo-nine-delta.vercel.app`. */
+export const walletMessageDomain = (): string => {
+  const site = env("SITE_URL");
+  if (!site) return WALLET_MESSAGE_DOMAIN;
+  try {
+    return new URL(site).host;
+  } catch {
+    return WALLET_MESSAGE_DOMAIN;
+  }
+};
 export const WALLET_NETWORK = "preprod";
 export const WALLET_PROVIDER_ID = "milo-wallet";
 export const WALLET_EMAIL_DOMAIN = "wallet.milo.local";
@@ -308,7 +329,7 @@ export async function consumeWalletNonce(
 export function buildWalletSignInMessage(request: WalletSignInRequest): string {
   return [
     MESSAGE_HEADER,
-    `domain: ${WALLET_MESSAGE_DOMAIN}`,
+    `domain: ${walletMessageDomain()}`,
     `network: ${WALLET_NETWORK}`,
     `address: ${request.address}`,
     `nonce: ${request.nonce}`,
@@ -336,7 +357,7 @@ export function parseWalletSignInMessage(
   const issuedAt = fields.get("issued-at");
   const expiresAt = fields.get("expires-at");
   if (!address || !nonce || !issuedAt || !expiresAt) return null;
-  if (fields.get("domain") !== WALLET_MESSAGE_DOMAIN) return null;
+  if (fields.get("domain") !== walletMessageDomain()) return null;
   if (fields.get("network") !== WALLET_NETWORK) return null;
   if (!isPreprodUnshieldedAddress(address)) return null;
   if (!HEX_32.test(nonce)) return null;

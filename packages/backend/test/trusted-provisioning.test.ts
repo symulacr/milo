@@ -22,6 +22,7 @@ import {
   acceptInvite,
   assertProvisioningActive,
   createStudio,
+  DAILY_RECIPIENT_CAP,
   finalizeQuote,
   MAGIC_LINK_COOLDOWN_MS,
   provision,
@@ -897,6 +898,86 @@ describe("workspace studio and invite flow", () => {
         else process.env.MILO_OPERATOR_SECRET = previous;
       }
     });
+  });
+
+  // R23 H-11: the per-pair cooldown stops a repeat to ONE address; it does not
+  // stop a merchant mailing a different address each time. This is the daily
+  // quota over the existing `by_merchant` index.
+  test("a studio is capped at DAILY_RECIPIENT_CAP new recipients per day", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    for (let i = 0; i < DAILY_RECIPIENT_CAP; i += 1) {
+      await writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, {
+          orderNonce: `${i}`.padStart(64, "0"),
+          clientEmail: `client${i}@example.com`,
+        }),
+      );
+    }
+    expect(f.tables.quoteDrafts).toHaveLength(DAILY_RECIPIENT_CAP);
+    // One more distinct recipient is refused.
+    await expect(
+      writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, {
+          orderNonce: "f".repeat(64),
+          clientEmail: "one-too-many@example.com",
+        }),
+      ),
+    ).rejects.toThrow(/invited 20 new clients/i);
+    expect(f.tables.quoteDrafts).toHaveLength(DAILY_RECIPIENT_CAP);
+  });
+
+  test("re-quoting an existing recipient does not consume the daily cap", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    for (let i = 0; i < DAILY_RECIPIENT_CAP; i += 1) {
+      await writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, {
+          orderNonce: `${i}`.padStart(64, "0"),
+          clientEmail: `client${i}@example.com`,
+        }),
+      );
+    }
+    // The cap counts DISTINCT recipients, so a repeat to one of them is only
+    // subject to the per-pair cooldown, not the daily quota. Age the first
+    // draft past the cooldown and re-quote the same address.
+    f.tables.quoteDrafts[0].createdAt = Date.now() - MAGIC_LINK_COOLDOWN_MS - 1;
+    await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId, {
+        orderNonce: "e".repeat(64),
+        clientEmail: "client0@example.com",
+      }),
+    );
+    expect(f.tables.quoteDrafts).toHaveLength(DAILY_RECIPIENT_CAP + 1);
+  });
+
+  test("a draft older than a day does not count toward the cap", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    for (let i = 0; i < DAILY_RECIPIENT_CAP; i += 1) {
+      await writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, {
+          orderNonce: `${i}`.padStart(64, "0"),
+          clientEmail: `client${i}@example.com`,
+        }),
+      );
+    }
+    // Age every draft past 24 h: the cap is a rolling day, so it resets.
+    for (const row of f.tables.quoteDrafts)
+      row.createdAt = Date.now() - 25 * 60 * 60_000;
+    await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId, {
+        orderNonce: "f".repeat(64),
+        clientEmail: "fresh@example.com",
+      }),
+    );
+    expect(f.tables.quoteDrafts).toHaveLength(DAILY_RECIPIENT_CAP + 1);
   });
 
   test("createQuote requires an active merchant in the scope", async () => {

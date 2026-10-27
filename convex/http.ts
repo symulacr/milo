@@ -494,6 +494,21 @@ http.route({
   method: "POST",
   handler: cspReport,
 });
+/**
+ * R23 K-08: a browser that sends a CSP report cross-origin may preflight, and
+ * an unmatched OPTIONS is a 404 — which the browser reports as a *failed*
+ * report delivery, not a policy violation. `httpRouter` takes one method per
+ * route, so this is the platform's own way to answer it: no handler body, no
+ * CORS middleware, and the 204 the POST already returns.
+ *
+ * The report endpoint is deliberately origin-agnostic (any page may report),
+ * so the preflight answer is a plain 204 rather than an allowlist echo.
+ */
+http.route({
+  path: "/csp-report",
+  method: "OPTIONS",
+  handler: httpActionGeneric(async () => new Response(null, { status: 204 })),
+});
 // `cors: true` lets the auth component answer preflights, but it does not
 // choose the allowlist: that is `trustedOrigins` in `auth.ts`, which reads
 // SITE_URL through `required()`. A missing origin therefore fails closed at
