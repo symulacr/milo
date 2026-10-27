@@ -104,7 +104,11 @@ for (const path of new Bun.Glob("**/*").scanSync(publicDirectory)) {
 // `scripts/public-config.test.ts` can prove its invariants without a build.
 const manifestPath = `${outdir}/vercel.json`;
 const manifest = await Bun.file(manifestPath).json();
-narrowCsp(manifest, browserConfig, Boolean(process.env.PROVER_SERVER_URI));
+// A build with no deployment configured (CI, a fresh clone) keeps the shipped
+// policy as is; narrowing needs the auth origin to name the report endpoint.
+if (browserConfig.betterAuthUrl)
+  narrowCsp(manifest, browserConfig, Boolean(process.env.PROVER_SERVER_URI));
+else console.warn("CSP left as shipped: no BETTER_AUTH_URL configured.");
 await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 const zkSource = "packages/contract/generated";
