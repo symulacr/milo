@@ -407,6 +407,14 @@ export const operatorSecret = actionGeneric({
         ok: false as const,
         reason: "Operator access is not configured.",
       };
+    // R21 I-03: this hands out a signing capability and recorded nothing, so a
+    // compromised operator left no trace. Logged, not stored: a table would
+    // need a retention policy nobody has written (I-04), and Convex's log
+    // retention is already bounded. Never the key itself.
+    console.warn(
+      "operator-key-issued",
+      JSON.stringify({ quoteId: args.quoteId }),
+    );
     return { secret: operatorSecretFor(access.orderNonce) };
   },
 });

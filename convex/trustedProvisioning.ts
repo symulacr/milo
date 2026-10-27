@@ -376,6 +376,16 @@ const boundedText = (value: string, min: number, max: number): boolean =>
 const ID_MAX = 64;
 const TOKEN_MAX = 64;
 
+/**
+ * How long one (merchant, recipient) pair must wait between magic links. Long
+ * enough to stop a loop, short enough that a legitimate resend is not blocked
+ * for a working session.
+ */
+export const MAGIC_LINK_COOLDOWN_MS = 10 * 60_000;
+
+/** Bounds the cooldown read even for a merchant with years of history. */
+const COOLDOWN_SCAN_LIMIT = 32;
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inviteUrlFor = inviteUrl;
@@ -462,7 +472,6 @@ export const writeQuoteDraft = internalMutationGeneric({
   returns: v.object({
     quoteId: v.string(),
     inviteUrl: v.string(),
-    inviteToken: v.string(),
     emailed: v.boolean(),
   }),
   handler: async (ctx: AdmissionContext, args) => {
@@ -507,6 +516,27 @@ export const writeQuoteDraft = internalMutationGeneric({
       )
       .first();
     if (duplicate) fail("CONFLICT", "Order nonce already used");
+    // I-02: one magic link per (merchant, recipient) per window. The send is
+    // server-side `auth.api.signInMagicLink`, which bypasses Better Auth's HTTP
+    // router and so the `/sign-in/magic-link` limiter: without this a merchant
+    // can mail any address in a loop. Scoped to the merchant because two
+    // studios may legitimately quote one buyer. The index is ascending on
+    // `createdAt`, so the newest match is the tail of the range.
+    const recentDrafts = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_merchant_email", (q) =>
+        q.eq("merchantSubject", subject).eq("clientEmail", email),
+      )
+      .take(COOLDOWN_SCAN_LIMIT);
+    const recent = recentDrafts.at(-1);
+    const waitMs = recent
+      ? recent.createdAt + MAGIC_LINK_COOLDOWN_MS - Date.now()
+      : 0;
+    if (waitMs > 0)
+      fail(
+        "RATE_LIMITED",
+        `An invite was already sent to this address. Try again in ${Math.ceil(waitMs / 60_000)} minute(s).`,
+      );
     const token = randomHex();
     const quoteId = `quote_${bytesToHex(
       sha256(utf8ToBytes(`${subject}:${args.orderNonce}`)),
@@ -535,7 +565,10 @@ export const writeQuoteDraft = internalMutationGeneric({
       updatedAt: now,
     });
     const inviteUrl = inviteUrlFor(quoteId, token);
-    return { quoteId, inviteUrl, inviteToken: token, emailed: false };
+    // I-11: the token is a bearer secret — holding it reads the brief and
+    // claims the order. It is already inside `inviteUrl`, so returning it
+    // separately only put it in the mutation log and in every caller's memory.
+    return { quoteId, inviteUrl, emailed: false };
   },
 });
 

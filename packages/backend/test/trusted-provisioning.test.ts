@@ -14,12 +14,14 @@ import {
 import {
   attachContract,
   createQuote,
+  operatorSecret as operatorSecretAction,
 } from "../../../convex/stripeProvisioning";
 import {
   acceptInvite,
   assertProvisioningActive,
   createStudio,
   finalizeQuote,
+  MAGIC_LINK_COOLDOWN_MS,
   provision,
   revoke,
   studioFor,
@@ -608,6 +610,127 @@ describe("workspace studio and invite flow", () => {
     });
     const other = workspaceFixture("did:privy:other");
     expect(await studioForHandler(other.ctx, {})).toBeNull();
+  });
+
+  // R21 I-02: the magic-link send is server-side `auth.api.signInMagicLink`,
+  // which never passes through Better Auth's HTTP router, so the
+  // `/sign-in/magic-link` limiter (3 per 60 s) does not apply to it. Without a
+  // cooldown here a merchant can mail one address in a loop — harassment, and
+  // the sending account is suspended on the complaint rate. The check is scoped
+  // to (merchant, recipient) so two studios may still quote the same buyer.
+  test("a second invite to the same recipient inside the cooldown is refused", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await writeQuoteDraftHandler(f.ctx, quoteArgs(studio.scopeId));
+    // Same merchant, same recipient, a different nonce: the only thing that can
+    // refuse this is the cooldown.
+    await expect(
+      writeQuoteDraftHandler(
+        f.ctx,
+        quoteArgs(studio.scopeId, { orderNonce: "9".repeat(64) }),
+      ),
+    ).rejects.toThrow(/already sent to this address/i);
+    expect(f.tables.quoteDrafts).toHaveLength(1);
+  });
+
+  test("a different recipient, and a different merchant, are not blocked", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await writeQuoteDraftHandler(f.ctx, quoteArgs(studio.scopeId));
+    // A different recipient: allowed.
+    await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId, {
+        orderNonce: "9".repeat(64),
+        clientEmail: "other@example.com",
+      }),
+    );
+    // A different merchant quoting the SAME buyer: allowed, because two studios
+    // may legitimately quote one buyer and blocking that is a product bug.
+    const other = workspaceFixture("did:privy:merchant2");
+    const otherStudio = await createStudioHandler(other.ctx, {
+      name: "South Studio",
+    });
+    await writeQuoteDraftHandler(other.ctx, quoteArgs(otherStudio.scopeId));
+    expect(f.tables.quoteDrafts).toHaveLength(2);
+    expect(other.tables.quoteDrafts).toHaveLength(1);
+  });
+
+  test("the cooldown expires after the window", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await writeQuoteDraftHandler(f.ctx, quoteArgs(studio.scopeId));
+    // Age the first draft past the window; the second send is then allowed.
+    f.tables.quoteDrafts[0].createdAt = Date.now() - MAGIC_LINK_COOLDOWN_MS - 1;
+    await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId, { orderNonce: "9".repeat(64) }),
+    );
+    expect(f.tables.quoteDrafts).toHaveLength(2);
+  });
+
+  // R21 I-11: the token is a bearer secret. It is already inside `inviteUrl`,
+  // so returning it separately only put it in the mutation log.
+  test("the draft mutation does not return the invite token separately", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    const created = await writeQuoteDraftHandler(
+      f.ctx,
+      quoteArgs(studio.scopeId),
+    );
+    expect(created).not.toHaveProperty("inviteToken");
+    // The URL still carries it, which is all the action needs.
+    expect(new URL(created.inviteUrl).searchParams.get("invite")).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
+    checkReturns(writeQuoteDraft, created);
+  });
+
+  // R21 I-03: fetching an operator key is a privileged act that used to leave
+  // no trace. It now logs the quote id (never the key) so a compromised
+  // operator is at least visible after the fact.
+  test("fetching an operator key leaves an audit line", async () => {
+    const f = workspaceFixture();
+    const studio = await createStudioHandler(f.ctx, { name: "North Studio" });
+    await writeQuoteDraftHandler(f.ctx, quoteArgs(studio.scopeId));
+    const previous = process.env.MILO_OPERATOR_EMAILS;
+    process.env.MILO_OPERATOR_EMAILS = "ops@studio.example";
+    // A fixture key, not a real secret: the action HMACs the nonce with it.
+    const previousSecret = process.env.MILO_OPERATOR_SECRET;
+    process.env.MILO_OPERATOR_SECRET = "a".repeat(64);
+    const lines: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      lines.push(args.map(String).join(" "));
+    };
+    try {
+      const ctx = {
+        runQuery: async () => ({
+          allowed: true,
+          orderNonce: "a".repeat(64),
+        }),
+      } as unknown as AdmissionContext;
+      const out = await (
+        operatorSecretAction as unknown as {
+          _handler: (
+            c: AdmissionContext,
+            a: { quoteId: string },
+          ) => Promise<{ secret?: string; ok?: false }>;
+        }
+      )._handler(ctx, { quoteId: "quote-1" });
+      expect(out.secret).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      console.warn = realWarn;
+      if (previous === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+      else process.env.MILO_OPERATOR_EMAILS = previous;
+      if (previousSecret === undefined) delete process.env.MILO_OPERATOR_SECRET;
+      else process.env.MILO_OPERATOR_SECRET = previousSecret;
+    }
+    const audit = lines.filter((l) => l.includes("operator-key-issued"));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toContain("quote-1");
+    // The key itself must never be in the log.
+    expect(audit[0]).not.toMatch(/[a-f0-9]{64}/);
   });
 
   test("createQuote requires an active merchant in the scope", async () => {

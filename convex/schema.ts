@@ -177,7 +177,14 @@ export default defineSchema({
     .index("by_quote", ["id"])
     .index("by_merchant", ["merchantSubject"])
     .index("by_merchant_nonce", ["merchantSubject", "orderNonce"])
-    .index("by_buyer", ["buyerSubject"]),
+    .index("by_buyer", ["buyerSubject"])
+    // I-02: the per-(merchant, recipient) magic-link cooldown reads the newest
+    // draft for that pair. Without this index the check is a table scan.
+    .index("by_merchant_email", [
+      "merchantSubject",
+      "clientEmail",
+      "createdAt",
+    ]),
   orders: defineTable({
     id: s,
     buyerId: s,
