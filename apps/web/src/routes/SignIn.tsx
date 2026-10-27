@@ -127,7 +127,9 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
             </Button>
             <ConnectWallet signIn />
           </div>
-          <Outcome status={sent} error={error} />
+          {/* The field's own sentence is already announced by Field; passing it
+              here too made a screen reader say it twice. */}
+          <Outcome status={sent} error={fieldError ? "" : error} />
         </form>
         <p className="max-w-[52ch] text-sm text-muted-foreground">
           Midnight Preprod. Stripe test mode. Your wallet pays the fees in

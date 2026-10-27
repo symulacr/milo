@@ -1,4 +1,8 @@
 import tailwind from "bun-plugin-tailwind";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
+import { PublicApp } from "../apps/web/src/public-main";
 import {
   publicAppRoutes,
   workspaceAppRoutes,
@@ -101,6 +105,27 @@ for (const name of HTML_NAMES) {
   );
 }
 
+/**
+ * The two legal pages are pure markup: `PublicShell` and `InfoPage` hold no
+ * state, effects or handlers. Rendering `PublicApp` here — the same component
+ * the browser mounts — lets the deploy ship them with no script tag, which
+ * removes the 264 KB React chunk and the hydration that made `/terms` score 58
+ * on mobile Lighthouse.
+ *
+ * `renderToStaticMarkup` (not `renderToString`) because there is nothing to
+ * hydrate: no data-reactroot attributes, no client entry.
+ */
+const prerenderLegal = (route: string): string | null => {
+  if (route !== "/privacy" && route !== "/terms") return null;
+  return renderToStaticMarkup(
+    createElement(
+      MemoryRouter,
+      { initialEntries: [route] },
+      createElement(PublicApp),
+    ),
+  );
+};
+
 const copyRoute = async (route: string, source: string): Promise<void> => {
   await Bun.$`mkdir -p ${outdir}${route}`;
   await Bun.write(
@@ -109,7 +134,27 @@ const copyRoute = async (route: string, source: string): Promise<void> => {
   );
 };
 
-for (const route of publicAppRoutes) await copyRoute(route, "public-app");
+for (const route of publicAppRoutes) {
+  const body = prerenderLegal(route);
+  if (!body) {
+    await copyRoute(route, "public-app");
+    continue;
+  }
+  // Keep the head (CSS, meta, manifest) and drop every module script and
+  // preload: the page is complete HTML, so nothing needs to boot.
+  const shell = await Bun.file(`${outdir}/public-app.html`).text();
+  const head = shell.slice(0, shell.indexOf("<body"));
+  await Bun.$`mkdir -p ${outdir}${route}`;
+  await Bun.write(
+    `${outdir}${route}/index.html`,
+    `${head
+      .replace(/<script\b[^>]*><\/script>/g, "")
+      .replace(
+        /<link rel="modulepreload"[^>]*>/g,
+        "",
+      )}<body>${body}</body></html>\n`,
+  );
+}
 for (const route of workspaceAppRoutes) await copyRoute(route, "app");
 // Vercel serves 404.html with status 404 for unknown paths. It comes from the
 // public shell: the workspace shell's only catch-all is inside the signed-in

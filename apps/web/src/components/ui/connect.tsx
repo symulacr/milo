@@ -146,8 +146,8 @@ export function ConnectWallet({
         <a
           href={INSTALL[0][1]}
           rel="noopener"
-          aria-label="Install a Midnight wallet to sign"
-          title="Install a Midnight wallet to sign"
+          aria-label="Get a wallet: install a Midnight wallet to sign"
+          title="Get a wallet: install a Midnight wallet to sign"
         >
           <Mark icon={Download} />
           <span className="hidden sm:inline">Get a wallet</span>
