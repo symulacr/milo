@@ -91,6 +91,9 @@ const prime = async (ref: unknown, args: unknown) => {
 // bisection: removing this one import made typing work.
 const { PublicApp } = await import("./public-main");
 const { api } = await import("./api");
+// The shell reaches react-dom/client, so it must load after the boot window
+// (see the note above): a static import here would latch canUseDOM false.
+const { ServiceBoundary } = await import("./shells/WorkspaceShell");
 
 const render = (path: string, node: React.ReactNode) =>
   renderToStaticMarkup(
@@ -986,5 +989,77 @@ describe("the order view takes a typed note and picked files", () => {
       expect(input.files?.length).toBe(3);
     }
     await form.done();
+  });
+});
+
+describe("the service boundary shows what actually failed", () => {
+  // The old boundary said "The order service is not available" for every
+  // failure, which hid the cause. It must show the error's own sentence, keep a
+  // Reload button, and log the error so it stays diagnosable.
+  const Boom = ({ error }: { error: unknown }) => {
+    throw error;
+  };
+
+  const mountBoundary = async (error: unknown) => {
+    const form = await mount(
+      "/orders",
+      <ServiceBoundary>
+        <Boom error={error} />
+      </ServiceBoundary>,
+    );
+    return form;
+  };
+
+  test("a coded error shows its sentence, not the generic line", async () => {
+    const form = await mountBoundary({ data: { code: "NOT_FOUND" } });
+    expect(form.text()).toContain("That order does not exist");
+    expect(form.text()).not.toContain("The step did not complete");
+    await form.done();
+  });
+
+  test("a plain error shows its own message", async () => {
+    // The real production error, which the old boundary hid entirely.
+    const form = await mountBoundary(
+      new TypeError("Cannot read properties of undefined (reading 'maxField')"),
+    );
+    expect(form.text()).toContain("reading 'maxField'");
+    await form.done();
+  });
+
+  test("a null throw still renders the fallback instead of crashing", async () => {
+    // errorText(null) used to throw, which would have crashed the boundary
+    // inside its own handler and shown nothing at all.
+    const form = await mountBoundary(null);
+    expect(form.text()).toContain("The order service is not available");
+    expect(form.text()).toContain("The step did not complete");
+    await form.done();
+  });
+
+  test("it keeps a Reload button and never renders a stack", async () => {
+    const form = await mountBoundary(
+      new Error("boom\n    at secret (x.js:1:2)"),
+    );
+    expect(form.text()).toContain("Reload");
+    expect(form.container.querySelector("button")?.textContent).toContain(
+      "Reload",
+    );
+    // The stack frame must not reach the page.
+    expect(form.text()).not.toContain("at secret");
+    await form.done();
+  });
+
+  test("it logs the error so the cause stays diagnosable", async () => {
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void logged.push(args);
+    try {
+      const form = await mountBoundary(new Error("diagnosable"));
+      expect(
+        logged.some((args) => String(args[0]).includes("render failed")),
+      ).toBe(true);
+      await form.done();
+    } finally {
+      console.error = original;
+    }
   });
 });

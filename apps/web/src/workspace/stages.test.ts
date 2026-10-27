@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  PERMISSION_BLOCKED,
   REJECTED_CONNECTION,
-  REJECTED_REFRESH,
   UNSUPPORTED_WALLET,
+  WALLET_DISCONNECTED,
   WRONG_NETWORK_MESSAGE,
   watchWallets,
 } from "../../../../packages/midnight-client/src";
@@ -126,11 +127,8 @@ describe("H2 wallet failure paths", () => {
       /set your wallet to midnight preprod/i,
     ],
     ["signing rejected", REJECTED_CONNECTION, /declined/i],
-    [
-      "disconnect mid-flow",
-      REJECTED_REFRESH,
-      /no longer on preprod.*reconnect/i,
-    ],
+    ["disconnect mid-flow", WALLET_DISCONNECTED, /disconnected.*reconnect/i],
+    ["blocked by preference", PERMISSION_BLOCKED, /blocking milo/i],
   ];
 
   for (const [path, message, hint] of PATHS)

@@ -7,6 +7,7 @@ import {
   ACCEPTED_IMAGE_TYPES,
   MAX_BYTES,
 } from "../../../../packages/backend/src/delivery-policy";
+import { DIFFERENT_ACCOUNT } from "../../../../packages/midnight-client/src";
 import { api, type Me, type OrderDetail } from "../api";
 import { PageTitle } from "../components/PageTitle";
 import { Badge } from "../components/ui/badge";
@@ -49,6 +50,7 @@ import {
 } from "../workspace/stages";
 import {
   connectWallet,
+  differentAccount,
   preferredWallet,
   useWallet,
   walletConnector,
@@ -216,8 +218,18 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   // A disputed order is off the happy-path track, so it claims no position.
   const at = order.stage === "DISPUTED" ? undefined : trackIndex(order.stage);
   const matches = review.manifest !== null && review.manifest === manifest;
+  // A different account than the one this session signed in with must not act:
+  // the order key it would sign with belongs to the original account, so the
+  // server would record a signature that account never made. `ready` is the one
+  // gate the whole page uses, so this blocks every action at once — no action
+  // runs, no key is saved, no server call is made.
+  const wallet = useWallet();
+  const wrongAccount =
+    wallet.status === "connected" &&
+    differentAccount(wallet.account.unshieldedAddress, me.walletAddress);
   const ready =
     Boolean(connected) &&
+    !wrongAccount &&
     (actions.every((action) => action.circuit === "resolve") || Boolean(key));
 
   const warm = Boolean(connected) && actions.length > 0;
@@ -396,9 +408,11 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 <Button onClick={connectPreferred}>Connect a wallet</Button>
               )}
               <Note>
-                {connected
-                  ? "No key in this browser. Restore your backup, or the order expires."
-                  : "Preprod only. The wallet pays the fees."}
+                {wrongAccount
+                  ? DIFFERENT_ACCOUNT
+                  : connected
+                    ? "No key in this browser. Restore your backup, or the order expires."
+                    : "Preprod only. The wallet pays the fees."}
               </Note>
             </div>
           )}

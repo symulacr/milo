@@ -7,9 +7,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import { NavLink, Outlet } from "react-router";
+import { Button } from "../components/ui/button";
 import { ConnectWallet } from "../components/ui/connect";
 import { Loading } from "../components/ui/status";
 import { Wordmark } from "../components/Wordmark";
+import { errorText } from "../components/workspace";
 import { SignIn } from "../routes/SignIn";
 import { useMe } from "../workspace/backend";
 import { shortAddress, walletConnector } from "../workspace/wallet";
@@ -27,12 +29,30 @@ const subscribeOnline = (sync: () => void) => {
 };
 const isOnline = () => navigator.onLine;
 
+/**
+ * Catches a render error in the workspace and shows what actually went wrong.
+ *
+ * The old version said "The order service is not available" for every failure,
+ * which hid the cause: a real one was `Cannot read properties of undefined
+ * (reading 'maxField')` from the chain load order. `errorText` already turns an
+ * error into one safe sentence (it strips Convex envelopes and stack frames and
+ * maps known codes), so the boundary shows that, and falls back to the generic
+ * line only when the error has nothing to say. The raw error goes to
+ * `console.error` so it stays diagnosable without being rendered.
+ */
 export class ServiceBoundary extends Component<
   { children: ReactNode },
-  { failed: boolean }
+  { failed: boolean; message: string }
 > {
-  override state = { failed: false };
-  static getDerivedStateFromError = () => ({ failed: true });
+  override state = { failed: false, message: "" };
+  static getDerivedStateFromError = (error: unknown) => ({
+    failed: true,
+    message: errorText(error),
+  });
+  override componentDidCatch(error: unknown) {
+    // One line for the console; never rendered, so internals stay out of the UI.
+    console.error("Workspace render failed:", error);
+  }
   override render() {
     if (!this.state.failed) return this.props.children;
     return (
@@ -41,8 +61,18 @@ export class ServiceBoundary extends Component<
           The order service is not available
         </h1>
         <p role="alert" className="text-sm text-destructive">
+          {this.state.message}
+        </p>
+        <p className="text-sm text-muted-foreground">
           Reload the page. If it fails again, try later.
         </p>
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => location.reload()}
+        >
+          Reload
+        </Button>
       </div>
     );
   }

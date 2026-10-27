@@ -29,10 +29,48 @@ import {
 } from "../src/network";
 import {
   DappWalletConnector,
+  REJECTED_CONNECTION,
+  UNSUPPORTED_WALLET,
   WRONG_NETWORK_MESSAGE,
   walletChoices,
   watchWallets,
 } from "../src/wallet";
+
+/**
+ * The round-20 helpers, looked up on the module namespace with fallbacks, so
+ * this file loads on a tree that predates them and the assertions below fail on
+ * the VALUE rather than on a missing export.
+ */
+const round20 = (await import("../src/wallet")) as {
+  CONNECT_FAILED?: string;
+  connectFailureMessage?: (error: unknown) => string;
+  connectMessage?: (error: unknown) => string;
+  DIFFERENT_ACCOUNT?: string;
+  networkName?: (id: string) => string;
+  networkOfAddress?: (address: string) => string | null;
+  PERMISSION_BLOCKED?: string;
+  verifyPreprodConnection?: (api: unknown) => Promise<unknown>;
+  WALLET_BAD_REQUEST?: string;
+  WALLET_DISCONNECTED?: string;
+  WALLET_INTERNAL?: string;
+  wrongNetworkMessage?: (id: string) => string;
+};
+const {
+  CONNECT_FAILED = "",
+  connectFailureMessage = () => "",
+  connectMessage = () => "",
+  DIFFERENT_ACCOUNT = "",
+  networkName = () => "",
+  networkOfAddress = () => null,
+  PERMISSION_BLOCKED = "",
+  verifyPreprodConnection = async () => {
+    throw new Error("not implemented on this tree");
+  },
+  WALLET_BAD_REQUEST = "",
+  WALLET_DISCONNECTED = "",
+  WALLET_INTERNAL = "",
+  wrongNetworkMessage = () => "",
+} = round20;
 
 const wallet = (
   rdns: string,
@@ -175,8 +213,9 @@ describe("a wallet changed mid-flow", () => {
   // After connecting on preprod, the network the wallet reports next time.
   const CASES: readonly (readonly [string, string, string | null])[] = [
     ["stays on preprod", "preprod", null],
-    ["switches to mainnet", "mainnet", WRONG_NETWORK_MESSAGE],
-    ["switches to preview", "preview", WRONG_NETWORK_MESSAGE],
+    // Named, not generic: the user is told which network to leave.
+    ["switches to mainnet", "mainnet", wrongNetworkMessage("mainnet")],
+    ["switches to preview", "preview", wrongNetworkMessage("preview")],
   ];
 
   for (const [name, next, message] of CASES)
@@ -485,6 +524,148 @@ describe("network guard", () => {
   test("refuses to encode a network it does not support", () => {
     expect(() => encodeNetworkLabel("mainnet" as never)).toThrow(
       /Cannot encode network label/,
+    );
+  });
+});
+
+describe("connect failures are classified by cause", () => {
+  // The connector's own error shape: `type` then `code`. APIError is not a
+  // class (docs: "Do not use instanceof checks"), so this is the only test that
+  // works.
+  const api = (code: string) => ({
+    type: "DAppConnectorAPIError",
+    code,
+    reason: `wallet reported ${code}`,
+  });
+
+  // Every code the connector can throw, and the sentence the user reads.
+  const CODES: readonly (readonly [string, string, RegExp])[] = [
+    ["Rejected", REJECTED_CONNECTION, /declined/i],
+    ["PermissionRejected", PERMISSION_BLOCKED, /blocking milo.*settings/i],
+    ["Disconnected", WALLET_DISCONNECTED, /disconnected.*reconnect/i],
+    ["InternalError", WALLET_INTERNAL, /update the extension/i],
+    ["InvalidRequest", WALLET_BAD_REQUEST, /reload the page/i],
+  ];
+
+  for (const [code, sentence, shape] of CODES)
+    test(`${code} gets its own sentence`, () => {
+      expect(connectFailureMessage(api(code))).toBe(sentence);
+      expect(sentence).toMatch(shape);
+    });
+
+  test("Rejected and PermissionRejected do not share a sentence", () => {
+    // Declining one request is retryable; a stored block is not, so telling the
+    // user to retry would loop forever.
+    expect(connectFailureMessage(api("Rejected"))).not.toBe(
+      connectFailureMessage(api("PermissionRejected")),
+    );
+  });
+
+  test("an unlabelled error does not claim to know the cause", () => {
+    for (const error of [
+      new Error("boom"),
+      null,
+      undefined,
+      { code: "Rejected" },
+    ])
+      expect(connectFailureMessage(error)).toBe(CONNECT_FAILED);
+    expect(CONNECT_FAILED).not.toMatch(/disconnected|declined|blocking/i);
+  });
+
+  test("a wrong network names the network the wallet reported", () => {
+    expect(wrongNetworkMessage("mainnet")).toBe(
+      "Your wallet is on Mainnet. Switch it to Preprod.",
+    );
+    expect(wrongNetworkMessage("preview")).toContain("Preview");
+    // An id we do not know is passed through rather than hidden.
+    expect(wrongNetworkMessage("devnet-9")).toContain("devnet-9");
+    expect(networkName("PREPROD")).toBe("Preprod");
+  });
+
+  test("a network refusal is routed through the network sentence", () => {
+    expect(
+      connectMessage(new WrongNetworkError("no", { network: "mainnet" })),
+    ).toBe(wrongNetworkMessage("mainnet"));
+    // Without a recorded network it falls back to the static sentence.
+    expect(connectMessage(new WrongNetworkError("no"))).toBe(
+      WRONG_NETWORK_MESSAGE,
+    );
+  });
+
+  test("the address prefix names its network, as a second signal", () => {
+    expect(networkOfAddress("mn_addr_preprod1qqqq")).toBe("preprod");
+    expect(networkOfAddress("mn_addr1qqqq")).toBe("mainnet");
+    expect(networkOfAddress("mn_addr_preview1qqqq")).toBe("preview");
+    expect(networkOfAddress("not-an-address")).toBeNull();
+  });
+
+  test("a wallet reporting preprod but returning a mainnet address is refused", async () => {
+    // The two signals can disagree; the address is what would be signed with.
+    const api = {
+      getConnectionStatus: async () => ({
+        status: "connected" as const,
+        networkId: "preprod",
+      }),
+      getConfiguration: async () => ({
+        networkId: "preprod",
+        indexerUri: "",
+        indexerWsUri: "",
+        substrateNodeUri: "",
+      }),
+      getUnshieldedAddress: async () => ({
+        unshieldedAddress: "mn_addr1qqqqqqqq",
+      }),
+    };
+    await expect(verifyPreprodConnection(api as never)).rejects.toThrow(
+      WrongNetworkError,
+    );
+  });
+
+  test("the different-account sentence is specific and actionable", () => {
+    expect(DIFFERENT_ACCOUNT).toBe(
+      "A different wallet account is connected. Switch back to the account you used for this order.",
+    );
+    expect(UNSUPPORTED_WALLET).toMatch(/install the extension/i);
+  });
+});
+
+describe("the connector reports the classified sentence", () => {
+  // The table above proves the classifier; this proves connect() USES it. The
+  // wiring was silently missing once, and only an end-to-end call caught it.
+  const handle = (connect: () => Promise<unknown>) =>
+    ({
+      rdns: "test",
+      name: "Test",
+      icon: "",
+      apiVersion: "4.0.1",
+      connect,
+    }) as never;
+
+  const CASES: readonly (readonly [string, string, string])[] = [
+    ["Rejected", "Rejected", REJECTED_CONNECTION],
+    ["PermissionRejected", "PermissionRejected", PERMISSION_BLOCKED],
+    ["Disconnected", "Disconnected", WALLET_DISCONNECTED],
+    ["InternalError", "InternalError", WALLET_INTERNAL],
+    ["InvalidRequest", "InvalidRequest", WALLET_BAD_REQUEST],
+  ];
+
+  for (const [name, code, sentence] of CASES)
+    test(`connect() reports ${name} as its own sentence`, async () => {
+      const connector = new DappWalletConnector();
+      const state = await connector.connect(
+        handle(async () => {
+          throw { type: "DAppConnectorAPIError", code, reason: "no" };
+        }),
+      );
+      expect(state.status).toBe("error");
+      expect(state.status === "error" ? state.message : "").toBe(sentence);
+    });
+
+  test("connect() with no wallet says how to get one", async () => {
+    const connector = new DappWalletConnector();
+    const state = await connector.connect(undefined);
+    expect(state.status === "error" ? state.message : "").toBe(
+      UNSUPPORTED_WALLET,
     );
   });
 });

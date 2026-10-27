@@ -94,6 +94,27 @@ export const preferredWallet = (
 ): WalletChoice | undefined =>
   found.find((wallet) => wallet.rdns === lastRdns()) ?? found[0];
 
+/**
+ * Is the connected account a different one than this session signed in with?
+ *
+ * `me.walletAddress` is the last 16 characters of the address the session signed
+ * in with (`convex/auth.ts` stores `wallet-<last16>@wallet.milo.local`), so this
+ * is a suffix match, not an exact one. That is enough to catch a switched
+ * account, which is the failure the user needs to see; it is not a security
+ * check and does not pretend to be. When either side is unknown the answer is
+ * "no", because guessing would block a legitimate user.
+ */
+export const differentAccount = (
+  connected: string | null | undefined,
+  linked: string | null | undefined,
+): boolean =>
+  Boolean(
+    connected &&
+      linked &&
+      linked.length >= 8 &&
+      !connected.toLowerCase().endsWith(linked.toLowerCase()),
+  );
+
 /** The one hint per wallet state; the connector distinguishes the failures. */
 export const walletHint = (state: WalletConnectionState): string =>
   state.status === "error"

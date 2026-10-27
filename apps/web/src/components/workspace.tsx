@@ -165,16 +165,29 @@ export const CODE_TEXT: Record<string, string> = {
   RATE_LIMITED: "Wait a minute and try again.",
 };
 export const errorText = (error: unknown) => {
-  const data = (error as { data?: string | Body }).data;
+  // A boundary hands this whatever was thrown, including null. Reading
+  // `error.data` unguarded threw inside the error handler itself, so the user
+  // saw nothing at all instead of the fallback sentence.
+  const data = (error as { data?: string | Body } | null | undefined)?.data;
   const raw =
     (typeof data === "string" ? data : data?.message) ??
-    (error instanceof Error ? error.message : String(error));
+    (error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "");
   const text = raw.replace(NOISE, "").trim();
   const code = typeof data === "object" ? data?.code : undefined;
   try {
     const body = JSON.parse(text.startsWith("{") ? text : "") as Body;
     return body.message || CODE_TEXT[body.code ?? code ?? ""] || FALLBACK;
   } catch {
-    return text || CODE_TEXT[code ?? ""] || FALLBACK;
+    // The object form of `data` never parses, so its code must be looked up
+    // here too; without this a known code rendered as "[object Object]".
+    return (
+      (text.startsWith("[object") ? "" : text) ||
+      CODE_TEXT[code ?? ""] ||
+      FALLBACK
+    );
   }
 };

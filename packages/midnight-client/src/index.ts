@@ -15,11 +15,20 @@ export {
 } from "./network.ts";
 export {
   assertWalletConnected,
+  CONNECT_FAILED,
+  connectFailureMessage,
+  connectMessage,
   DappWalletConnector,
+  DIFFERENT_ACCOUNT,
+  networkName,
+  networkOfAddress,
+  PERMISSION_BLOCKED,
   REJECTED_CONNECTION,
-  REJECTED_REFRESH,
   UNSUPPORTED_WALLET,
   verifyPreprodConnection,
+  WALLET_BAD_REQUEST,
+  WALLET_DISCONNECTED,
+  WALLET_INTERNAL,
   type WalletAccount,
   type WalletChoice,
   type WalletConnectionState,
@@ -27,4 +36,5 @@ export {
   WRONG_NETWORK_MESSAGE,
   walletChoices,
   watchWallets,
+  wrongNetworkMessage,
 } from "./wallet.ts";

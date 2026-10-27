@@ -925,3 +925,70 @@ describe("the whole story runs on real handlers", () => {
     ).toEqual({ ok: false, reason: "This order link does not work." });
   });
 });
+
+describe("a different account corrupts nothing", () => {
+  // The session signed in with one address; the wallet now reports another.
+  // `me.walletAddress` is the last 16 characters of the signed-in address
+  // (convex/auth.ts stores wallet-<last16>@wallet.milo.local), so the check is a
+  // suffix match.
+  const LINKED =
+    "mn_addr_preprod1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqabcdef123456";
+  const LINKED_SUFFIX = LINKED.slice(-16);
+  const OTHER =
+    "mn_addr_preprod1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzzzzzz999999";
+
+  // Looked up on the namespace with a permissive fallback, so on the base tree
+  // these fail on the VALUE (a wrong account is not flagged) rather than on a
+  // missing export, which would only prove the export exists.
+  const walletModule = () =>
+    import("./wallet") as Promise<{
+      differentAccount?: (a: string | null, b: string | null) => boolean;
+    }>;
+
+  test("the same account is not flagged, the other one is", async () => {
+    const { differentAccount = () => false } = await walletModule();
+    expect(differentAccount(LINKED, LINKED_SUFFIX)).toBe(false);
+    expect(differentAccount(OTHER, LINKED_SUFFIX)).toBe(true);
+    // Unknown on either side must not block a legitimate user.
+    expect(differentAccount(LINKED, null)).toBe(false);
+    expect(differentAccount(null, LINKED_SUFFIX)).toBe(false);
+    // A too-short suffix would match by accident, so it is ignored.
+    expect(differentAccount(OTHER, "1234")).toBe(false);
+  });
+
+  test("a wrong account leaves the saved key and the server untouched", async () => {
+    const { differentAccount = () => false } = await walletModule();
+    const { keyFor, saveKey } = await import("./keys");
+    const subject = "did:privy:buyer";
+    saveKey(subject, {
+      quoteId: "q1",
+      actor: "buyer" as const,
+      secret: "a".repeat(64),
+      nonce: "b".repeat(64),
+    });
+    const before = JSON.stringify(keyFor(subject, "q1"));
+    const backend = real("did:privy:buyer");
+
+    // The guard the order page applies before any action. On base this is false,
+    // so the assertion below is what fails: the guard is missing.
+    expect(differentAccount(OTHER, LINKED_SUFFIX)).toBe(true);
+
+    // Nothing ran: no handler was called, and the key ring is byte-identical.
+    expect(backend.calls).toEqual([]);
+    expect(JSON.stringify(keyFor(subject, "q1"))).toBe(before);
+    expect(backend.tables.quoteDrafts).toEqual([]);
+    expect(backend.tables.memberships).toEqual([]);
+  });
+
+  test("the same account is allowed through, so the guard is not a blanket block", async () => {
+    const { differentAccount = () => false } = await walletModule();
+    const backend = real("did:privy:merchant");
+    expect(differentAccount(LINKED, LINKED_SUFFIX)).toBe(false);
+    // With the guard open, the real handler runs and writes the draft.
+    await backend.client.action(api.createStudioAndQuote, {
+      ...QUOTE_ARGS,
+      scopeId: undefined,
+    });
+    expect(backend.tables.quoteDrafts).toHaveLength(1);
+  });
+});

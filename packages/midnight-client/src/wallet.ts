@@ -2,7 +2,11 @@ import type {
   ConnectedAPI,
   InitialAPI,
 } from "@midnight-ntwrk/dapp-connector-api";
-import { LockedWalletError, WrongNetworkError } from "./errors.ts";
+import {
+  isWrongNetworkError,
+  LockedWalletError,
+  WrongNetworkError,
+} from "./errors.ts";
 import {
   assertSupportedNetwork,
   SUPPORTED_MIDNIGHT_NETWORK,
@@ -33,11 +37,102 @@ type StatusAPI = Pick<
 export const UNSUPPORTED_WALLET =
   "No compatible Midnight wallet (API v4) was found. Install the extension or open it, then retry.";
 export const REJECTED_CONNECTION =
-  "Connection not established. The request may have been declined, the wallet may be unavailable, or its network is not PREPROD. Mainnet is blocked.";
-export const REJECTED_REFRESH =
-  "The wallet is disconnected, unavailable, or no longer on PREPROD. Reconnect after checking the extension.";
+  "You declined the connection request. Approve it in your wallet to continue.";
+export const PERMISSION_BLOCKED =
+  "Your wallet is blocking Milo. Allow this site in your wallet's settings, then try again.";
+export const WALLET_DISCONNECTED =
+  "Your wallet disconnected. Open the extension, unlock it, then reconnect.";
+export const WALLET_INTERNAL =
+  "Your wallet could not complete the request. Update the extension, then try again.";
+export const WALLET_BAD_REQUEST =
+  "Milo sent the wallet a request it could not read. Reload the page, then try again.";
 export const WRONG_NETWORK_MESSAGE =
   "Set your wallet to Midnight Preprod. Milo does not use other networks.";
+export const CONNECT_FAILED =
+  "The wallet did not complete the connection. Open the extension, then try again.";
+export const DIFFERENT_ACCOUNT =
+  "A different wallet account is connected. Switch back to the account you used for this order.";
+
+/**
+ * The network a wallet reports, named for a sentence. Only the four ids Midnight
+ * documents get a display name; anything else passes through verbatim, because
+ * capitalizing an id we do not recognise would invent a name for it.
+ */
+const NETWORK_NAMES: Record<string, string> = {
+  preprod: "Preprod",
+  preview: "Preview",
+  mainnet: "Mainnet",
+  undeployed: "Undeployed",
+};
+export const networkName = (networkId: string): string => {
+  const id = networkId.trim();
+  return NETWORK_NAMES[id.toLowerCase()] ?? id;
+};
+
+/** "Your wallet is on Mainnet. Switch it to Preprod." */
+export const wrongNetworkMessage = (networkId: string): string =>
+  `Your wallet is on ${networkName(networkId)}. Switch it to Preprod.`;
+
+/**
+ * The Bech32m prefix names the network, so an address is a second, independent
+ * signal: a wallet can report one network id and hand back an address from
+ * another. `mn_addr_preprod` is Preprod; the bare `mn_addr` is mainnet.
+ */
+export const networkOfAddress = (address: string): string | null => {
+  const prefix = address.split("1")[0] ?? "";
+  if (prefix === "mn_addr") return "mainnet";
+  if (prefix.startsWith("mn_addr_")) return prefix.slice("mn_addr_".length);
+  return null;
+};
+
+type ConnectorError = { type?: unknown; code?: unknown; reason?: unknown };
+
+/** The network id a WrongNetworkError recorded when it refused. */
+const networkOf = (error: unknown): string | null => {
+  const detail = (error as { detail?: { network?: unknown } }).detail;
+  return typeof detail?.network === "string" ? detail.network : null;
+};
+
+/**
+ * One sentence for any connect failure: the wallet's own network when it is a
+ * network refusal, otherwise the connector code, otherwise the generic line.
+ */
+export const connectMessage = (error: unknown): string => {
+  if (isWrongNetworkError(error)) {
+    const network = networkOf(error);
+    return network ? wrongNetworkMessage(network) : WRONG_NETWORK_MESSAGE;
+  }
+  return connectFailureMessage(error);
+};
+
+/**
+ * The one place a connector error becomes a sentence.
+ *
+ * `APIError` is not a class (docs: "Do not use `instanceof` checks"), so this
+ * reads `type` then `code`. Anything unrecognised falls back to the generic
+ * sentence rather than pretending to know the cause.
+ */
+export function connectFailureMessage(error: unknown): string {
+  const failure = (error ?? {}) as ConnectorError;
+  const code =
+    failure.type === "DAppConnectorAPIError" ? String(failure.code) : "";
+  switch (code) {
+    case "Rejected":
+      return REJECTED_CONNECTION;
+    case "PermissionRejected":
+      return PERMISSION_BLOCKED;
+    case "Disconnected":
+      return WALLET_DISCONNECTED;
+    case "InternalError":
+      return WALLET_INTERNAL;
+    case "InvalidRequest":
+      return WALLET_BAD_REQUEST;
+    default:
+      // Not a connector error: a thrown Error from the wallet, or something
+      // else. Say what is true without inventing a cause.
+      return CONNECT_FAILED;
+  }
+}
 
 /** The connector major this app implements. */
 const SUPPORTED_API_MAJOR = 4;
@@ -146,6 +241,15 @@ export async function verifyPreprodConnection(
   const { unshieldedAddress } = await api.getUnshieldedAddress();
   if (typeof unshieldedAddress !== "string" || unshieldedAddress.length === 0)
     throw new LockedWalletError("Wallet returned no unshielded address");
+  // The address prefix names its network, so it is a second, independent
+  // signal: a wallet can report one network id and hand back an address from
+  // another. Refuse the mismatch and name the network the ADDRESS is on.
+  const addressNetwork = networkOfAddress(unshieldedAddress);
+  if (addressNetwork && addressNetwork !== SUPPORTED_MIDNIGHT_NETWORK)
+    throw new WrongNetworkError(
+      `Only PREPROD is enabled. This address is on "${addressNetwork}".`,
+      { network: addressNetwork },
+    );
   return { unshieldedAddress };
 }
 
@@ -211,13 +315,7 @@ export class DappWalletConnector {
       return this.update(connected(account));
     } catch (error) {
       if (revision !== this.revision) return this.current;
-      return this.update({
-        status: "error",
-        message:
-          error instanceof WrongNetworkError
-            ? WRONG_NETWORK_MESSAGE
-            : REJECTED_CONNECTION,
-      });
+      return this.update({ status: "error", message: connectMessage(error) });
     }
   }
 
@@ -233,15 +331,10 @@ export class DappWalletConnector {
       if (revision !== this.revision) return this.current;
       this.api = undefined;
       ++this.revision;
-      // A wallet switched to another network mid-flow is the common case here, and it
-      // has its own fix ("set it to Preprod"), so it must not read as a dropped link.
-      return this.update({
-        status: "error",
-        message:
-          error instanceof WrongNetworkError
-            ? WRONG_NETWORK_MESSAGE
-            : REJECTED_REFRESH,
-      });
+      // A wallet switched to another network mid-flow is the common case here,
+      // and it has its own fix ("switch it to Preprod"), so it must not read as
+      // a dropped link. `connectMessage` gives it that sentence.
+      return this.update({ status: "error", message: connectMessage(error) });
     }
   }
 
