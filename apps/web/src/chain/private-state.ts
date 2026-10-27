@@ -14,7 +14,6 @@ import type {
   PrivateStateProvider,
   SigningKeyExport,
 } from "@midnight-ntwrk/midnight-js-types";
-import { toHex } from "./order.ts";
 
 type BrowserPrivateStateProvider<PS> = PrivateStateProvider<
   PrivateStateId,
@@ -42,7 +41,7 @@ type Encoded =
 const encodeValue = (value: unknown): Encoded => {
   if (value === null || value === undefined) return null;
   if (typeof value === "bigint") return { $bigint: value.toString() };
-  if (value instanceof Uint8Array) return { $bytes: toHex(value) };
+  if (value instanceof Uint8Array) return { $bytes: value.toHex() };
   if (Array.isArray(value)) return value.map(encodeValue);
   if (typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>).map(
@@ -261,7 +260,7 @@ const sealExport = async (payload: unknown, password: string | undefined) => {
   // serialize() handles bigint and Uint8Array; JSON.stringify throws on bigint.
   return {
     encryptedPayload: await sealWith(key, serialize(payload)),
-    salt: toHex(salt),
+    salt: salt.toHex(),
   };
 };
 

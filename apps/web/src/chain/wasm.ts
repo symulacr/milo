@@ -1,4 +1,3 @@
-import { toHex } from "./order.ts";
 import { idb } from "./private-state.ts";
 
 class ChainWasmError extends Error {
@@ -24,7 +23,11 @@ const verify = async (bytes: Uint8Array, asset: WasmAsset): Promise<void> => {
   const digest = new Uint8Array(
     await crypto.subtle.digest("SHA-256", bytes as BufferSource),
   );
-  if (toHex(digest) !== asset.sha256)
+  // Native toHex, not order.ts's helper: importing that module would drag the
+  // generated contract and compact-runtime into this chunk, and compact-runtime's
+  // top level calls ocrt.maxField() before __wbg_set_wasm has run. That is the
+  // production crash this file used to cause.
+  if (digest.toHex() !== asset.sha256)
     throw new ChainWasmError(
       `The ${asset.glueModule} module did not match its recorded digest; refusing to run it.`,
     );
