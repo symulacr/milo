@@ -71,15 +71,15 @@ quote-to-address admission remains mandatory.
 
 ## Disclosure boundary
 
-| Item | Boundary |
-| --- | --- |
-| Constructor `Configuration` | Fully public: network, nonce, commitments, four deadlines. No currency field, terms opening or secret. |
-| `protocolVersion`, `configuration` | Public ledger, constructor-assigned only. No replacement circuit. |
-| `phase`, `revision` | Public ledger. Each transition checks the supplied revision and increments once. |
-| `deliveryCommitment`, `evidenceCommitment` | Public ledger. Delivery is set once and nonzero. |
-| Submit, approve, dispute and resolve arguments | Disclosed commitment bytes, not file bytes, URLs or openings. |
-| `agreedTerms`, `buyerApprovalLimit` | Private witnesses. A reserve-only, self-declared limit, not available funds or employer authority. |
-| Timeout circuits | Public state and time predicates only. No witness is invoked. |
+| Item                                           | Boundary                                                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Constructor `Configuration`                    | Fully public: network, nonce, commitments, four deadlines. No currency field, terms opening or secret. |
+| `protocolVersion`, `configuration`             | Public ledger, constructor-assigned only. No replacement circuit.                                      |
+| `phase`, `revision`                            | Public ledger. Each transition checks the supplied revision and increments once.                       |
+| `deliveryCommitment`, `evidenceCommitment`     | Public ledger. Delivery is set once and nonzero.                                                       |
+| Submit, approve, dispute and resolve arguments | Disclosed commitment bytes, not file bytes, URLs or openings.                                          |
+| `agreedTerms`, `buyerApprovalLimit`            | Private witnesses. A reserve-only, self-declared limit, not available funds or employer authority.     |
+| Timeout circuits                               | Public state and time predicates only. No witness is invoked.                                          |
 
 Payment, quality, file availability, manifest byte validation, off-chain access control and recovery
 are not contract assertions. The caller must validate the three-file manifest before using its

@@ -8,7 +8,6 @@ submits, deploys, or records order admission. `local.mjs`, `bootstrap.mjs` and t
 native admission observer retain their `undeployed` guards unchanged.
 
 Required public settings (no defaults inferred from the node being checked):
-
 - `MILO_PREPROD_NETWORK_ID=preprod`
 - `MILO_PREPROD_GENESIS_HASH`: independently approved lowercase `0x` + 64-hex hash
 - `MILO_PREPROD_RUNTIME_SPEC_VERSION`: independently approved positive integer
@@ -28,13 +27,13 @@ Blockfrost now serves both, and every request needs the project token. The endpo
 resolved from the environment at call time, so a missing token fails with a named error
 before any network I/O rather than a `403` deep inside a sync:
 
-| Service | Base (token appended as `?project_id=`) |
-| --- | --- |
-| Indexer (GraphQL) | `https://midnight-preprod.blockfrost.io/api/v0` |
-| Indexer (WebSocket) | `wss://midnight-preprod.blockfrost.io/api/v0/ws` |
-| Node RPC | `https://rpc.midnight-preprod.blockfrost.io` |
-| Node WebSocket | `wss://rpc.midnight-preprod.blockfrost.io` |
-| Proof server | `http://127.0.0.1:6300` (always local, not a Blockfrost service) |
+| Service             | Base (token appended as `?project_id=`)                          |
+| ------------------- | ---------------------------------------------------------------- |
+| Indexer (GraphQL)   | `https://midnight-preprod.blockfrost.io/api/v0`                  |
+| Indexer (WebSocket) | `wss://midnight-preprod.blockfrost.io/api/v0/ws`                 |
+| Node RPC            | `https://rpc.midnight-preprod.blockfrost.io`                     |
+| Node WebSocket      | `wss://rpc.midnight-preprod.blockfrost.io`                       |
+| Proof server        | `http://127.0.0.1:6300` (always local, not a Blockfrost service) |
 
 The endpoint BASES are overridable (`MIDNIGHT_PREPROD_INDEXER_HTTP`, `_INDEXER_WS`,
 `_NODE`, `_NODE_WS`, and the `MILO_PREPROD_*` aliases) so an operator can point at a local
@@ -81,7 +80,6 @@ redirects and indexer lag fail closed. The historical public health receipt in
 deployment.
 
 Deployment **preflight**, not deployment execution, additionally requires:
-
 - `MILO_PREPROD_ALLOW_PREFLIGHT=owned-preprod-test-only`
 - `MILO_PREPROD_ARTIFACT_SET_SHA256` and
   `MILO_PREPROD_COMPILE_RECEIPT_SHA256`: independently approved compiler receipt
@@ -156,15 +154,15 @@ node packages/integration/src/local.mjs
 
 Run these commands with the parent-provisioned Node 26.11.1 runtime on `PATH`; the parent owns runtime installation and service lifecycle. The service owner must supply all environment values explicitly. Only literal loopback HTTP/WS URLs are accepted; no remote Preview, faucet, DNS alias, credential-bearing URL or default endpoint is used.
 
-| Environment | Meaning |
-| --- | --- |
-| `MILO_LOCAL_ALLOW_TRANSACTIONS` | Exact acknowledgement `disposable-owned-local` |
-| `MILO_LOCAL_NETWORK_ID` | Exact local ledger/wallet ID `undeployed` |
-| `MILO_LOCAL_GENESIS_HASH` | Independently observed `chain_getBlockHash(0)`, lowercase `0x` plus 64 hex digits; rechecked before any wallet starts |
-| `MILO_LOCAL_NODE_HTTP`, `MILO_LOCAL_NODE_WS` | Owned native node RPC endpoints |
-| `MILO_LOCAL_INDEXER_HTTP`, `MILO_LOCAL_INDEXER_WS` | Owned indexer GraphQL HTTP/subscription URLs, including their API paths |
-| `MILO_LOCAL_PROOF_HTTP` | Owned trusted local proof-server URL; it receives private proving inputs |
-| `MILO_LOCAL_TIMEOUT_MS` | Optional whole-process deadline, default 900000, bounded 10000–1800000 |
+| Environment                                        | Meaning                                                                                                               |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `MILO_LOCAL_ALLOW_TRANSACTIONS`                    | Exact acknowledgement `disposable-owned-local`                                                                        |
+| `MILO_LOCAL_NETWORK_ID`                            | Exact local ledger/wallet ID `undeployed`                                                                             |
+| `MILO_LOCAL_GENESIS_HASH`                          | Independently observed `chain_getBlockHash(0)`, lowercase `0x` plus 64 hex digits; rechecked before any wallet starts |
+| `MILO_LOCAL_NODE_HTTP`, `MILO_LOCAL_NODE_WS`       | Owned native node RPC endpoints                                                                                       |
+| `MILO_LOCAL_INDEXER_HTTP`, `MILO_LOCAL_INDEXER_WS` | Owned indexer GraphQL HTTP/subscription URLs, including their API paths                                               |
+| `MILO_LOCAL_PROOF_HTTP`                            | Owned trusted local proof-server URL; it receives private proving inputs                                              |
+| `MILO_LOCAL_TIMEOUT_MS`                            | Optional whole-process deadline, default 900000, bounded 10000–1800000                                                |
 
 The parent lifecycle owns node/indexer/prover, verifies their readiness and indexer block identity, and resets **its own** chain/indexer state together. This harness never launches or tears down services. It stops its wallet subscriptions. Timeout/failure does not establish rejection or rollback: a submitted transaction may still finalize. Keep the emitted identifiers for reconciliation, then discard/reset the disposable run. Ordinary diagnostics keep actor secrets in memory; the explicit recovery mode persists an encrypted, context-bound actor journal with its key held separately by the surviving coordinator. It does not establish browser/device or full-wallet recovery. Do not use this harness for an active order or real assets.
 
@@ -208,7 +206,6 @@ first. Receipts land in ignored `.hoplite/artifacts/native-node/run-*/`
 `package-lock.json` pins the isolated resolved graph and npm tarball integrity. Direct SDK/testkit packages are **4.1.1**, `compact-runtime` **0.16.0**, `onchain-runtime-v3` **3.1.1**, `ledger-v8` **8.1.2**, dashed `wallet-sdk` **1.2.0**, and RxJS **7.8.2**. Testkit retains its own exact **1.1.0** barrel; both resolve the same concrete facade **4.1.0**, address codec **3.1.2**, and ledger **8.1.2** - npm `overrides` pin `ledger-v8` and `onchain-runtime-v3` to this package's own exact versions, closing the deserialization-hardening patch pair across the nested `midnight-js-protocol` graph (18 September 2026). Tests verify those module identities. The resolved graph changed, so historical native receipts do not verify this updated graph. A scoped Node module hook resolves the untouched generated module's Compact runtime import into this package, avoiding duplicate WASM object identities with the root Bun dependency graph.
 
 Authoritative implementation/declarations inspected from the exact installed packages (npm tarballs/integrities retained in the lockfile):
-
 - [testkit-js 4.1.1](https://www.npmjs.com/package/@midnight-ntwrk/testkit-js/v/4.1.1): `dist/index.mjs`, `test-environment/test-environments/local-test-environment.d.ts`, `wallet/midnight-wallet-provider.d.ts`, `wallet/wallet-utils.d.ts`, `contract/in-memory-private-state-provider.d.ts`. Public genesis property, constructor behavior, seed logging, wallet creation and NIGHT/DUST registration. Apache-2.0; seed material remains in ignored dependency tooling and process memory.
 - [midnight-js-contracts 4.1.1](https://www.npmjs.com/package/@midnight-ntwrk/midnight-js-contracts/v/4.1.1): deployment, `verifyContractState`, `submitTx`, governance source. High-level `replaceAuthority` only accepts a new signing key; it is **not** an irreversible locking API. The harness uses the documented ledger primitive rather than pretending that method revokes authority.
 - [ledger-v8 8.1.0, now pinned at 8.1.2](https://www.npmjs.com/package/@midnight-ntwrk/ledger-v8/v/8.1.0): `ledger-v8.d.ts`, `ContractMaintenanceAuthority`, `MaintenanceUpdate`, `ReplaceAuthority`, `Intent`, `Transaction`, `signData`. Empty committee/threshold-one semantics and update counters; corroborated with resolved `compact-js` `effect/ContractExecutable.js` authority-update implementation.
@@ -227,7 +224,6 @@ The subsequent parent-owned Node 26.11.1 run (`run-nacq7y`) identified `Wallet.I
 The parent's `run-KxqoEk` passed actual fee balancing and emitted a deployment submission attempt, but no deployment submission return/finalization. Allowlisted extraction from retained `transactions.stderr.log` identifies JSON-RPC **1010**, `Invalid Transaction`, and the exact static reason `Transaction would exhaust the block limits`. This maps to **`InvalidTransaction::ExhaustsResources`**, not a successful submission, and not another DUST-readiness failure. The old diagnostic allowlist missed the SDK's nested `SubmissionError`/`RpcError` names; these are now included, with integer `rpcCodes` and exact `transactionValidity` enums from `RpcError.data`. Arbitrary messages/data are not emitted. No live rerun with the latest RPC/byte-count instrumentation is claimed.
 
 Pinned source evidence:
-
 - Node [runtime block limits](https://github.com/midnightntwrk/midnight-node/blob/node-1.0.0/runtime/src/lib.rs#L308-L321): 1 MiB block length with a 75% normal-dispatch ratio, and `BlockWeights::with_sensible_defaults` using `2 * WEIGHT_REF_TIME_PER_SECOND` with the same ratio. These source constants do not alone identify which limit the attempted transaction exceeded.
 - Node [Midnight dispatch weight](https://github.com/midnightntwrk/midnight-node/blob/node-1.0.0/pallets/midnight/src/lib.rs#L615-L620): ledger transaction cost plus configurable transaction-size weight. Do not assume this is merely serialized byte size or change runtime limits to mask the failure.
 - The node's Cargo.lock pins Polkadot SDK commit `2e4dd0bc22366a5af820492528869a493b5a5208`. Its [validity conversion](https://github.com/paritytech/polkadot-sdk/blob/2e4dd0bc22366a5af820492528869a493b5a5208/substrate/primitives/runtime/src/transaction_validity.rs#L106-L130) establishes the exact rejection-to-enum mapping; [weight defaults](https://github.com/paritytech/polkadot-sdk/blob/2e4dd0bc22366a5af820492528869a493b5a5208/substrate/frame/system/src/limits.rs#L393-L405) also reserve initialization weight.
