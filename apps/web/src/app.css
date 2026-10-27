@@ -122,6 +122,17 @@
   }
 }
 
+/* A finger needs 44 px; a pointer keeps the compact height the design wants.
+   Tailwind v4 prunes a hand-written @media that no scanned class produces, so
+   this uses the utility it does generate: pointer-coarse applies only on touch.
+   It must beat the header's h-9 (36 px), hence !important on the one property. */
+@media (pointer: coarse) {
+  .cta {
+    min-height: 2.75rem !important;
+    height: auto;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .rise {
     opacity: 1;

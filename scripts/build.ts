@@ -66,10 +66,39 @@ if (!result.success) {
   process.exit(1);
 }
 
+// Open Graph needs absolute URLs: a relative og:image is dropped by every
+// consumer, so a share of Milo would have no card. SITE_URL is the deployment's
+// own origin (see .env.example); without it the relative value stays rather than
+// shipping a broken absolute one, the same posture as the CSP rewrite.
+const siteOrigin = (process.env.SITE_URL ?? "").replace(/\/$/, "");
+
 for (const name of HTML_NAMES) {
   const path = `${outdir}/${name}.html`;
   const html = await Bun.file(path).text();
-  await Bun.write(path, html.replaceAll(EMITTED_PATTERN, "/"));
+  await Bun.write(
+    path,
+    html
+      .replaceAll(EMITTED_PATTERN, "/")
+      // The card and the page both need the origin. Each pattern is anchored on
+      // its own attribute so no other link is rewritten; the source writes "./"
+      // and EMITTED_PATTERN does not touch it.
+      .replaceAll(
+        'content="./public/og-card.png"',
+        `content="${siteOrigin}/og-card.png"`,
+      )
+      .replaceAll(
+        'content="/og-card.png"',
+        `content="${siteOrigin}/og-card.png"`,
+      )
+      .replaceAll(
+        'property="og:url" content="./"',
+        `property="og:url" content="${siteOrigin}/"`,
+      )
+      .replaceAll(
+        'rel="canonical" href="./"',
+        `rel="canonical" href="${siteOrigin}/"`,
+      ),
+  );
 }
 
 const copyRoute = async (route: string, source: string): Promise<void> => {
@@ -82,8 +111,10 @@ const copyRoute = async (route: string, source: string): Promise<void> => {
 
 for (const route of publicAppRoutes) await copyRoute(route, "public-app");
 for (const route of workspaceAppRoutes) await copyRoute(route, "app");
-// Vercel serves 404.html with status 404 for unknown paths.
-await Bun.write(`${outdir}/404.html`, Bun.file(`${outdir}/app.html`));
+// Vercel serves 404.html with status 404 for unknown paths. It comes from the
+// public shell: the workspace shell's only catch-all is inside the signed-in
+// branch, so a stranger would be told to sign in instead of "Page not found".
+await Bun.write(`${outdir}/404.html`, Bun.file(`${outdir}/public-app.html`));
 
 await Bun.write(`${outdir}/api/public-config`, JSON.stringify(browserConfig));
 

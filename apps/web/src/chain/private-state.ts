@@ -141,11 +141,19 @@ export const idb = <T>(
     };
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
-      const done = run(
-        request.result.transaction(store, mode).objectStore(store),
-      );
-      done.onsuccess = () => resolve(done.result as T);
-      done.onerror = () => reject(done.error);
+      try {
+        const done = run(
+          request.result.transaction(store, mode).objectStore(store),
+        );
+        done.onsuccess = () => resolve(done.result as T);
+        done.onerror = () => reject(done.error);
+      } catch (error) {
+        // A store that this database does not have (a profile created before it
+        // existed never upgrades again) throws here, inside an event handler,
+        // where the Promise executor cannot see it. Rejecting keeps the caller's
+        // existing fallback reachable instead of waiting forever.
+        reject(error);
+      }
     };
   });
 

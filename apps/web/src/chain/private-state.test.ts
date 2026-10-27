@@ -6,6 +6,7 @@ import type { OrderPrivateState } from "./order";
 import {
   browserPrivateStateProvider,
   deployRecordStore,
+  idb,
 } from "./private-state";
 import type { StagedDeployRecord } from "./staged-deploy";
 
@@ -151,6 +152,62 @@ const withStores = async (
     });
   }
 };
+
+describe("the IndexedDB helper", () => {
+  // F-02: a profile created before "wasm-modules" existed is already at version 1,
+  // so no upgrade fires and the real IndexedDB throws NotFoundError from
+  // db.transaction(). That throw happens inside an event handler, where the
+  // Promise executor cannot see it, so without the guard the promise never
+  // settles and the order page waits on it forever. The fake below throws the way
+  // the real one does, which the shared fakeIdb deliberately does not.
+  const strictIdb = (stores: readonly string[]) => ({
+    open: () => {
+      const request: Record<string, unknown> = {
+        result: {
+          objectStoreNames: {
+            contains: (name: string) => stores.includes(name),
+          },
+          createObjectStore: () => undefined,
+          transaction: (name: string) => {
+            if (!stores.includes(name))
+              throw new DOMException(
+                `No objectStore named ${name}`,
+                "NotFoundError",
+              );
+            return { objectStore: () => ({ get: () => ({}) }) };
+          },
+        },
+      };
+      queueMicrotask(() => (request.onsuccess as () => void)?.());
+      return request;
+    },
+  });
+
+  test("a missing store rejects instead of hanging", async () => {
+    const saved = (globalThis as { indexedDB?: unknown }).indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      value: strictIdb(["keys"]),
+      configurable: true,
+    });
+    try {
+      // A hang would blow the test timeout rather than fail an assertion, so the
+      // race makes the failure mode explicit and fast.
+      const outcome = await Promise.race([
+        idb("wasm-modules", "readonly", () => ({}) as never).then(
+          () => "resolved",
+          (error: Error) => error.name,
+        ),
+        new Promise((resolve) => setTimeout(() => resolve("hung"), 1000)),
+      ]);
+      expect(outcome).toBe("NotFoundError");
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        value: saved,
+        configurable: true,
+      });
+    }
+  });
+});
 
 describe("browserPrivateStateProvider", () => {
   // C-02: the localStorage blob must not contain the role secret in readable form.

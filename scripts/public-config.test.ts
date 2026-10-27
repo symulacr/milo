@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   CSP_REPORT_PATH,
   CSP_REPORT_PLACEHOLDER,
@@ -6,6 +7,51 @@ import {
   publicConfig,
   publicConfigResponse,
 } from "../packages/backend/src/public-config";
+
+describe("social tags", () => {
+  // F-05: Open Graph requires absolute URLs; a relative og:image is dropped by
+  // every consumer, so a shared Milo link has no card. The build rewrites these
+  // exact strings, so the strings must exist for the rewrite to have a target.
+  const landing = readFileSync("apps/web/index.html", "utf8");
+  test("the social card and the canonical URL are absolute at build time", () => {
+    expect(landing).toContain(
+      'property="og:image" content="./public/og-card.png"',
+    );
+    expect(landing).toContain('property="og:url" content="./"');
+    expect(landing).toContain('rel="canonical" href="./"');
+  });
+  test("the build substitutes the deployment origin", () => {
+    const build = readFileSync("scripts/build.ts", "utf8");
+    expect(build).toContain("SITE_URL");
+    expect(build).toContain('content="${siteOrigin}/og-card.png"');
+  });
+});
+
+describe("shipped cache policy", () => {
+  // F-01: a deploy replaces every hashed chunk name and deletes the old file. A
+  // tab or a cached shell still asking for the old entry gets a 404 on the module
+  // itself, so no JavaScript runs and the page is blank. The shell must therefore
+  // revalidate; the chunks, whose names are content addresses, stay immutable.
+  const manifest = JSON.parse(
+    readFileSync("apps/web/public/vercel.json", "utf8"),
+  ) as {
+    headers: { source: string; headers: { key: string; value: string }[] }[];
+  };
+  const cacheFor = (source: string) =>
+    manifest.headers
+      .filter((rule) => rule.source === source)
+      .flatMap((rule) => rule.headers)
+      .find((header) => header.key === "Cache-Control")?.value ?? "";
+
+  test("the shell revalidates and the hashed chunks are immutable", () => {
+    expect(cacheFor("/(.*)")).toContain("must-revalidate");
+    expect(cacheFor("/(.*)")).not.toContain("immutable");
+    for (const source of ["/(.*).js", "/(.*).wasm"])
+      expect(cacheFor(source)).toContain("immutable");
+    // The config endpoint must never be cached: it names the live origins.
+    expect(cacheFor("/api/public-config")).toBe("no-store");
+  });
+});
 
 describe("browser public configuration", () => {
   test("allowlists public fields, never provider secrets", async () => {
