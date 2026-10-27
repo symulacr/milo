@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type Stripe from "stripe";
 import { HEX64, timingSafeEqualHex } from "../src/encoding";
-import { requireSessionSubject } from "../src/session-identity";
+import {
+  requireLiveSubject,
+  requireSessionSubject,
+} from "../src/session-identity";
 import type { StripeMode } from "../src/stripe-mode";
 import {
   normalizeTestPayment,
@@ -305,6 +308,64 @@ describe("Privy identity boundary", () => {
       if (site === undefined) delete process.env.CONVEX_SITE_URL;
       else process.env.CONVEX_SITE_URL = site;
     }
+  });
+});
+
+// R24 I-07: `requireSessionSubject` reads only the JWT; `requireLiveSubject`
+// adds the session-row check the caller supplies, which is the read `auth.me`
+// already pays on every page load.
+describe("R24 I-07: requireLiveSubject refuses a revoked session", () => {
+  const identity = { issuer: "privy.io", subject: "did:privy:buyer" };
+  const ctxFor = (id: unknown) =>
+    ({ auth: { getUserIdentity: async () => id } }) as never;
+
+  test("a live session passes and returns the subject", async () => {
+    await expect(
+      requireLiveSubject(ctxFor(identity), async () => ({ id: "user-1" })),
+    ).resolves.toBe("did:privy:buyer");
+  });
+
+  test("a revoked session is refused even with a well-formed JWT", async () => {
+    // The whole finding: the token is valid, the session row is gone.
+    await expect(
+      requireLiveSubject(ctxFor(identity), async () => null),
+    ).rejects.toThrow("Authenticated session required");
+  });
+
+  test("a bad issuer is refused before the session lookup runs", async () => {
+    let looked = false;
+    await expect(
+      requireLiveSubject(ctxFor({ ...identity, issuer: "evil" }), async () => {
+        looked = true;
+        return { id: "user-1" };
+      }),
+    ).rejects.toThrow("Authenticated session required");
+    // The cheap check runs first, so a forged token costs no database read.
+    expect(looked).toBe(false);
+  });
+
+  test("the sync gate is unchanged, so opting in is per call site", () => {
+    expect(requireSessionSubject(identity)).toBe("did:privy:buyer");
+  });
+});
+
+/**
+ * R24 I-07, the part that actually closes the finding: Convex checks the JWT's
+ * signature and `exp`, never the session row, so the revocation window is
+ * exactly the JWT lifetime. The plugin's default is 15 minutes; this asserts
+ * the shipped config bounds it to 5. It reads the source because `createAuth`
+ * validates env and throws on whatever another test file left behind.
+ */
+describe("R24 I-07: the revocation window is the JWT lifetime", () => {
+  test("createAuth bounds the Convex JWT to 5 minutes", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("../../../convex/auth.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("jwt: { expirationSeconds: 60 * 5 }");
+    // The deprecated spelling would be silently ignored by the plugin.
+    expect(source).not.toContain("jwtExpirationSeconds");
   });
 });
 

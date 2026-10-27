@@ -57,6 +57,59 @@ const noReferrerOnVerify = createAuthMiddleware(async (ctx) => {
     ctx.setHeader("referrer-policy", "no-referrer");
 });
 
+/**
+ * R24 G-02: the emailed link is a single-use GET, and mail gateways (Defender
+ * Safe Links, Mimecast, Proofpoint) fetch every URL in a message before the
+ * recipient sees it. That fetch consumes the token, so the human's click always
+ * lands on `?error=INVALID_TOKEN`.
+ *
+ * Better Auth has no consent step (`allowedAttempts` is deprecated and ignored;
+ * the feature request is still open), so the step has to be ours. A `before`
+ * hook is the cheapest place: returning a raw `Response` short-circuits the
+ * endpoint, so the token is never read — no plugin, no new route, no client
+ * change, and the browser stays on the same URL. The page is a GET form that
+ * re-submits the same URL plus `confirm=1`, so no script is needed and only a
+ * real browser submits it.
+ *
+ * The page is the only place the token is rendered, hence `no-store` and
+ * `no-referrer`; every parameter is escaped and echoed back as a hidden field.
+ */
+export const confirmMagicLink = createAuthMiddleware(async (ctx) => {
+  if (ctx.path !== "/magic-link/verify") return;
+  const query = (ctx.query ?? {}) as Record<string, unknown>;
+  if (query.confirm === "1") return;
+  const url = new URL(
+    (ctx as { request?: Request }).request?.url ?? `https://invalid${ctx.path}`,
+  );
+  const html = (v: string) =>
+    v
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  const hidden = [...url.searchParams]
+    .filter(([name]) => name !== "confirm")
+    .concat([["confirm", "1"]])
+    .map(([n, v]) => `<input type=hidden name="${html(n)}" value="${html(v)}">`)
+    .join("");
+  return new Response(
+    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Open your Milo link</title>" +
+      "<body style='font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem'>" +
+      "<h1 style='font-size:1.25rem'>Open your Milo link</h1>" +
+      "<p>This extra step stops email scanners from using up your single-use link before you do.</p>" +
+      `<form method=get action="${html(url.pathname)}">${hidden}` +
+      "<button type=submit style='font:inherit;padding:.6rem 1.2rem'>Open my link</button></form>",
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+      },
+    },
+  ) as never;
+});
+
 export const createAuth = (ctx: GenericCtx<DataModel>) =>
   betterAuth({
     baseURL: env("CONVEX_SITE_URL"),
@@ -67,7 +120,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
-    hooks: { after: noReferrerOnVerify },
+    hooks: { before: confirmMagicLink, after: noReferrerOnVerify },
     database: authComponent.adapter(ctx),
     /**
      * R22 I-07. `updateAge` is a refresh cadence: a session used after it has
@@ -98,7 +151,25 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       crossDomain({
         siteUrl: required(ctx, "SITE_URL", "http://localhost:5173"),
       }),
-      convex({ authConfig }),
+      convex({
+        authConfig,
+        /**
+        /**
+         * R24 I-07, the real fix. The JWT is minted by `/convex/token`, which
+         * is behind `sessionMiddleware`, so a revoked session cannot get a NEW
+         * one. The residual is the token already in the browser: Convex checks
+         * its signature and `exp`, never the session row, so the revocation
+         * window is exactly the JWT lifetime.
+         *
+         * The plugin's default is 15 minutes. This bounds it to 5, and the
+         * client refetches on its own 10 s before `exp`, so an active tab never
+         * notices. Cost: one extra `/convex/token` per client per ~5 minutes —
+         * one indexed session read, the same one `auth.me` already pays. Below
+         * ~2 minutes the lifetime approaches the client's leeway plus a slow
+         * round-trip, which would refetch on every reconnect.
+         */
+        jwt: { expirationSeconds: 60 * 5 },
+      }),
       magicLink({
         // G-16: the sign-in link gates an order invite that has **no expiry** of
         // its own — only the order's acceptance window, which is one hour. A

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { getFunctionName } from "convex/server";
 import type { AdmissionContext } from "../../../convex/admissionContext";
 import { requireMembership } from "../../../convex/auth/identity";
 import {
@@ -1246,6 +1247,48 @@ describe("attachContract", () => {
     delete process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID;
   });
 
+  const QUOTE = {
+    id: "quote-1",
+    version: 1,
+    orderNonce: HEX("a"),
+    termsCommitment: HEX("d"),
+    buyerCommitment: HEX("c"),
+    merchantCommitment: HEX("b"),
+    operatorCommitment: HEX("5"),
+    rolesFingerprint: HEX("3"),
+    initialStateFingerprint: HEX("4"),
+    genesisHash: "9".repeat(64),
+    acceptance: 1,
+    delivery: 2,
+    review: 3,
+    resolution: 4,
+  };
+
+  /** R24 S-01: `attachContract` now authenticates and authorizes before it
+   * reads anything, so every test needs an identity and a scope answer. */
+  const attachCtx = (options: {
+    identity?: unknown;
+    allowed?: boolean;
+    quote?: unknown;
+  }) =>
+    ({
+      auth: {
+        getUserIdentity: async () =>
+          options.identity === undefined
+            ? { issuer: "privy.io", subject: "did:privy:buyer" }
+            : options.identity,
+      },
+      runQuery: async (ref: unknown) =>
+        getFunctionName(ref as never) === "chainObserver:orderScopeMember"
+          ? (options.allowed ?? true)
+          : // `in`, not `??`: a test that passes `quote: null` means "no frozen
+            // quote", which `??` would turn back into the fixture.
+            "quote" in options
+            ? options.quote
+            : QUOTE,
+      runMutation: async () => null,
+    }) as never;
+
   test("rejects a malformed address before any indexer call", async () => {
     let called = false;
     globalThis.fetch = (async () => {
@@ -1253,21 +1296,62 @@ describe("attachContract", () => {
       throw new Error("should not be called");
     }) as unknown as typeof fetch;
     await expect(
-      attachHandler({} as never, { quoteId: "q", address: "nope" }),
+      attachHandler(attachCtx({}), { quoteId: "q", address: "nope" }),
     ).resolves.toMatchObject({ ok: false });
     expect(called).toBe(false);
+  });
+
+  /** R24 S-01: the assertion is on the *indexer*, because that is what an
+   * anonymous caller was stealing — `ok: false` alone would pass even with the
+   * two billed Blockfrost reads made. */
+  test("an anonymous caller spends no indexer read", async () => {
+    process.env.MIDNIGHT_PREPROD_INDEXER_HTTP = "https://indexer.invalid";
+    process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID = "preprod_test";
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({ data: { block: { height: 100 } } }),
+        {
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+    await expect(
+      attachHandler(attachCtx({ identity: null }), {
+        quoteId: "quote-1",
+        address: "a".repeat(64),
+      }),
+    ).rejects.toThrow("Authenticated session required");
+    expect(calls).toBe(0);
+  });
+
+  test("a signed-in stranger outside the order's scope spends no indexer read", async () => {
+    process.env.MIDNIGHT_PREPROD_INDEXER_HTTP = "https://indexer.invalid";
+    process.env.MILO_PREPROD_BLOCKFROST_PROJECT_ID = "preprod_test";
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await expect(
+      attachHandler(attachCtx({ allowed: false }), {
+        quoteId: "quote-1",
+        address: "a".repeat(64),
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(calls).toBe(0);
   });
 
   test("rejects when no frozen quote exists", async () => {
     globalThis.fetch = (async () => {
       throw new Error("should not be called");
     }) as unknown as typeof fetch;
-    const ctx = {
-      runQuery: async () => null,
-      runMutation: async () => null,
-    } as never;
     await expect(
-      attachHandler(ctx, { quoteId: "q", address: "a".repeat(64) }),
+      attachHandler(attachCtx({ quote: null }), {
+        quoteId: "q",
+        address: "a".repeat(64),
+      }),
     ).resolves.toMatchObject({ ok: false });
   });
 
@@ -1281,25 +1365,7 @@ describe("attachContract", () => {
         : { block: { height: 100 } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as unknown as typeof fetch;
-    const ctx = {
-      runQuery: async () => ({
-        id: "quote-1",
-        version: 1,
-        orderNonce: HEX("a"),
-        termsCommitment: HEX("d"),
-        buyerCommitment: HEX("c"),
-        merchantCommitment: HEX("b"),
-        operatorCommitment: HEX("5"),
-        rolesFingerprint: HEX("3"),
-        initialStateFingerprint: HEX("4"),
-        genesisHash: "9".repeat(64),
-        acceptance: 1,
-        delivery: 2,
-        review: 3,
-        resolution: 4,
-      }),
-      runMutation: async () => null,
-    } as never;
+    const ctx = attachCtx({});
     await expect(
       attachHandler(ctx, { quoteId: "quote-1", address: "a".repeat(64) }),
     ).resolves.toMatchObject({
@@ -1326,25 +1392,7 @@ describe("attachContract", () => {
         : { block: { height: 100 } };
       return new Response(JSON.stringify({ data }), { status: 200 });
     }) as unknown as typeof fetch;
-    const ctx = {
-      runQuery: async () => ({
-        id: "quote-1",
-        version: 1,
-        orderNonce: HEX("a"),
-        termsCommitment: HEX("d"),
-        buyerCommitment: HEX("c"),
-        merchantCommitment: HEX("b"),
-        operatorCommitment: HEX("5"),
-        rolesFingerprint: HEX("3"),
-        initialStateFingerprint: HEX("4"),
-        genesisHash: "9".repeat(64),
-        acceptance: 1,
-        delivery: 2,
-        review: 3,
-        resolution: 4,
-      }),
-      runMutation: async () => null,
-    } as never;
+    const ctx = attachCtx({});
     await expect(
       attachHandler(ctx, { quoteId: "quote-1", address: "a".repeat(64) }),
     ).resolves.toMatchObject({

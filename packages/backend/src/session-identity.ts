@@ -31,6 +31,37 @@ export function requireSessionSubject(
 }
 
 /**
+ * R24 I-07: the same gate, plus a check that the session row still exists.
+ *
+ * `requireSessionSubject` reads only the JWT, so a session revoked after the
+ * token was minted kept working until it expired. `sessionAlive` is expected to
+ * be `authComponent.safeGetAuthUser(ctx)`, which already does the session-row
+ * join and is already used by `auth.me` — no new table, dependency or query
+ * shape.
+ *
+ * Kept separate rather than folded in because the sync version is used in paths
+ * whose tests supply a bare identity double; making it async would break 64 of
+ * them for a check that only matters on privileged writes. Callers opt in.
+ */
+export async function requireLiveSubject(
+  ctx: { auth: { getUserIdentity: () => Promise<unknown> } },
+  sessionAlive: () => Promise<unknown>,
+): Promise<string> {
+  const subject = requireSessionSubject(
+    (await ctx.auth.getUserIdentity()) as {
+      issuer: string;
+      subject: string;
+    } | null,
+  );
+  if (!(await sessionAlive()))
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Authenticated session required",
+    });
+  return subject;
+}
+
+/**
  * The operator allowlist, parsed once per distinct raw value.
  *
  * This is read on every `orders.list`/`orders.order` call, so re-splitting it

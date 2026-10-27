@@ -19,6 +19,7 @@ import {
   hexToBytes,
   randomHex,
 } from "../packages/backend/src/encoding";
+import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { stripeMode } from "../packages/backend/src/stripe-mode";
 import {
   normalizeTestPayment,
@@ -479,6 +480,18 @@ const RECORD_DEPLOYMENT = makeFunctionReference<"mutation">(
   "observationIngest:recordDeployment",
 );
 
+/**
+ * R24 S-01: the same scope gate `refreshOrder` uses. `attachContract` had none —
+ * an anonymous caller reached the Preprod indexer (two billed reads per call)
+ * and could record a deployment against any quote id. Reusing the existing
+ * query keeps one answer for "may this subject touch this order".
+ */
+const ORDER_SCOPE_MEMBER = makeFunctionReference<
+  "query",
+  { quoteId: string; subject: string },
+  boolean
+>("chainObserver:orderScopeMember");
+
 const ADMISSION_BIND = makeFunctionReference<"mutation">("admission:bind");
 
 const PAYMENT_FOR_QUOTE = makeFunctionReference<
@@ -547,6 +560,16 @@ export const attachContract = actionGeneric({
     const reject = rejectWith;
     if (!/^[a-f0-9]{64}$/.test(args.address))
       return reject("The contract address is not 64 lowercase hex characters.");
+    // R24 S-01: authenticate and authorize BEFORE the indexer is touched. The
+    // order of these two lines is the fix: the previous version read the quote
+    // and called the indexer for anyone, which made this an unauthenticated
+    // amplifier for two billed Blockfrost requests per call.
+    const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
+    const allowed = await ctx.runQuery(ORDER_SCOPE_MEMBER, {
+      quoteId: args.quoteId,
+      subject,
+    });
+    if (!allowed) return reject("The order is not ready for its contract.");
     const quote = await ctx.runQuery(ATTACH_DRAFT, { quoteId: args.quoteId });
     if (!quote) return reject("The order is not ready for its contract.");
     if (!quote.buyerCommitment || !quote.operatorCommitment)

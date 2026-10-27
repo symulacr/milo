@@ -473,3 +473,136 @@ describe("the transport seam", () => {
     expect(await urlFor(vars)).toBe(expected);
   });
 });
+
+/**
+ * R24 G-02: a link prefetch must not consume the token, and the human's confirm
+ * must. Assertions are by value on the response the browser would get.
+ */
+describe("R24 G-02: a link prefetch does not burn the magic link", () => {
+  /** The Convex adapter binds to a Convex ctx at construction, so the shipped
+   * instance cannot be driven here; the hook and the plugin are the real ones. */
+  const makeAuth = async () => {
+    const { betterAuth } = await import("better-auth/minimal");
+    const { magicLink } = await import("better-auth/plugins");
+    const { memoryAdapter } = await import("better-auth/adapters/memory");
+    const { confirmMagicLink } = await import("../../../convex/auth");
+    const db: Record<string, unknown[]> = {
+      user: [],
+      session: [],
+      account: [],
+      verification: [],
+    };
+    let sent = "";
+    const auth = betterAuth({
+      baseURL: "https://site.convex.site",
+      secret: "t".repeat(40),
+      database: memoryAdapter(db),
+      hooks: { before: confirmMagicLink },
+      plugins: [
+        magicLink({
+          sendMagicLink: async ({ url }: { url: string }) => {
+            sent = url;
+          },
+        }),
+      ],
+    });
+    const issue = async () => {
+      await auth.handler(
+        new Request("https://site.convex.site/api/auth/sign-in/magic-link", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://site.convex.site",
+          },
+          body: JSON.stringify({ email: "buyer@example.com" }),
+        }),
+      );
+      // `URL` is this file's link fixture, so the global is named explicitly.
+      return new globalThis.URL(sent).searchParams.get("token") ?? "";
+    };
+    const verify = (query: string) =>
+      auth.handler(
+        new Request(
+          `https://site.convex.site/api/auth/magic-link/verify?${query}`,
+          { method: "GET", redirect: "manual" },
+        ),
+      );
+    return { issue, verify };
+  };
+
+  test("createAuth registers this exact hook before the verify endpoint runs", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      // `URL` is this file's link fixture, so the global is named explicitly.
+      new globalThis.URL("../../../convex/auth.ts", import.meta.url),
+      "utf8",
+    );
+    // Wiring by name: a test that built its own instance would keep passing
+    // after the hook was deleted (the J-01 trap).
+    expect(source).toMatch(/hooks: \{[^}]*before: confirmMagicLink[^}]*\}/);
+    expect(source).toMatch(/hooks: \{[^}]*after: noReferrerOnVerify[^}]*\}/);
+    // Both directions: a hook that always returned the page would deadlock
+    // every sign-in, and one that never did would leave the hole open.
+    expect(source).toContain('query.confirm === "1"');
+  });
+
+  test("the prefetch gets a confirm page, no cookie, and leaves the token valid", async () => {
+    const { issue, verify } = await makeAuth();
+    const token = await issue();
+    const prefetch = await verify(`token=${token}&callbackURL=%2Forders`);
+    expect(prefetch.status).toBe(200);
+    expect(prefetch.headers.get("content-type")).toContain("text/html");
+    // The whole point: a scanner must be handed a page, not a session.
+    expect(prefetch.headers.getSetCookie()).toHaveLength(0);
+    expect(prefetch.headers.get("cache-control")).toBe("no-store");
+    expect(prefetch.headers.get("referrer-policy")).toBe("no-referrer");
+    const page = await prefetch.text();
+    expect(page).toContain('name="confirm" value="1"');
+    // The token is echoed so the button reproduces the request, and escaped.
+    expect(page).toContain(`name="token" value="${token}"`);
+    expect(page).toContain("method=get");
+  });
+
+  test("the human's confirm consumes the token and signs in", async () => {
+    const { issue, verify } = await makeAuth();
+    const token = await issue();
+    await verify(`token=${token}&callbackURL=%2Forders`);
+    const confirmed = await verify(
+      `token=${token}&callbackURL=%2Forders&confirm=1`,
+    );
+    expect(confirmed.status).toBe(302);
+    expect(confirmed.headers.get("location")).toBe(
+      "https://site.convex.site/orders",
+    );
+    const cookies = confirmed.headers.getSetCookie();
+    expect(cookies).toHaveLength(1);
+    // The session cookie is the proof of sign-in, and its attributes matter:
+    // HttpOnly stops script access, Secure keeps it off plaintext, and the
+    // __Secure- prefix makes the browser enforce Secure itself.
+    expect(cookies[0]).toContain("__Secure-better-auth.session_token=");
+    expect(cookies[0]).toContain("HttpOnly");
+    expect(cookies[0]).toContain("Secure");
+    expect(cookies[0]).toContain("SameSite=Lax");
+  });
+
+  test("after the human confirms, a second confirm is an invalid token", async () => {
+    const { issue, verify } = await makeAuth();
+    const token = await issue();
+    await verify(`token=${token}&confirm=1`);
+    const replay = await verify(`token=${token}&confirm=1`);
+    expect(replay.status).toBe(302);
+    expect(replay.headers.get("location")).toContain("error=INVALID_TOKEN");
+    expect(replay.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  test("the interstitial escapes a hostile callbackURL instead of echoing it", async () => {
+    const { issue, verify } = await makeAuth();
+    const token = await issue();
+    const evil = await verify(
+      `token=${token}&callbackURL=${encodeURIComponent('"><script>alert(1)</script>')}`,
+    );
+    const page = await evil.text();
+    expect(page).not.toContain("<script>");
+    expect(page).toContain("&quot;&gt;&lt;script&gt;");
+  });
+});

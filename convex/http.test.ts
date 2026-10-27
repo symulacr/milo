@@ -427,8 +427,12 @@ describe("ROUND18 item 6: no-referrer on the magic-link verify hop", () => {
     );
     expect(source).toContain('ctx.path === "/magic-link/verify"');
     expect(source).toContain('ctx.setHeader("referrer-policy", "no-referrer")');
-    // Registered as the one after-hook, so it runs on the response.
-    expect(source).toContain("hooks: { after: noReferrerOnVerify }");
+    // Registered on the one `hooks` object, so it runs on the response. R24
+    // added a `before` hook to the same object for G-02, so this asserts both
+    // are registered rather than pinning the exact literal — pinning it would
+    // fail on any addition and say nothing about the header itself.
+    expect(source).toMatch(/hooks: \{[^}]*after: noReferrerOnVerify[^}]*\}/);
+    expect(source).toMatch(/hooks: \{[^}]*before: confirmMagicLink[^}]*\}/);
   });
 
   test("the hook is wired into createAuth, not a wrapper route", async () => {
