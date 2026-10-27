@@ -116,3 +116,35 @@ describe("order key backup", () => {
     expect(keyFor("user-1", "q1")).toBeNull();
   });
 });
+
+describe("U-03 a store that refuses the key is reported, not thrown", () => {
+  // A full quota or Safari private mode makes `setItem` throw. `saveKey` used to
+  // let that escape, which turned a successful server claim into an exception in
+  // the middle of the claim flow: the order was claimed and the key that signs
+  // for it was never written.
+  const withThrowingStore = (run: () => void) => {
+    const real = localStorage.setItem.bind(localStorage);
+    (localStorage as unknown as Record<string, unknown>).setItem = () => {
+      throw new DOMException("full", "QuotaExceededError");
+    };
+    try {
+      run();
+    } finally {
+      (localStorage as unknown as Record<string, unknown>).setItem = real;
+    }
+  };
+
+  test("saveKey reports false instead of throwing", async () => {
+    const { saveKey } = await import("./keys");
+    let result: boolean | undefined;
+    withThrowingStore(() => {
+      result = saveKey("subject-u03", GOOD_KEY);
+    });
+    expect(result).toBe(false);
+  });
+
+  test("a successful write still reports true", async () => {
+    const { saveKey } = await import("./keys");
+    expect(saveKey("subject-u03b", GOOD_KEY)).toBe(true);
+  });
+});

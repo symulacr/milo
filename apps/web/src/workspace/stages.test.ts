@@ -170,6 +170,66 @@ describe("H2 wallet failure paths", () => {
   });
 });
 
+describe("G-04 the deadline decision follows the server's clock", () => {
+  // `actionsFor` is pure and takes `now`, so the skew arithmetic is testable
+  // without a browser: this is the exact value `useNow` produces
+  // (`local + (serverNow - Date.now())`), fed through the real action table.
+  const SKEW = 10 * 60_000; // a device 10 minutes fast
+  const localNow = NOW + SKEW;
+  const serverNow = NOW;
+
+  test("a device past the grace and a server inside it disagree, which is the bug", () => {
+    // The window closed 30 s ago in server time, so the server is inside the
+    // 2-minute grace and still offers the normal action. A device 10 minutes
+    // fast believes it closed 10.5 minutes ago, past the grace, and offers
+    // "expire". That divergence IS the finding; the fix is to use the server's
+    // number, which is why the two must not be assumed equal.
+    const deadlines = at(-30);
+    const withServer = actionsFor("RESERVED", "buyer", deadlines, serverNow)
+      .map((action) => action.circuit)
+      .join(" ");
+    const withDevice = actionsFor("RESERVED", "buyer", deadlines, localNow)
+      .map((action) => action.circuit)
+      .join(" ");
+    expect(withServer).toBe("cancelReserved");
+    expect(withDevice).toBe("expireReserved");
+  });
+
+  test("a fast device does not expire a window the server still has open", () => {
+    // The window closes in 5 minutes of SERVER time. A device 10 minutes fast
+    // believes it closed 5 minutes ago and would offer "expire" — which the
+    // server refuses, because the deadline has not passed. With the server
+    // clock the normal action is offered instead.
+    const deadlines = at(5 * 60);
+    const deviceSays = actionsFor("RESERVED", "buyer", deadlines, localNow)
+      .map((action) => action.circuit)
+      .join(" ");
+    const serverSays = actionsFor("RESERVED", "buyer", deadlines, serverNow)
+      .map((action) => action.circuit)
+      .join(" ");
+    // The device would have shown the expiry action; the server clock does not.
+    expect(deviceSays).toContain("expireReserved");
+    expect(serverSays).not.toContain("expireReserved");
+    expect(serverSays).toContain("cancelReserved");
+  });
+
+  test("the offset is what useNow applies, not the raw device time", () => {
+    // The arithmetic `useNow` performs: local ticker + captured offset.
+    const offset = serverNow - localNow;
+    expect(localNow + offset).toBe(serverNow);
+    // And the same instant, expressed as the action list, matches the server's.
+    expect(
+      actionsFor("RESERVED", "buyer", at(5 * 60), localNow + offset)
+        .map((action) => action.circuit)
+        .join(" "),
+    ).toBe(
+      actionsFor("RESERVED", "buyer", at(5 * 60), serverNow)
+        .map((action) => action.circuit)
+        .join(" "),
+    );
+  });
+});
+
 describe("D-12 a window reads in its own unit", () => {
   // Before the fix every window rendered in hours, so the 48 h review window
   // said "in 48 hours". `until` (before) and `relativeTo` (after) are both read

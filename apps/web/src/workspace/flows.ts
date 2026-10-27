@@ -148,7 +148,10 @@ export async function createQuote(
     secret,
     nonce,
   });
-  return result;
+  // U-03: the quote was created server-side, so a storage failure here must not
+  // look like a failed quote — the studio would retry and make a second one.
+  // The quote is returned either way; `keySaved` lets the caller warn.
+  return { ...result, keySaved: Boolean(keyFor(subject, result.quoteId)) };
 }
 
 async function claimInvite(
@@ -182,7 +185,14 @@ async function claimInvite(
   });
   if (!result.ok) throw new Error(result.reason);
   // Persist only once the server has committed the matching capability.
-  saveKey(subject, key);
+  // U-03: a full quota or a private-mode store used to throw here, which turned
+  // a successful claim into an exception — the order was claimed and the key
+  // that signs for it was never written. Say so instead: the order is real and
+  // the user's only remedy is to stop and make a backup immediately.
+  if (!saveKey(subject, key))
+    throw new Error(
+      "The order is yours, but this browser could not store its key (its storage is full or blocked). Open this order in a normal window and do not clear the browser, or the order cannot be signed.",
+    );
   return key;
 }
 

@@ -550,7 +550,7 @@ const GUARDS: readonly (readonly [string, string, string, string])[] = [
   [
     "D-11 the submit guard runs before any await",
     "apps/web/src/routes/NewQuote.tsx",
-    "inFlight.current",
+    "inFlight.start()",
     "",
   ],
   [
@@ -589,7 +589,11 @@ describe("r15 behaviour guards", () => {
 
   test("D-11 the guard is the first statement after preventDefault", () => {
     const source = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
-    expect(source.indexOf("if (inFlight.current) return;")).toBeGreaterThan(
+    // The guard is the shared `useGuard` hook now, so the assertion follows the
+    // call shape rather than a particular ref. The invariant is unchanged: the
+    // guard must run before the first `await`, which is what makes a second
+    // click in the same frame impossible.
+    expect(source.indexOf("if (!inFlight.start()) return;")).toBeGreaterThan(
       source.indexOf("event.preventDefault();"),
     );
   });
@@ -1219,13 +1223,13 @@ describe("the service boundary shows what actually failed", () => {
 describe("an order action cannot be started twice", () => {
   // `busy` is React state, so it only disables the button after a re-render.
   // Two clicks in the same frame both reach run() and start two chain actions
-  // at one revision. The ref is synchronous, so the second click is refused.
+  // at one revision. `useGuard` is synchronous, so the second click is refused.
   const source = () =>
     readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
 
   test("run() refuses a second click before it does any work", () => {
     const text = source();
-    const guard = text.indexOf("if (inFlight.current) return;");
+    const guard = text.indexOf("if (!inFlight.start()) return;");
     expect(guard).toBeGreaterThan(-1);
     // The guard must come before the first await, or the second click is only
     // refused after the first action has already started.
@@ -1235,16 +1239,20 @@ describe("an order action cannot be started twice", () => {
 
   test("the guard is released on both settle paths", () => {
     const text = source();
-    // Success and failure both clear it, or a failed action locks the page.
-    const releases = text.match(/inFlight\.current = false;/g) ?? [];
+    // Success and failure both release it, or a failed action locks the page.
+    const releases = text.match(/inFlight\.end\(\);/g) ?? [];
     expect(releases.length).toBe(2);
   });
 
   test("the same guard shape as the quote form", () => {
-    // NewQuote solved this first (D-05); the order page must match it.
-    expect(readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8")).toContain(
-      "if (inFlight.current) return;",
-    );
+    // NewQuote solved this first (D-05); the order page must use the same hook,
+    // not a second copy of the ref.
+    const quote = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
+    expect(quote.includes("useGuard()")).toBe(true);
+    expect(quote.includes("if (!inFlight.start()) return;")).toBe(true);
+    // And no site keeps its own ref copy any more.
+    expect(quote.includes("useRef(false)")).toBe(false);
+    expect(source().includes("useRef(false)")).toBe(false);
   });
 });
 
@@ -1537,7 +1545,7 @@ describe("M-01 the invite cannot be claimed twice", () => {
 
   test("the claim is guarded before it does any work", () => {
     const text = source();
-    const guard = text.indexOf("if (claiming.current) return;");
+    const guard = text.indexOf("if (!claiming.start()) return;");
     expect(guard).toBeGreaterThan(-1);
     // It must precede the call that claims, or the second click has already run.
     expect(guard).toBeLessThan(text.indexOf("openOrder(", guard));
@@ -1546,7 +1554,80 @@ describe("M-01 the invite cannot be claimed twice", () => {
   test("the guard is released on both settle paths", () => {
     const text = source();
     // A `.finally` covers success and failure in one place.
-    expect(text.includes("claiming.current = false;")).toBe(true);
-    expect(text.includes(".finally(() => {")).toBe(true);
+    expect(text.includes(".finally(claiming.end)")).toBe(true);
+  });
+});
+
+describe("U-01 every handler that starts work is guarded", () => {
+  // The guard was copied by hand three times and two forms had none at all.
+  // This is the completeness check: every file with a handler that starts a
+  // mutation or a chain action must go through the one shared hook.
+  const HANDLERS = [
+    "apps/web/src/routes/Account.tsx",
+    "apps/web/src/routes/NewQuote.tsx",
+    "apps/web/src/routes/OrderView.tsx",
+    "apps/web/src/routes/SignIn.tsx",
+  ] as const;
+
+  test("no site keeps its own in-flight ref", () => {
+    for (const file of HANDLERS) {
+      const text = readFileSync(file, "utf8");
+      // One shared helper, not a per-site copy.
+      expect(text.includes("useRef(false)")).toBe(false);
+    }
+  });
+
+  test("every guarded file uses the shared hook", () => {
+    for (const file of HANDLERS) {
+      expect(readFileSync(file, "utf8").includes("useGuard")).toBe(true);
+    }
+  });
+
+  test("the two Account forms are guarded, which they were not", () => {
+    const text = readFileSync("apps/web/src/routes/Account.tsx", "utf8");
+    // Backup and restore each start async work and each had no guard.
+    expect(text.includes("backupGuard.start()")).toBe(true);
+    expect(text.includes("restoreGuard.start()")).toBe(true);
+    // Both release on every settle path.
+    expect(text.includes(".finally(backupGuard.end)")).toBe(true);
+    expect(text.includes(".finally(restoreGuard.end)")).toBe(true);
+  });
+
+  test("the hook itself refuses a second start until it is released", async () => {
+    // The behaviour, not the shape: a second start is refused, and end()
+    // re-arms it. This is what every call site relies on.
+    const { useGuard } = await import("./lib/utils");
+    expect(typeof useGuard).toBe("function");
+    // The hook needs a renderer, so the invariant is asserted on the source of
+    // the hook instead: a boolean ref, set before returning true.
+    const source = readFileSync("apps/web/src/lib/utils.ts", "utf8");
+    expect(source.includes("if (running.current) return false;")).toBe(true);
+    expect(source.includes("running.current = true;")).toBe(true);
+  });
+});
+
+describe("U-02 a browser without the key is told why", () => {
+  // The order key lives in one browser's storage. A buyer who claims in Chrome
+  // and then opens the studio's email in their mail app's webview lands in a
+  // different context with no key — and the only advice was "Restore your
+  // backup", which they never made. The page must name the cause.
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("the webview cause is named, not just the backup", () => {
+    const text = source();
+    expect(text.includes("opened the email link in a mail app")).toBe(true);
+    // And the browser they started in is the first thing to try.
+    expect(text.includes("the browser you started the order in")).toBe(true);
+  });
+
+  test("the old dead-end sentence is gone", () => {
+    // "No key in this browser. Restore your backup, or the order expires." gave
+    // a buyer with no backup nothing to do.
+    expect(source().includes("No key in this browser. Restore")).toBe(false);
+  });
+
+  test("the backup path is still offered for a buyer who has one", () => {
+    expect(source().includes("Restore your key backup")).toBe(true);
   });
 });

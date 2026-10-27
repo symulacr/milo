@@ -25,7 +25,7 @@ import {
   Verdict,
 } from "../components/workspace";
 import { badgeTone, relativeTo, shortDate, usd } from "../lib/format";
-import { cn } from "../lib/utils";
+import { cn, useGuard } from "../lib/utils";
 import { useMe, usePublicConfig } from "../workspace/backend";
 import {
   type DeliveryReview,
@@ -130,9 +130,8 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
   // Both clicks then reach `openOrder` → `acceptInvite`, and the FIRST claim
   // rotates the invite token, so the second is refused with "This order link
   // does not work." — an error shown for an order that was just claimed
-  // successfully. The ref is synchronous, so the second click is refused before
-  // it does anything. Same shape as G-06 on the order actions.
-  const claiming = useRef(false);
+  // successfully. `useGuard` is the shared synchronous ref (lib/utils).
+  const claiming = useGuard();
   const [error, setError] = useState("");
   const isConnected = Boolean(connected);
   useEffect(() => {
@@ -184,8 +183,7 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
           pending={busy}
           onClick={() => {
             if (!connected) return connectPreferred();
-            if (claiming.current) return;
-            claiming.current = true;
+            if (!claiming.start()) return;
             setError("");
             startBusy(() =>
               openOrder(
@@ -202,9 +200,7 @@ function Invite(props: { quoteId: string; token: string; me: Me }) {
                 .then(() => clearInvite(quoteId))
                 .catch((cause) => setError(errorText(cause)))
                 // Released on both paths, or a failed claim locks the button.
-                .finally(() => {
-                  claiming.current = false;
-                }),
+                .finally(claiming.end),
             );
           }}
         >
@@ -230,8 +226,8 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   const [steps, setSteps] = useState<Steps>({});
   const [plan, setPlan] = useState<readonly (readonly [string, string])[]>([]);
   const [busy, setBusy] = useState(false);
-  /** Synchronous double-click guard: `busy` is a render behind. */
-  const inFlight = useRef(false);
+  /** Synchronous double-click guard: `busy` is a render behind (lib/utils). */
+  const inFlight = useGuard();
   const [error, setError] = useState("");
   // G-09: a session that expires mid-flow re-renders this page signed out and
   // then back in, which threw away the note the user had typed. The note is a
@@ -248,16 +244,11 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
     files: [],
     manifest: null,
   });
-  // G-04: the deadline decisions use the server's clock when the payload
-  // carries one, so a skewed device is offered the action the server would
-  // accept. Read through a cast because the field is W5's to add to the
-  // `orders.order` returns validator; until it lands this is `undefined` and
-  // `useNow` falls back to the local clock exactly as before, so the change is
-  // safe in both directions and needs no follow-up edit here.
-  const now = useNow(
-    30_000,
-    (order as { serverNow?: number | null }).serverNow,
-  );
+  // G-04: the deadline decisions use the server's clock, so a skewed device is
+  // offered the action the server would accept. `orders.order` now carries
+  // `serverNow`, so this is a real field rather than the cast the client half
+  // used while the schema change was pending.
+  const now = useNow(30_000, order.serverNow);
   const latest = useRef(order);
   latest.current = order;
   const report: Report = (id, state, detail) =>
@@ -326,10 +317,8 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
     if (!connected) return connectPreferred();
     // `busy` only disables the button after a re-render, so two clicks in the
     // same frame both reach here and start two chain actions at one revision.
-    // The ref is synchronous, so the second click is refused. NewQuote already
-    // guards its submit the same way (D-05); this is the same fix for actions.
-    if (inFlight.current) return;
-    inFlight.current = true;
+    // `useGuard` is synchronous, so the second click is refused.
+    if (!inFlight.start()) return;
     const from = order.contract?.revision ?? 0;
     // `busy` is set synchronously here, so the button paints its pending state
     // in the same frame as the click instead of one render later.
@@ -349,7 +338,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
       report,
     }).then(
       () => {
-        inFlight.current = false;
+        inFlight.end();
         setBusy(false);
         setPending({ from, at: Date.now() });
         // The note is spent once the action that used it succeeded, so the draft
@@ -358,7 +347,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
         writeDraft(order.quoteId, "");
       },
       (cause) => {
-        inFlight.current = false;
+        inFlight.end();
         setBusy(false);
         setError(errorText(cause));
       },
@@ -482,7 +471,13 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 {wrongAccount
                   ? DIFFERENT_ACCOUNT
                   : connected
-                    ? "No key in this browser. Restore your backup, or the order expires."
+                    ? // U-02: the key lives in one browser's storage, so this is
+                      // what a buyer sees when they open the mail link in their
+                      // mail app's webview instead of the browser they claimed
+                      // in. "Restore your backup" was the only advice, and a
+                      // buyer who never made one had nowhere to go. Name the
+                      // cause and the two ways out.
+                      "This browser does not hold the key for this order. If you opened the email link in a mail app, open it in the browser you started the order in. Otherwise restore your backup, or the order expires."
                     : "Preprod only. The wallet pays the fees."}
               </Note>
             </div>

@@ -9,6 +9,7 @@ import { ConnectWallet } from "../components/ui/connect";
 import { Field, Input } from "../components/ui/input";
 import { Mark } from "../components/ui/status";
 import { CODE_TEXT, errorText, Outcome } from "../components/workspace";
+import { useGuard } from "../lib/utils";
 import { stashInvite } from "../workspace/keys";
 
 /** Verify reports failure as `?error=CODE`. Only INVALID_TOKEN means the link is
@@ -59,6 +60,7 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
     linkError || (expired ? CODE_TEXT.UNAUTHENTICATED : ""),
   );
   const [busy, setBusy] = useState(false);
+  const send = useGuard();
   // The email format is the one failure that belongs to this field rather than
   // to the request; everything else stays in the Outcome alert below.
   const fieldError = error && /email/i.test(error) ? error : "";
@@ -86,6 +88,9 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
           className="grid gap-4 rounded-lg bg-card p-5"
           onSubmit={(event) => {
             event.preventDefault();
+            // U-01: a double submit sent two links and burned one of the
+            // three-per-minute allowance.
+            if (!send.start()) return;
             setBusy(true);
             setLinkError("");
             setError("");
@@ -103,7 +108,10 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
                   : setError(result.message),
               )
               .catch((cause) => setError(errorText(cause)))
-              .finally(() => setBusy(false));
+              .finally(() => {
+                send.end();
+                setBusy(false);
+              });
           }}
         >
           <Field label="Email" id="signin-email" error={fieldError}>

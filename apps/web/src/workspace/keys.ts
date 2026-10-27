@@ -96,8 +96,27 @@ export const keyFor = (subject: string, quoteId: string) =>
 const keyEntry = (subject: string, quoteId: string) =>
   `${ringKey(subject)}:${quoteId}`;
 
-export function saveKey(subject: string, key: OrderKey) {
-  localStorage.setItem(keyEntry(subject, key.quoteId), JSON.stringify(key));
+/**
+ * Write one order key.
+ *
+ * U-03: this used to throw straight out of `setItem`. A full quota
+ * (`QuotaExceededError`) or Safari private mode therefore turned a *successful*
+ * server claim into an exception in the middle of the claim flow — the order was
+ * claimed, and the key that signs for it was never stored. The invite stash and
+ * the note draft already tolerated a throwing store; the key, which is the one
+ * thing that cannot be reconstructed, did not.
+ *
+ * It now reports failure instead of throwing, so the caller can say the key was
+ * not saved. Silently swallowing would be worse: the user must be told, because
+ * the only remedy is an immediate backup.
+ */
+export function saveKey(subject: string, key: OrderKey): boolean {
+  try {
+    localStorage.setItem(keyEntry(subject, key.quoteId), JSON.stringify(key));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

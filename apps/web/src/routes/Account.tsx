@@ -9,6 +9,7 @@ import { Field, Input } from "../components/ui/input";
 import { Mark } from "../components/ui/status";
 import { errorText, Outcome } from "../components/workspace";
 import { ROLE_NAME } from "../lib/format";
+import { useGuard } from "../lib/utils";
 import { useMe } from "../workspace/backend";
 import { backupBlob, readKeys, restoreBackup } from "../workspace/keys";
 import { shortAddress, useWallet, walletHint } from "../workspace/wallet";
@@ -31,6 +32,12 @@ export function Account() {
   const [restorePassword, setRestorePassword] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  // U-01: neither form had a guard, so a double-click ran the whole handler
+  // twice. For backup that is two downloads; for restore it is two decrypts of
+  // the same file, and the second can interleave with the first's writes. One
+  // shared hook instead of a third and fourth copy of the ref.
+  const backupGuard = useGuard();
+  const restoreGuard = useGuard();
   if (!me) return null;
   return (
     <>
@@ -74,6 +81,7 @@ export function Account() {
               className="grid content-start gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
+                if (!backupGuard.start()) return;
                 setError("");
                 void backupBlob(subject, password)
                   .then((blob) => {
@@ -85,7 +93,8 @@ export function Account() {
                     setPassword("");
                     setStatus("Saved. Keep it off this computer.");
                   })
-                  .catch((cause) => setError(errorText(cause)));
+                  .catch((cause) => setError(errorText(cause)))
+                  .finally(backupGuard.end);
               }}
             >
               <Field label="Backup password (10 characters or more)">
@@ -113,6 +122,7 @@ export function Account() {
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!file) return;
+                if (!restoreGuard.start()) return;
                 setError("");
                 void file
                   .text()
@@ -135,7 +145,8 @@ export function Account() {
                         .join(" ") || "That file had no order keys in it.",
                     );
                   })
-                  .catch((cause) => setError(errorText(cause)));
+                  .catch((cause) => setError(errorText(cause)))
+                  .finally(restoreGuard.end);
               }}
             >
               <Field label="Backup file">

@@ -1,10 +1,11 @@
 import { useConvex } from "convex/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { PageTitle } from "../components/PageTitle";
 import { Button } from "../components/ui/button";
 import { Field, Input, Textarea } from "../components/ui/input";
 import { errorText, Outcome } from "../components/workspace";
+import { useGuard } from "../lib/utils";
 import { useMe } from "../workspace/backend";
 import { createQuote } from "../workspace/flows";
 import { randomHex } from "../workspace/keys";
@@ -38,7 +39,7 @@ export function NewQuote() {
   // One nonce per form session: a resubmit reuses it, so the server's own
   // duplicate-nonce guard fires instead of creating a second quote.
   const [nonce] = useState(randomHex);
-  const inFlight = useRef(false);
+  const inFlight = useGuard();
   if (!me) return null;
   return (
     <>
@@ -51,8 +52,7 @@ export function NewQuote() {
           onSubmit={(event) => {
             event.preventDefault();
             // `busy` only disables the button after a re-render, so guard here.
-            if (inFlight.current) return;
-            inFlight.current = true;
+            if (!inFlight.start()) return;
             const data = new FormData(event.currentTarget);
             const studioName = String(data.get("studio") ?? "").trim();
             const brief = String(data.get("brief")).trim();
@@ -73,7 +73,7 @@ export function NewQuote() {
               )
               .catch((cause) => setError(errorText(cause)))
               .finally(() => {
-                inFlight.current = false;
+                inFlight.end();
                 setBusy("");
               });
           }}

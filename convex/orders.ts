@@ -346,6 +346,19 @@ const orderDetailValidator = v.object({
   clientEmail: v.union(v.string(), v.null()),
   inviteUrl: v.union(v.string(), v.null()),
   inviteClaimed: v.boolean(),
+  /**
+   * G-04: the server's own clock, in the same epoch milliseconds as the
+   * deadlines. The client compares `now` against server-issued deadlines, and
+   * `Date.now()` is the device's clock: a phone 10 minutes fast was offered the
+   * expiry action while the server still accepted the normal one. Carrying the
+   * server's value lets the client apply an offset instead of trusting the
+   * device.
+   *
+   * Convex has no public server-time API — `clientClockSkewMs` exists inside
+   * the client but is not exported and covers only token refresh — so this is
+   * the cheapest correct source: one number on a payload that is already sent.
+   */
+  serverNow: v.number(),
   deadlines: v.union(
     v.object({
       acceptance: v.string(),
@@ -483,6 +496,10 @@ export const order = queryGeneric({
           ? inviteUrl(draft.id, draft.inviteToken)
           : null,
       inviteClaimed: Boolean(draft.buyerSubject),
+      // G-04: read once, so every field below it is consistent with the same
+      // instant. The client turns this into an offset (`serverNow - Date.now()`)
+      // and applies it to its own ticker.
+      serverNow: Date.now(),
       deadlines: frozen
         ? {
             acceptance: String(frozen.acceptanceDeadlineSeconds),
