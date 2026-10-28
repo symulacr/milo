@@ -255,12 +255,15 @@ async function startOrder(
     report("deploy", "done");
     report("attach", "done");
   } else {
-    const deadlines = (await deadlinesNow)?.deadlines;
-    // Settle the hold before the throw below: it was started concurrently, so
-    // awaiting it here costs nothing, and a rejection can no longer escape as an
-    // unhandled rejection when the deadlines read came back empty. A declined
-    // card is also the more actionable of the two failures, so it wins.
+    // Settle the hold first: it was started concurrently, so awaiting it costs
+    // nothing, and a declined card is the more actionable failure. It must also
+    // come before trusting the deadlines read, because on a fresh QUOTE the hold
+    // is what freezes the quote and creates the deadlines, so the read that ran
+    // alongside it can legitimately come back empty. Read again once it settled.
     await holdNow;
+    const deadlines =
+      (await deadlinesNow)?.deadlines ??
+      (await convex.query(api.order, { quoteId }))?.deadlines;
     if (!deadlines)
       throw new Error("The order has no deadlines yet. Reload the order.");
     const deployed = await run(report, "deploy", () =>
