@@ -34,7 +34,9 @@ Real-fee Preprod lifecycle is pending DUST (B-DUST-01).
 
 ## Live wiring on Preprod
 
-The order contract is deployed at `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (14 of 14 circuits, staged deploy completed 2026-10-22). The Midnight-hosted Preprod endpoints were retired on 2026-10-09; Blockfrost now serves the indexer (`https://midnight-preprod.blockfrost.io/api/v0`, GraphQL v4) and node RPC, and every request carries a `project_id` token.
+The order contract is deployed at `b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` (14 of 14 circuits, staged deploy completed 2026-10-28).
+The previous deployment `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` is superseded: it predates the C-04 fix, so an
+unreviewed delivery on it could be escalated but never resolved. The Midnight-hosted Preprod endpoints were retired on 2026-10-09; Blockfrost now serves the indexer (`https://midnight-preprod.blockfrost.io/api/v0`, GraphQL v4) and node RPC, and every request carries a `project_id` token.
 
 | Path | Who calls it | Endpoints | Needs |
 | --- | --- | --- | --- |

@@ -24,11 +24,11 @@ stay private; only the phase, the revision and commitments are public.
 | Browser workspace | Order lifecycle: quote, card hold, delivery, in-browser SHA-256 check of the three files, approval in Lace | `apps/web/` |
 
 The contract **is deployed on Preprod** at
-`09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (block 3095269) and
-`6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee`, staged 7+7 (seven keys
+`b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` (block 3176417), staged 7+7 (seven keys
 deployed, seven installed by one signed maintenance update), with all fourteen operation names
-read back from chain state on `ledger-v8`. On Preprod, `reserve` (block 3095493) and `accept`
-(block 3095499) have executed with real proofs, and all 14/14 circuits are proved on the local
+read back from chain state on `ledger-v8`. This deployment carries the C-04 fix: its on-chain
+`escalateUnreviewed` verifier key is `227d2072e19177d0…`, so an unreviewed delivery can be
+escalated and then resolved instead of only expiring. All 14/14 circuits are proved on the local
 Midnight network. Browser-signed end-to-end Preprod reserve and hosted Better Auth deployment
 remain open; see `docs/RECEIPTS.md`.
 
@@ -58,7 +58,8 @@ DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
 
 ### Deployed on Preprod
 
-Three contracts are live on Midnight Preprod, each carrying all 14 proof circuits. Every hash
+Four contracts are live on Midnight Preprod, each carrying all 14 proof circuits.
+The current one is the first row; the rest are superseded deployments kept for the record. Every hash
 below was read back from the Blockfrost indexer (`https://midnight-preprod.blockfrost.io/api/v0`),
 so each one is queryable — none is copied from a local log.
 
@@ -69,6 +70,7 @@ a separate transaction and does get its own hash, listed separately below.
 
 | Contract | Address | Deploy tx hash (7 keys) | Insert tx hash (7 keys) |
 |---|---|---|---|
+| **Current** (C-04 fix) | `b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` | `96df7228ed2f5f1a84b467581e81f041d98e1b067b5f5adbd152d88cbda7375e` (block 3176413) | `3c83ce2d175b46daa7c764dff2c287d4437284bbf3eb257a41e4e8535c801828` (block 3176417) |
 | Main | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` (block 3095265) | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` (block 3095269) |
 | Stress instance 0 | `6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee` | `923eb10651212f347c822d9d5c9a2afe075c0951ae30523e263118581765b1e3` (block 3095433) | `e12bf102ed4874e241f4fde8d1d90f3de964f7c57283869335603f33c3572a56` (block 3095437) |
 

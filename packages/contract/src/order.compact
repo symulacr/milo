@@ -249,7 +249,12 @@ export circuit escalateUnreviewed(expectedRevision: Uint<64>): [] {
   checkRevision(expectedRevision);
   assert(phase == Phase.SUBMITTED, "escalate requires submitted");
   reached(configuration.reviewDeadline);
-  move(Phase.DISPUTED);
+  // resolve() requires a non-default evidence commitment equal to the stored
+  // one, so leaving it at default made resolve unsatisfiable and stranded the
+  // order until expireDispute. The delivery is the only evidence an unreviewed
+  // order has, it is already public, and it is never default in SUBMITTED, so
+  // recording it reuses the dispute path instead of inventing a digest.
+  recordDispute(deliveryCommitment);
 }
 
 export circuit expireDispute(expectedRevision: Uint<64>): [] {

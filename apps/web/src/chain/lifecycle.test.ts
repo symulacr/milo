@@ -1085,14 +1085,13 @@ describe("end-to-end order walk on the real contract runtime", () => {
 
   // C-04, asserted at its source rather than by executing escalate: the circuit
   // gates on `reached(reviewDeadline)`, which reads real block time, so an order
-  // inside its deadlines cannot escalate in this harness. The defect is that the
-  // escalation body never assigns evidenceCommitment while resolve requires a
-  // non-default value equal to the stored one — jointly unsatisfiable.
-  //
-  // This test passes while the bug exists and FAILS the moment the held fix in
-  // .patches/r18-w4-D.patch lands, which is the signal to replace it with the
-  // positive walk. Verified by applying that fix and re-running.
-  test("KNOWN BUG C-04: escalate records no evidence, so resolve has no valid input", () => {
+  // inside its deadlines cannot escalate in this harness. The defect was that the
+  // escalation body never assigned evidenceCommitment while resolve requires a
+  // non-default value equal to the stored one. The fix routes the escalation
+  // through recordDispute with the delivery as the evidence, so this now asserts
+  // the fixed shape: the escalation records evidence and no longer performs a
+  // bare move that would leave the commitment at default.
+  test("C-04: escalate records the delivery as dispute evidence", () => {
     const source = readFileSync(
       new URL(
         "../../../../packages/contract/src/order.compact",
@@ -1104,8 +1103,8 @@ describe("end-to-end order walk on the real contract runtime", () => {
       source.indexOf("export circuit escalateUnreviewed"),
       source.indexOf("export circuit expireDispute"),
     );
-    expect(escalate).toContain("move(Phase.DISPUTED)");
-    expect(escalate).not.toContain("evidenceCommitment =");
+    expect(escalate).toContain("recordDispute(deliveryCommitment)");
+    expect(escalate).not.toContain("move(Phase.DISPUTED)");
     const resolve = source.slice(
       source.indexOf("export circuit resolve"),
       source.indexOf("// Integer seconds"),

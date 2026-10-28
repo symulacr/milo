@@ -763,6 +763,41 @@ describe("generated-runtime only: M-02/M-03; MID rows remain network-unverified"
     }
   });
 
+  test("an escalated order can still be resolved", () => {
+    // C-04: escalateUnreviewed used to leave evidenceCommitment at default while
+    // resolve requires a non-default value equal to the stored one, so the two
+    // were jointly unsatisfiable and an unreviewed delivery could only expire.
+    // The escalation now records the delivery as the dispute evidence.
+    const h = at(Phase.SUBMITTED);
+    h.call("escalateUnreviewed", undefined, 350, [3n]);
+    expect(h.public.phase).toBe(Phase.DISPUTED);
+    expect(h.public.evidenceCommitment).toEqual(delivery);
+    expect(h.public.evidenceCommitment).not.toEqual(new Uint8Array(32));
+    h.call("resolve", "operator", 360, [
+      4n,
+      false,
+      h.public.evidenceCommitment,
+    ]);
+    expect(h.public.phase).toBe(Phase.CANCELLED);
+  });
+
+  test("an escalated order with a real delivery can be approved", () => {
+    const h = at(Phase.SUBMITTED);
+    h.call("escalateUnreviewed", undefined, 350, [3n]);
+    h.call("resolve", "operator", 360, [4n, true, h.public.evidenceCommitment]);
+    expect(h.public.phase).toBe(Phase.APPROVED);
+  });
+
+  test("escalate cannot be resolved with evidence it never recorded", () => {
+    // The escalation digest is the delivery, not a caller-chosen value, so a
+    // resolution that presents anything else is still refused.
+    const h = at(Phase.SUBMITTED);
+    h.call("escalateUnreviewed", undefined, 350, [3n]);
+    expect(() =>
+      h.call("resolve", "operator", 360, [4n, false, evidence]),
+    ).toThrow("resolution evidence mismatch");
+  });
+
   test("normal actions reject at/after deadline and succeed one second before", () => {
     for (const time of [99, 100, 101]) {
       const run = () => new Harness().call("reserve", "buyer", time, [0n]);

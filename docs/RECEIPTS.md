@@ -16,12 +16,18 @@ The old host `https://indexer.preprod.midnight.network/api/v4/graphql` now answe
 | Fact | Value | Status |
 |---|---|---|
 | Network | Midnight Preprod | VERIFIED-ONCHAIN |
-| Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | VERIFIED-ONCHAIN |
-| Latest action type | `ContractDeploy` + one `ContractUpdate` (staged 7+7) | VERIFIED-ONCHAIN |
-| Deploy tx (7 keys) | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` | VERIFIED-ONCHAIN |
-| Maintenance insert tx (7 keys) | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` | VERIFIED-ONCHAIN |
-| Deploy block | `3095265` (`ContractDeploy`) | VERIFIED-ONCHAIN |
-| Insert block | `3095269` (`ContractUpdate`) | VERIFIED-ONCHAIN |
+| Contract address | `b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` | VERIFIED-ONCHAIN |
+| Latest action type | `ContractUpdate` (staged 7+7) | VERIFIED-ONCHAIN |
+| Deploy tx (7 keys) | `00bc413566e740f9daf1552dbf53d6832a3d18252819348a5d8127e0bfbab8c783` | VERIFIED-ONCHAIN |
+| Maintenance insert tx (7 keys) | `004aa5d2e468177cc498e4a5e0453b7d3f5c8811d4bdef2c9c0196cbb01e1cbdb0` | VERIFIED-ONCHAIN |
+| Deploy block | `3176413` (`ContractDeploy`) | VERIFIED-ONCHAIN |
+| Insert block | `3176417` (`ContractUpdate`) | VERIFIED-ONCHAIN |
+| Deploy tx hash (32-byte) | `96df7228ed2f5f1a84b467581e81f041d98e1b067b5f5adbd152d88cbda7375e` | VERIFIED-ONCHAIN |
+| Insert tx hash (32-byte) | `3c83ce2d175b46daa7c764dff2c287d4437284bbf3eb257a41e4e8535c801828` | VERIFIED-ONCHAIN |
+| Fee paid per transaction | 1 speck (deploy and insert); 1 DUST = 10^15 specks | VERIFIED-ONCHAIN |
+| `escalateUnreviewed` verifier key | `227d2072e19177d049e7e9f74d9198c658fb346d8b0cf4f8097373cb7ff40927` | VERIFIED-ONCHAIN |
+| All 14 verifier keys vs compiled artifacts | 14 / 14 identical | VERIFIED-ONCHAIN |
+| Superseded deployment | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (block 3095269, pre-C-04-fix) | VERIFIED-ONCHAIN |
 | Network label in state | `preprod` (ASCII in contract state) | VERIFIED-ONCHAIN |
 | Circuit names in state | reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed | VERIFIED-ONCHAIN (state bytes) |
 
@@ -142,6 +148,40 @@ transaction is listed here: the retained 2026-09-30 receipts record `"status":"f
 | Label | SDK-connector / harness | — |
 | Seed | `.env.preprod` only — never printed | — |
 
+## Preprod staged deploy — 2026-10-28 (CURRENT, carries the C-04 fix)
+
+The redeploy that installs the C-04 fix. `escalateUnreviewed` is installed by the deploy
+transaction, so it carries no version and cannot be re-keyed in place (round 35: both
+`VerifierKeyRemove` and an atomic remove+insert are refused `Malformed(NotNormalized)`).
+A new address is the only route.
+
+| Fact | Value |
+|---|---|
+| Contract address | `b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` |
+| Deploy tx | `00bc413566e740f9daf1552dbf53d6832a3d18252819348a5d8127e0bfbab8c783` (7 keys) |
+| Deploy tx hash | `96df7228ed2f5f1a84b467581e81f041d98e1b067b5f5adbd152d88cbda7375e` |
+| Maintenance insert tx | `004aa5d2e468177cc498e4a5e0453b7d3f5c8811d4bdef2c9c0196cbb01e1cbdb0` (7 keys) |
+| Insert tx hash | `3c83ce2d175b46daa7c764dff2c287d4437284bbf3eb257a41e4e8535c801828` |
+| Receipt status | `complete` |
+| Deploy block | 3176413 (`ContractDeploy`) |
+| Insert block | 3176417 (`ContractUpdate`) |
+| Fee paid | 1 speck per transaction (1 DUST = 10^15 specks) |
+| Circuits read back | **14 / 14** via `ContractState.deserialize(...).operations()` |
+| Maintenance authority | threshold 1, counter 1, committee 1 |
+| `escalateUnreviewed` on chain | `227d2072e19177d049e7e9f74d9198c658fb346d8b0cf4f8097373cb7ff40927` |
+| Other 13 verifier keys | identical to the superseded deployment |
+| Wallet NIGHT | 35,000 NIGHT (35,000,000,000 Stars) |
+| Wallet DUST at deploy | 175,000 DUST (175,000,000,000,000,000,000 specks) — the 5-DUST-per-NIGHT cap |
+
+Verified independently of the deploy process: the state was fetched from the Blockfrost
+indexer (`/api/v4/graphql`) and deserialized with `ledger-v8`; both transactions were resolved
+by `identifier` and report `SUCCESS`. All 14 on-chain verifier keys hash to the same SHA-256
+as the compiled artifacts in `packages/contract/generated/keys/`.
+
+The superseded deployment `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` keeps its state and its C-04 bug forever;
+there is no undeploy. No order ever existed on it (all order tables were empty at redeploy
+time), so nothing was stranded.
+
 ## Preprod staged deploy — 2026-10-22 (LANDED)
 
 The first Preprod deploy that landed. It failed for a year of runs for a reason that was not
@@ -151,7 +191,7 @@ transaction the node had accepted. Fixed in `packages/integration/src/config.mjs
 
 | Fact | Value |
 |---|---|
-| Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` |
+| Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` (superseded 2026-10-28) |
 | Deploy tx | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` (7 keys) |
 | Maintenance insert tx | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` (7 keys) |
 | Receipt status | `complete` |
