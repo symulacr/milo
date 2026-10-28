@@ -1,13 +1,25 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
-function useRouteHeading(title: string) {
+/**
+ * Focus the heading when the route changes, and let React own the title.
+ *
+ * The title used to be set here with `document.title`, which only works when the
+ * page runs JavaScript. `/privacy` and `/terms` are prerendered with no script
+ * at all (`scripts/build.ts`), so both shipped `<title>Milo</title>` — measured
+ * on the live deploy. A `<title>` element is hoisted into `<head>` by React 19
+ * in both the client and the prerender path, so the same component now titles
+ * the page either way.
+ *
+ * `mounted` keeps the first render from stealing focus: a cold load should leave
+ * focus at the top of the document, where the skip link is.
+ */
+function useRouteHeading() {
   const ref = useRef<HTMLHeadingElement>(null);
   const mounted = useRef(false);
   useEffect(() => {
-    document.title = `Milo · ${title}`;
     if (mounted.current) ref.current?.focus();
     mounted.current = true;
-  }, [title]);
+  }, []);
   return ref;
 }
 
@@ -20,9 +32,10 @@ export function PageTitle({
   actions?: ReactNode;
   children?: ReactNode;
 }) {
-  const ref = useRouteHeading(title);
+  const ref = useRouteHeading();
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
+      <title>{`Milo · ${title}`}</title>
       <div className="grid gap-1">
         <h1
           tabIndex={-1}
@@ -42,10 +55,18 @@ export function PageTitle({
 }
 
 export function PublicTitle({ title }: { title: string }) {
-  const ref = useRouteHeading(title);
+  const ref = useRouteHeading();
   return (
-    <h1 tabIndex={-1} ref={ref} dir="auto" className="display-xl outline-none">
-      {title}
-    </h1>
+    <>
+      <title>{`Milo · ${title}`}</title>
+      <h1
+        tabIndex={-1}
+        ref={ref}
+        dir="auto"
+        className="display-xl outline-none"
+      >
+        {title}
+      </h1>
+    </>
   );
 }
