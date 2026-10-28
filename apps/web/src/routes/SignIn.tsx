@@ -1,5 +1,5 @@
 import { Mail } from "lucide";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { ORDER_WINDOWS_MS } from "../../../../packages/backend/src/order-windows";
 import { sendMagicLink } from "../auth-client";
@@ -30,7 +30,7 @@ const LINK_WINDOW = `The link works once and expires in ${Math.round(
 )} minutes.`;
 
 export function SignIn({ expired = false }: { expired?: boolean }) {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const here = useLocation().pathname;
   const invite = params.get("invite");
   const invited = Boolean(invite);
@@ -44,6 +44,13 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
   useState(() => {
     if (invite) stashInvite(quoteId, invite);
   });
+  // R39: D-01 strips the token in OrderView, but a signed-out visitor never
+  // reaches OrderView — the shell renders this form instead. So the bearer token
+  // stayed in the address bar, in history and in the Referer of every same-origin
+  // navigation. Stash first (above), then drop it, exactly as OrderView does.
+  useEffect(() => {
+    if (params.has("invite")) setParams({}, { replace: true });
+  }, [params, setParams]);
   // A failed verify lands here with ?error=... because the token is consumed on
   // the first attempt (better-auth.com/docs/plugins/magic-link). That includes a
   // mail scanner that prefetched the link before the user clicked it, so the
@@ -80,7 +87,12 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
             {linkError
               ? `Enter your email for a new one. ${LINK_WINDOW}`
               : invited
-                ? "A studio sent you an order. Sign in to open it."
+                ? // R39: signed out, `orders:invite` is UNAUTHENTICATED, so this
+                  // page cannot know the quote exists. Saying "a studio sent you
+                  // an order" for a stale or invented link sends the user through
+                  // sign-in to find nothing. Say what is true: the link will be
+                  // checked once there is a session to check it with.
+                  "Sign in to open the order this link points to."
                 : "Use your email or a Midnight wallet."}
           </p>
         </PageTitle>
