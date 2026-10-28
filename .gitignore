@@ -132,3 +132,21 @@ e2e/**/out/
 !/deploy/**
 /deploy/stress/Dockerfile.*
 /deploy/stress/entrypoint.mjs
+
+# Dead sample images: no tracked code references them. They stay on disk and
+# still ship in dist/ (build.ts globs apps/web/public), but the repo should not
+# carry 220 KiB of unreferenced duplicates.
+/apps/web/public/samples/
+
+# Unreferenced design stills: the seven images the app actually uses live in
+# apps/web/src/assets.ts and InfoPage.tsx; these 21 are not among them.
+/apps/web/public/images/sc-*.webp
+/apps/web/public/images/packing.webp
+/apps/web/public/images/proof-review.webp
+/apps/web/public/images/shoot.webp
+
+# Derived deck output. _build_deck.sh regenerates every slide from the tracked
+# SVGs with rsvg-convert + pdfunite, and the result is nondeterministic (cairo
+# stamps a CreationDate), so these can never diff cleanly. The merged deck
+# milo-d7-deck.pdf stays tracked: judging-minimum.sh J4 reads it.
+/pitch/deck/slide-*.pdf
