@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
 import { ChainError } from "./errors";
+// Shared fixtures live in private-state.test.ts, which already hosts `fakeIdb`
+// for the same reason: six modules declared byte-identical copies.
+import { bytes32, CONFIG, SHIELDED, terms } from "./private-state.test";
 import {
   type ChainSession,
   callOrderCircuit,
@@ -10,35 +13,6 @@ import {
   openChainSession,
   withProofRetry,
 } from "./runtime";
-
-const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
-
-const terms = {
-  serviceVersion: 1n,
-  packQuantity: 1n,
-  outputCount: 3n,
-  unitPrice: 36_000n,
-  total: 36_000n,
-  currency: new TextEncoder().encode("USD"),
-  scopeDigest: bytes32(4),
-  rightsDigest: bytes32(5),
-  paymentPolicy: bytes32(6),
-  salt: bytes32(7),
-};
-
-const CONFIG = {
-  indexerUri: "https://indexer.example/graphql",
-  indexerWsUri: "wss://indexer.example/graphql",
-  proverServerUri: "https://prover.example",
-  substrateNodeUri: "wss://node.example",
-  networkId: "preprod",
-};
-
-const SHIELDED = {
-  shieldedAddress: "mn_shield-addr_preprod1example",
-  shieldedCoinPublicKey: "aa".repeat(32),
-  shieldedEncryptionPublicKey: "bb".repeat(32),
-};
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();

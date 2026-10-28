@@ -8,11 +8,10 @@ import {
   type OrderConfiguration,
   orderWitnesses,
 } from "./order";
-import { fakeIdb } from "./private-state.test";
+// `fakeIdb` was already imported from here; the shared fixtures join it.
+import { bytes32, fakeIdb, terms } from "./private-state.test";
 import { backoffDelay, decodeOrderState, watchOrderState } from "./runtime";
 import { initChainWasmFrom } from "./wasm";
-
-const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
 
 /** The smallest valid wasm module: the 8-byte header and nothing else. */
 const WASM = Uint8Array.of(0, 0x61, 0x73, 0x6d, 1, 0, 0, 0);
@@ -28,19 +27,6 @@ const network = (() => {
   value.set(new TextEncoder().encode("preprod"));
   return value;
 })();
-
-const terms = {
-  serviceVersion: 1n,
-  packQuantity: 1n,
-  outputCount: 3n,
-  unitPrice: 36_000n,
-  total: 36_000n,
-  currency: new TextEncoder().encode("USD"),
-  scopeDigest: bytes32(4),
-  rightsDigest: bytes32(5),
-  paymentPolicy: bytes32(6),
-  salt: bytes32(7),
-};
 
 const now = BigInt(Math.floor(Date.now() / 1000));
 

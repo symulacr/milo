@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
 import { ChainError } from "./errors";
+// Shared fixtures live in private-state.test.ts, which already hosts `fakeIdb`
+// for the same reason: four modules declared byte-identical copies.
+import { CONFIG, SHIELDED } from "./private-state.test";
 import {
   assembleChainProviders,
   assertDustAvailable,
@@ -12,20 +15,6 @@ import {
   readWalletConfig,
   readWalletKeys,
 } from "./providers";
-
-const SHIELDED = {
-  shieldedAddress: "mn_shield-addr_preprod1example",
-  shieldedCoinPublicKey: "aa".repeat(32),
-  shieldedEncryptionPublicKey: "bb".repeat(32),
-};
-
-const CONFIG = {
-  indexerUri: "https://indexer.example/graphql",
-  indexerWsUri: "wss://indexer.example/graphql",
-  proverServerUri: "https://prover.example",
-  substrateNodeUri: "wss://node.example",
-  networkId: "preprod",
-};
 
 function connector(overrides: Partial<ConnectedAPI> = {}): ConnectedAPI {
   return {

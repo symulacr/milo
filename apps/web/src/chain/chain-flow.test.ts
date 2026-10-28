@@ -15,6 +15,16 @@ import {
   type OrderConfiguration,
   type OrderPrivateState,
 } from "./order";
+// Shared fixtures live in private-state.test.ts, which already hosts `fakeIdb`
+// for the same reason. `memoryStorage` is shared too: this file and that one
+// carried the same 14-line Storage stub.
+import {
+  bytes32,
+  CONFIG,
+  memoryStorage,
+  SHIELDED,
+  terms,
+} from "./private-state.test";
 import {
   type ChainSession,
   deployOrderContract,
@@ -23,26 +33,11 @@ import {
 } from "./runtime";
 import { installedCircuitsOf, type StagedDeployRecord } from "./staged-deploy";
 
-const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
-
 const NETWORK = (() => {
   const value = new Uint8Array(32);
   value.set(new TextEncoder().encode("preprod"));
   return value;
 })();
-
-const terms = {
-  serviceVersion: 1n,
-  packQuantity: 1n,
-  outputCount: 3n,
-  unitPrice: 36_000n,
-  total: 36_000n,
-  currency: new TextEncoder().encode("USD"),
-  scopeDigest: bytes32(4),
-  rightsDigest: bytes32(5),
-  paymentPolicy: bytes32(6),
-  salt: bytes32(7),
-};
 
 const now = BigInt(Math.floor(Date.now() / 1000));
 
@@ -80,34 +75,6 @@ const buyerState: OrderPrivateState = {
   terms,
   limit: 36_000n,
 };
-
-const CONFIG = {
-  indexerUri: "https://indexer.example/graphql",
-  indexerWsUri: "wss://indexer.example/graphql",
-  proverServerUri: "https://prover.example",
-  substrateNodeUri: "wss://node.example",
-  networkId: "preprod",
-};
-
-const SHIELDED = {
-  shieldedAddress: "mn_shield-addr_preprod1example",
-  shieldedCoinPublicKey: "aa".repeat(32),
-  shieldedEncryptionPublicKey: "bb".repeat(32),
-};
-
-function memoryStorage(): Storage {
-  const map = new Map<string, string>();
-  return {
-    get length() {
-      return map.size;
-    },
-    clear: () => map.clear(),
-    getItem: (key: string) => map.get(key) ?? null,
-    key: (index: number) => [...map.keys()][index] ?? null,
-    removeItem: (key: string) => void map.delete(key),
-    setItem: (key: string, value: string) => void map.set(key, value),
-  } as Storage;
-}
 
 const states = new Map<string, unknown>();
 const deployed = new Map<string, Uint8Array>();

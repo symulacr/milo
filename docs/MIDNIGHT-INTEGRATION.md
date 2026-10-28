@@ -39,13 +39,20 @@ The order contract is deployed at `09e354f97d420926bb8dd48fa27c2f73ae55bb4292015
 | Path | Who calls it | Endpoints | Needs |
 | --- | --- | --- | --- |
 | Browser to Lace | `apps/web` through the DApp connector v4 | the URIs Lace returns from `getConfiguration` | Lace on Preprod, tDUST |
-| Proving | Lace `getProvingProvider`, or a local proof server | zk keys and zkir served from `/zk`, `http://127.0.0.1:6300` | `midnightntwrk/proof-server:8.1.3` for local proving |
+| Proving | Lace `getProvingProvider`, or a local proof server | zk keys and zkir served from `/zk/<sourceSha256[0:16]>/`, `http://127.0.0.1:6300` | `midnightntwrk/proof-server:8.1.3` for local proving |
 | Chain observer | Convex `chainObserver.poll` cron | `MIDNIGHT_PREPROD_INDEXER_HTTP` | `MILO_PREPROD_BLOCKFROST_PROJECT_ID` in the Convex env |
 | Login | Better Auth on Convex | `BETTER_AUTH_URL` (the Convex site URL) | `BETTER_AUTH_SECRET`, `SITE_URL`, `RESEND_API_KEY`, `MAIL_FROM` |
 | Payments | Convex Stripe actions and `/webhooks/stripe` | Stripe API | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; mode follows the key |
 | Operator runs | `packages/integration` in Node | Blockfrost Preprod | `MILO_PREPROD_*`, `MIDNIGHT_PREPROD_SEED` |
 
 `.env.example` lists every variable in three blocks: static build, Convex deployment, Node operator runs.
+
+The build emits every artifact twice: `/zk/…` (unversioned, `must-revalidate`) and
+`/zk/<sourceSha256[0:16]>/…` (content-addressed, `immutable`). The client asks for the versioned
+copy, because only that one is cached across visits — the unversioned path costs a conditional
+request per key on every page load. The version is a build constant (`__ZK_VERSION__`, injected by
+`scripts/build.ts`), so a recompile changes the URL and the old directory stays addressable for an
+order deployed against it.
 
 ## Pinned versions
 

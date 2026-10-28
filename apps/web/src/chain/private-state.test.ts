@@ -10,9 +10,13 @@ import {
 } from "./private-state";
 import type { StagedDeployRecord } from "./staged-deploy";
 
-const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
+// Shared chain-test fixtures. Exported because six test modules in this directory
+// declared byte-identical copies of them; this file is the host because it already
+// exports `fakeIdb` for the same reason. `order.test.ts` keeps its own `terms`
+// because it annotates that fixture as `OrderTerms` and exercises the validator.
+export const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
 
-const terms = {
+export const terms = {
   serviceVersion: 1n,
   packQuantity: 1n,
   outputCount: 3n,
@@ -32,7 +36,7 @@ const privateState: OrderPrivateState = {
   limit: 36_000n,
 };
 
-const CONFIG = {
+export const CONFIG = {
   indexerUri: "https://indexer.example/graphql",
   indexerWsUri: "wss://indexer.example/graphql",
   proverServerUri: "https://prover.example",
@@ -40,7 +44,7 @@ const CONFIG = {
   networkId: "preprod",
 };
 
-const SHIELDED = {
+export const SHIELDED = {
   shieldedAddress: "mn_shield-addr_preprod1example",
   shieldedCoinPublicKey: "aa".repeat(32),
   shieldedEncryptionPublicKey: "bb".repeat(32),
@@ -57,7 +61,7 @@ function connector(overrides: Partial<ConnectedAPI> = {}): ConnectedAPI {
   } as unknown as ConnectedAPI;
 }
 
-const memoryStorage = (): Storage => {
+export const memoryStorage = (): Storage => {
   const map = new Map<string, string>();
   return {
     get length() {

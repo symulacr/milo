@@ -13,7 +13,9 @@ import {
   termsCommitment,
 } from "./order";
 
-const bytes32 = (fill: number) => new Uint8Array(32).fill(fill);
+// `bytes32` is shared; `terms` stays local because this file annotates it as
+// `OrderTerms` and exercises the validator against that exact shape.
+import { bytes32 } from "./private-state.test";
 
 const terms: OrderTerms = {
   serviceVersion: 1n,
