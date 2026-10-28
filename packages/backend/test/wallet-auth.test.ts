@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import * as runtime from "@midnight-ntwrk/onchain-runtime-v3";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, hexToBytes } from "../src/encoding";
+import { bytesToHex, canonicalSiteUrl, hexToBytes } from "../src/encoding";
 import {
   addressFromVerifyingKey,
   buildWalletSignInMessage,
@@ -328,6 +329,53 @@ describe("wallet sign-in message", () => {
     test("spaces around a list entry do not change the audience", async () => {
       await withSite(" https://a.example , https://b.example ", async () => {
         expect(walletMessageDomain()).toBe("a.example");
+      });
+    });
+
+    // R43: the magic-link return origin is built by
+    // `new URL(callbackURL, siteUrl)` inside better-auth's crossDomain plugin.
+    // `SITE_URL` is a comma list, and a list is not a valid URL base: it yields
+    // `https://host,https/orders` — a corrupt host, so the emailed link lands
+    // nowhere. The base must therefore be exactly one origin, and it must be the
+    // same one every other link uses.
+    // The two tests below exercise `canonicalSiteUrl`, so they pass on the
+    // pre-fix tree too — they guard the helper, not its use. This one reads
+    // `convex/auth.ts` and asserts the crossDomain base goes through the helper,
+    // which is the actual fix: a raw comma list there yields
+    // `https://host,https/orders` and the emailed link lands nowhere.
+    test("convex/auth.ts passes one origin to crossDomain", () => {
+      const source = readFileSync("convex/auth.ts", "utf8");
+      const block = source.slice(source.indexOf("crossDomain({"));
+      const base = block.slice(0, block.indexOf("})"));
+      // The base must be the canonical helper, not the raw required() read.
+      expect(base).toContain("canonicalSiteUrl(");
+      expect(base).not.toMatch(/required\(ctx, "SITE_URL"/);
+    });
+
+    test("the crossDomain base is one valid origin, not the whole list", async () => {
+      const list =
+        "https://milo-nine-delta.vercel.app,https://milo.k2jodz91zi.workers.dev";
+      await withSite(list, async () => {
+        const base = canonicalSiteUrl("http://localhost:5173");
+        // One origin: no comma, and it parses as a URL.
+        expect(base).not.toContain(",");
+        expect(() => new URL(base)).not.toThrow();
+        // And a relative callback resolves to that origin, not a corrupt host.
+        expect(new URL("/orders", base).toString()).toBe(
+          "https://milo-nine-delta.vercel.app/orders",
+        );
+      });
+    });
+
+    test("with the mirror first, the magic-link return lands on the mirror", async () => {
+      // Phase 2: the workers mirror becomes canonical.
+      const phase2 =
+        "https://milo.k2jodz91zi.workers.dev,https://milo-nine-delta.vercel.app";
+      await withSite(phase2, async () => {
+        const base = canonicalSiteUrl("http://localhost:5173");
+        expect(new URL("/orders", base).toString()).toBe(
+          "https://milo.k2jodz91zi.workers.dev/orders",
+        );
       });
     });
 

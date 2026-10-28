@@ -6,7 +6,7 @@ import { magicLink } from "better-auth/plugins";
 import { queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { inviteFailureReason, sendEmail } from "../packages/backend/src/email";
-import { env } from "../packages/backend/src/encoding";
+import { canonicalSiteUrl, env } from "../packages/backend/src/encoding";
 import { ORDER_WINDOWS_MS } from "../packages/backend/src/order-windows";
 import {
   operatorConfig,
@@ -190,8 +190,13 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
       },
     },
     plugins: [
+      // R43: this must be ONE origin. The plugin does `new URL(callback, siteUrl)`,
+      // and with a comma list that base is not a URL: it yields
+      // `https://host,https/orders` — a corrupt host, so the magic link lands
+      // nowhere. `canonicalSiteUrl` takes the first entry, which is the same
+      // origin every other link uses (invite, Stripe return, wallet audience).
       crossDomain({
-        siteUrl: required(ctx, "SITE_URL", "http://localhost:5173"),
+        siteUrl: canonicalSiteUrl("http://localhost:5173"),
       }),
       convex({
         authConfig,
