@@ -68,6 +68,7 @@ export type EmailFailure =
   | "testing-sender"
   | "sender-restricted"
   | "domain-unverified"
+  | "key-invalid"
   | "rate-limited"
   | "rejected"
   | "provider-down"
@@ -87,6 +88,8 @@ const FAILURE_TEXT: Record<EmailFailure, string> = {
     "AgentMail refused this message because the organization is not verified, so it may only mail its own owner. Claim it at console.agentmail.to/claim (or POST /v0/agent/verify), then send again.",
   "domain-unverified":
     "The email provider has not verified the MAIL_FROM domain. Add and verify it, then send again; DNS usually settles within 15 minutes.",
+  "key-invalid":
+    "The email provider rejected the API key. Set RESEND_API_KEY (or the selected provider's key) to an active key, then send again.",
   "rate-limited":
     "The email provider is rate limiting this deployment. Wait a minute and send again.",
   rejected:
@@ -124,11 +127,18 @@ export function classifyFailure(
       ? "testing-sender"
       : /domain is not verified/i.test(message)
         ? "domain-unverified"
-        : status === 429
-          ? "rate-limited"
-          : status >= 500
-            ? "provider-down"
-            : "rejected");
+        : // A 401 is always an authentication failure — a wrong, revoked,
+          // inactive or missing key. Falling through to `rejected` told the
+          // operator to check MAIL_FROM and the recipient, which are the two
+          // things that are already right. Resend answers 401 for every key
+          // problem (resend.com/docs/api-reference/errors, 2026-10-15).
+          status === 401
+          ? "key-invalid"
+          : status === 429
+            ? "rate-limited"
+            : status >= 500
+              ? "provider-down"
+              : "rejected");
   // AgentMail's `fix` names the concrete remedy and is more specific than its
   // `message`, which keeps a legacy generic value.
   return { failure, status, detail: body.fix ?? message };

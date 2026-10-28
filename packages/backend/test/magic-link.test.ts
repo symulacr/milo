@@ -291,6 +291,7 @@ describe("email failure classification", () => {
       ["testing-sender", /verify a domain/i],
       ["sender-restricted", /console\.agentmail\.to\/claim/i],
       ["domain-unverified", /has not verified/i],
+      ["key-invalid", /RESEND_API_KEY/],
       ["rate-limited", /rate limiting/i],
       ["rejected", /refused this message/i],
       ["provider-down", /unavailable/i],
