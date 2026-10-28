@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { RELEASE_FLAG_DEFAULTS } from "../packages/backend/src/release-flags";
+import { operatorConfig } from "../packages/backend/src/session-identity";
 import {
   byIntentRows,
   DIAGNOSTICS_BY_INTENT_LIMIT,
@@ -465,5 +467,238 @@ describe("ROUND19: diagnostics exposes the mail provider by name only", () => {
         });
       },
     );
+  });
+});
+
+/**
+ * R35 (b): one source for "is an operator configured?".
+ *
+ * Three call sites answered it three ways: the digest tested
+ * `recipients.length === 0`, `isOperator` tested `operatorEmails().length === 0`,
+ * and `diagnostics.read` answered nothing at all — so a deployment with no
+ * `MILO_OPERATOR_EMAILS` looked healthy from the API and only failed when a real
+ * dispute needed resolving. These tests pin that all three now agree, and that
+ * the disagreement is impossible because they read the same function.
+ */
+describe("R35 (b): operatorConfig is the single source for operator presence", () => {
+  const withOperatorEnv = async (
+    value: string | undefined,
+    run: () => Promise<void> | void,
+  ) => {
+    const previous = process.env.MILO_OPERATOR_EMAILS;
+    if (value === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+    else process.env.MILO_OPERATOR_EMAILS = value;
+    try {
+      await run();
+    } finally {
+      if (previous === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+      else process.env.MILO_OPERATOR_EMAILS = previous;
+    }
+  };
+
+  test("an unset allowlist reports configured: false with a zero count", async () => {
+    await withOperatorEnv(undefined, async () => {
+      expect(operatorConfig()).toEqual({ configured: false, count: 0 });
+    });
+  });
+
+  test("a set allowlist reports configured: true and counts the entries", async () => {
+    await withOperatorEnv("a@example.com, b@example.com", async () => {
+      expect(operatorConfig()).toEqual({ configured: true, count: 2 });
+    });
+  });
+
+  test("a blank allowlist counts as unconfigured, not as one empty operator", async () => {
+    // `operatorEmails()` filters empties, so " , " must not read as configured.
+    await withOperatorEnv(" , ", async () => {
+      expect(operatorConfig()).toEqual({ configured: false, count: 0 });
+    });
+  });
+
+  test("diagnostics.read exposes the operator fact as a count, never an address", async () => {
+    await withOperatorEnv("secret-operator@example.com", async () => {
+      const handler = (
+        read as unknown as {
+          _handler: (
+            ctx: never,
+            args: Record<string, never>,
+          ) => Promise<{ operator: { configured: boolean; count: number } }>;
+        }
+      )._handler;
+      const ctx = {
+        auth: {
+          getUserIdentity: async () => ({
+            issuer: process.env.CONVEX_SITE_URL ?? "privy.io",
+            subject: "did:privy:buyer",
+          }),
+        },
+        db: { query: () => ({ withIndex: () => ({ take: async () => [] }) }) },
+      } as never;
+      const out = await handler(ctx, {});
+      expect(out.operator).toEqual({ configured: true, count: 1 });
+      // The address itself is never part of the payload.
+      expect(JSON.stringify(out)).not.toContain("secret-operator@example.com");
+    });
+  });
+
+  test("the digest, isOperator and the read all call operatorConfig", async () => {
+    // A source assertion, because the point is the *wiring*: three independent
+    // re-derivations of the same fact is the defect this removes. Deleting any
+    // one of these call sites must fail this test.
+    const { readFile } = await import("node:fs/promises");
+    const diagnostics = await readFile(
+      new URL("./diagnostics.ts", import.meta.url),
+      "utf8",
+    );
+    const auth = await readFile(new URL("./auth.ts", import.meta.url), "utf8");
+    expect(diagnostics).toContain("operatorConfig().configured");
+    expect(diagnostics).toContain("operator: operatorConfig()");
+    expect(auth).toContain("operatorConfig().configured");
+    // And the old re-derivations are gone.
+    expect(auth).not.toContain("operatorEmails().length === 0");
+    expect(diagnostics).not.toContain("recipients.length === 0");
+  });
+
+  test("an unconfigured deployment warns once, not once per call", async () => {
+    await withOperatorEnv(undefined, async () => {
+      const warned: string[] = [];
+      const realWarn = console.warn;
+      console.warn = (...args: unknown[]) => {
+        warned.push(args.map(String).join(" "));
+      };
+      try {
+        // The module-level latch is already set by an earlier test in this file,
+        // so reset it the only way a caller can: reload the module.
+        const fresh = await import(
+          `../packages/backend/src/session-identity.ts?warn=${Date.now()}`
+        );
+        fresh.warnIfNoOperator();
+        fresh.warnIfNoOperator();
+        fresh.warnIfNoOperator();
+        expect(
+          warned.filter((w) => w.includes("operator-unconfigured")),
+        ).toHaveLength(1);
+        // The message names the consequence, not just the variable.
+        expect(warned.join("\n")).toContain("MILO_OPERATOR_EMAILS");
+      } finally {
+        console.warn = realWarn;
+      }
+    });
+  });
+});
+
+/**
+ * R35 (c): the release flags are an observation, not a constant.
+ *
+ * `releaseFlags()` shipped with a test and no caller: ten integration fixtures
+ * hardcoded both flags to `false`, so the module could not have changed a
+ * decision. The read now derives them from the stored `canonicalBindings` and
+ * `chainOrders` rows, which is what `releaseFlagsFromEvidence` was written to
+ * consume. These tests fail if the wiring is removed (the flags would fall back
+ * to the frozen defaults) and if the derivation is faked (the flags would not
+ * track the evidence).
+ */
+describe("R35 (c): diagnostics derives the release flags from stored evidence", () => {
+  const BINDING = {
+    network: "preprod",
+    nonce: "4".repeat(64),
+    address: "1".repeat(64),
+    quoteId: "quote-1",
+    observationId: "obs-1",
+    authorizationId: "pay-1",
+    boundAt: 1_700_000_000_000,
+  };
+
+  const readWith = async (rows: {
+    binding?: Record<string, unknown> | null;
+    chain?: Record<string, unknown> | null;
+  }) => {
+    const handler = (
+      read as unknown as {
+        _handler: (
+          ctx: never,
+          args: { paymentIntentId?: string },
+        ) => Promise<{
+          release: { immutableOrderAdmission: boolean; r1Complete: boolean };
+        }>;
+      }
+    )._handler;
+    const payment = {
+      _id: "pay-1",
+      buyerAccountId: "acct-1",
+      quoteId: "quote-1",
+      stripePaymentIntentId: "pi_1",
+    };
+    const ctx = {
+      auth: {
+        getUserIdentity: async () => ({
+          issuer: process.env.CONVEX_SITE_URL ?? "privy.io",
+          subject: "did:privy:buyer",
+        }),
+      },
+      db: {
+        get: async () => payment,
+        query: (table: string) => ({
+          withIndex: (index: string) => ({
+            take: async () => {
+              if (table === "memberships")
+                return [{ status: "active", accountId: "acct-1" }];
+              return [];
+            },
+            unique: async () => {
+              if (table === "canonicalBindings" && index === "by_quote")
+                return rows.binding ?? null;
+              if (table === "chainOrders" && index === "by_quote")
+                return rows.chain ?? null;
+              return null;
+            },
+          }),
+        }),
+      },
+    } as never;
+    return (await handler(ctx, { paymentIntentId: "pay-1" })).release;
+  };
+
+  test("no evidence at all is the frozen default, not an error", async () => {
+    expect(await readWith({})).toEqual(RELEASE_FLAG_DEFAULTS);
+  });
+
+  test("a stored binding alone turns on immutableOrderAdmission only", async () => {
+    const flags = await readWith({ binding: BINDING });
+    expect(flags.immutableOrderAdmission).toBe(true);
+    expect(flags.r1Complete).toBe(false);
+  });
+
+  test("a binding plus a chain reservation turns on both flags", async () => {
+    const flags = await readWith({
+      binding: BINDING,
+      chain: {
+        orderId: "order-1",
+        address: "1".repeat(64),
+        observedAt: 1_700_000_000_000,
+      },
+    });
+    expect(flags.immutableOrderAdmission).toBe(true);
+    expect(flags.r1Complete).toBe(true);
+  });
+
+  test("a malformed binding is not evidence: the flag stays off", async () => {
+    // `releaseFlagsFromEvidence` validates shape, so a half-written row must not
+    // read as a completed admission.
+    const flags = await readWith({
+      binding: { ...BINDING, boundAt: undefined },
+    });
+    expect(flags.immutableOrderAdmission).toBe(false);
+    expect(flags.r1Complete).toBe(false);
+  });
+
+  test("the read calls releaseFlags rather than returning a constant", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./diagnostics.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("release: releaseFlags(evidence)");
+    expect(source).toContain('from "../packages/backend/src/release-flags"');
   });
 });

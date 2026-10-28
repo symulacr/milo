@@ -13,6 +13,12 @@ import { fail, type ReadContext, unavailable } from "./admissionContext";
 import { isOperator } from "./auth";
 
 const PENDING_LIMIT = 25;
+// R35 (a): the per-order work is independent, so it runs in bounded waves.
+// Blockfrost allows 10 req/s per IP with a 500 burst and auto-bans (418) for
+// flooding (docs.blockfrost.io, accessed 2026-10-28), so the pool is small on
+// purpose; `POLL_DEADLINE_MS` keeps one slow tick from outlasting its interval.
+const POLL_CONCURRENCY = 6;
+const POLL_DEADLINE_MS = 40_000;
 const FINALITY_DEPTH = 3;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [1_000, 4_000, 16_000] as const;
@@ -399,6 +405,7 @@ export type PollSummary = {
   projected: number;
   skipped: number;
   failed: number;
+  deferred: number;
 };
 
 export type PollDeps = {
@@ -410,6 +417,7 @@ export type PollDeps = {
   loadDecoder: () => Promise<((stateHex: string) => DecodedState) | null>;
   config: () => { url: string; token: string };
   fetchImpl: typeof fetch;
+  now: () => number;
 };
 
 const retryParse = <T>(
@@ -478,6 +486,7 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
     projected: 0,
     skipped: 0,
     failed: 0,
+    deferred: 0,
   };
   if (pending.length === 0) return summary;
   const decode = requireDecoder(await deps.loadDecoder());
@@ -490,39 +499,55 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
     parseHead,
     "bad head block",
   );
-  for (const order of pending) {
-    try {
-      const action = await retryParse(
-        transport,
-        LATEST_CONTRACT_STATE,
-        { address: order.address },
-        parseAction,
-        "bad contract action",
-      );
-      const plan = planObservation({
-        action,
-        headHeight,
-        lastStateHex: order.lastStateHex,
-        decode,
-      });
-      if (plan.kind !== "project") {
-        summary.skipped += 1;
-        continue;
+
+  const startedAt = deps.now();
+  const queue = [...pending];
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      // Deadline first: a tick that has run out of time must not start new
+      // work, or the whole run is killed and the next one is skipped.
+      if (deps.now() - startedAt >= POLL_DEADLINE_MS) return;
+      const order = queue.shift();
+      if (!order) return;
+      try {
+        const action = await retryParse(
+          transport,
+          LATEST_CONTRACT_STATE,
+          { address: order.address },
+          parseAction,
+          "bad contract action",
+        );
+        const plan = planObservation({
+          action,
+          headHeight,
+          lastStateHex: order.lastStateHex,
+          decode,
+        });
+        if (plan.kind !== "project") {
+          summary.skipped += 1;
+          continue;
+        }
+        const committed = await commitObservation(
+          (ref, args) => deps.runMutation(ref, args as Record<string, unknown>),
+          order,
+          plan,
+        );
+        if (!committed) {
+          summary.skipped += 1;
+          continue;
+        }
+        summary.projected += 1;
+      } catch {
+        summary.failed += 1;
       }
-      const committed = await commitObservation(
-        (ref, args) => deps.runMutation(ref, args as Record<string, unknown>),
-        order,
-        plan,
-      );
-      if (!committed) {
-        summary.skipped += 1;
-        continue;
-      }
-      summary.projected += 1;
-    } catch {
-      summary.failed += 1;
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(POLL_CONCURRENCY, pending.length) }, worker),
+  );
+  // Whatever the pool never reached is deferred, not lost: the next tick
+  // re-reads it from `pendingOrders`.
+  summary.deferred = queue.length;
   return summary;
 }
 
@@ -533,6 +558,7 @@ export const poll = internalActionGeneric({
     projected: v.number(),
     skipped: v.number(),
     failed: v.number(),
+    deferred: v.number(),
   }),
   handler: async (ctx) =>
     runPoll({
@@ -542,6 +568,7 @@ export const poll = internalActionGeneric({
       loadDecoder: loadRuntimeDecoder,
       config: indexerConfig,
       fetchImpl: fetch,
+      now: Date.now,
     }),
 });
 

@@ -8,8 +8,14 @@ import { type GenericId, v } from "convex/values";
 import { mailConfig, sendEmail } from "../packages/backend/src/email";
 import { env } from "../packages/backend/src/encoding";
 import {
+  type ReleaseEvidence,
+  releaseFlags,
+} from "../packages/backend/src/release-flags";
+import {
+  operatorConfig,
   operatorEmails,
   requireSessionSubject,
+  warnIfNoOperator,
 } from "../packages/backend/src/session-identity";
 import type { AdmissionContext, ReadContext, ReadDb } from "./admissionContext";
 
@@ -96,6 +102,30 @@ export const read = internalQueryGeneric({
       keyPresent: v.boolean(),
       from: v.union(v.string(), v.null()),
     }),
+    /**
+     * R35 (b): whether an operator is configured at all. `orders.order` and the
+     * digest both depend on it, and until now the only way to find out was to
+     * try a dispute and watch it fail. A count, never the addresses.
+     */
+    operator: v.object({
+      configured: v.boolean(),
+      count: v.number(),
+    }),
+    /**
+     * R35 (c): the release flags, derived from what is actually stored rather
+     * than from the frozen defaults.
+     *
+     * `releaseFlags()` was written for this and then never called outside its own
+     * test and ten integration fixtures that hardcode `false` — so the module
+     * decided nothing. Reading the real `canonicalBindings` row and the real
+     * `chainOrders` reservation makes the flags an observation of the deployment
+     * instead of a constant, which is what they were always meant to be. The
+     * module stays: it is the roadmap gate, not dead code.
+     */
+    release: v.object({
+      immutableOrderAdmission: v.boolean(),
+      r1Complete: v.boolean(),
+    }),
   }),
   handler: async (ctx: ReadContext, args) => {
     const subject = requireSessionSubject(await ctx.auth.getUserIdentity());
@@ -109,13 +139,54 @@ export const read = internalQueryGeneric({
         .map((row) => row.accountId),
     );
     let ops: ByIntentRow[] = [];
+    let evidence: ReleaseEvidence | undefined;
     if (args.paymentIntentId) {
       const payment = await ctx.db.get(args.paymentIntentId);
-      if (payment && accountIds.has(payment.buyerAccountId))
+      if (payment && accountIds.has(payment.buyerAccountId)) {
         ops = await byIntentRows(
           ctx.db as never,
           args.paymentIntentId as unknown as string,
         );
+        // R35 (c): the two receipts `releaseFlags` already knows how to read,
+        // fetched over existing indexes. Both are scoped to this buyer's own
+        // payment intent, so the read adds no reach.
+        const [binding, chain] = await Promise.all([
+          ctx.db
+            .query("canonicalBindings")
+            .withIndex("by_quote", (q) => q.eq("quoteId", payment.quoteId))
+            .unique(),
+          ctx.db
+            .query("chainOrders")
+            .withIndex("by_quote", (q) => q.eq("quoteId", payment.quoteId))
+            .unique(),
+        ]);
+        evidence = {
+          canonicalBinding: binding
+            ? {
+                source: "canonicalBindings",
+                verdict: "bound",
+                binding: {
+                  network: binding.network,
+                  nonce: binding.nonce,
+                  address: binding.address,
+                  quoteId: binding.quoteId,
+                  observationId: binding.observationId,
+                  authorizationId: binding.authorizationId,
+                  boundAt: binding.boundAt,
+                },
+              }
+            : undefined,
+          chainReservation: chain
+            ? {
+                source: "chain-observer",
+                kind: "reserved",
+                orderId: chain.orderId,
+                address: chain.address,
+                observedAt: chain.observedAt ?? 0,
+              }
+            : undefined,
+        };
+      }
     }
     const inbox = [];
     for (const accountId of accountIds) {
@@ -142,6 +213,8 @@ export const read = internalQueryGeneric({
         processed: row.processedAt !== undefined,
       })),
       mail: mailConfig(),
+      operator: operatorConfig(),
+      release: releaseFlags(evidence),
     };
   },
 });
@@ -271,7 +344,10 @@ export const digest = internalActionGeneric({
     // R23 H-06: a misconfigured deployment used to look identical to a healthy
     // one — the digest returned quietly and the queue grew unseen. Both skips are
     // now distinguishable in the return value, and the dangerous one is logged.
-    if (recipients.length === 0) {
+    // R35 (b): the emptiness test is `operatorConfig()`, not a re-derived
+    // `recipients.length`, so the digest and the API cannot disagree.
+    if (!operatorConfig().configured) {
+      warnIfNoOperator();
       console.warn(
         "digest-skipped",
         JSON.stringify({

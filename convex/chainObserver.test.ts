@@ -421,6 +421,7 @@ function pollDeps(options: {
   pending: PollOrder[];
   verdict?: { kind: string } | null;
   decoder?: ((stateHex: string) => DecodedState) | null;
+  now?: () => number;
 }) {
   const mutations: { args: Record<string, unknown> }[] = [];
   const requests: string[] = [];
@@ -447,6 +448,7 @@ function pollDeps(options: {
           : HEAD_HEIGHT_RESPONSE,
       );
     }) as unknown as typeof fetch,
+    now: options.now ?? (() => 0),
   };
   return { deps, mutations, requests };
 }
@@ -506,7 +508,116 @@ describe("runPoll: markObserved is gated on a bind verdict", () => {
       projected: 0,
       skipped: 0,
       failed: 0,
+      deferred: 0,
     });
+  });
+});
+
+/**
+ * R35 (a): the poll used to walk `pending` one order at a time. At
+ * `PENDING_LIMIT` 25 that is 25 sequential HTTPS round-trips inside a 60 s
+ * cron, and a slow indexer made a tick outlast its own interval. Convex then
+ * *skips* the following runs ("At most one run of each cron job can be
+ * executing at any moment. If the function … takes too long to run, following
+ * runs of the cron job may be skipped", docs.convex.dev/scheduling/cron-jobs,
+ * accessed 2026-10-28), so observation fell behind exactly when the board was
+ * busiest. These tests pin the three properties that fix it.
+ */
+describe("R35 (a): the poll runs in bounded waves under a deadline", () => {
+  const manyOrders = (n: number): PollOrder[] =>
+    Array.from({ length: n }, (_, i) =>
+      pendingFixture({ orderId: `order_${i}` }),
+    );
+
+  test("concurrency never exceeds POLL_CONCURRENCY, and all orders finish", async () => {
+    // The fetch stub counts how many action requests are in flight at once.
+    // A `for` loop would peak at 1; `Promise.all(pending)` would peak at 25.
+    let inFlight = 0;
+    let peak = 0;
+    const { deps } = pollDeps({
+      pending: manyOrders(20),
+      verdict: { kind: "bind" },
+    });
+    deps.fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = String(init?.body ?? "");
+      if (!body.includes("contractAction")) {
+        return response(200, HEAD_HEIGHT_RESPONSE);
+      }
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      // Yield so other workers can enter before this one leaves.
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return response(200, ACTION_RESPONSE);
+    }) as unknown as typeof fetch;
+
+    const summary = await runPoll(deps);
+    expect(peak).toBeLessThanOrEqual(6);
+    expect(peak).toBeGreaterThan(1);
+    expect(summary.projected).toBe(20);
+    expect(summary.deferred).toBe(0);
+  });
+
+  test("the deadline stops scheduling new orders and reports the rest as deferred", async () => {
+    // A clock that advances 10 s on every read: the 40 s deadline is hit on the
+    // 5th read, so only a handful of orders can ever start. This is why `now`
+    // is injected — a real clock would need a 40 s sleep to prove the same.
+    let ticks = 0;
+    const { deps, requests } = pollDeps({
+      pending: manyOrders(20),
+      verdict: { kind: "bind" },
+      now: () => {
+        ticks += 1;
+        return ticks * 10_000;
+      },
+    });
+
+    const summary = await runPoll(deps);
+    // Every order is accounted for: nothing silently vanishes.
+    expect(
+      summary.projected + summary.skipped + summary.failed + summary.deferred,
+    ).toBe(20);
+    expect(summary.deferred).toBeGreaterThan(0);
+    // Deferred orders were never fetched, so the tick spent no indexer credit
+    // on work it could not finish.
+    const actionRequests = requests.filter((r) => r.includes("contractAction"));
+    expect(actionRequests.length).toBe(20 - summary.deferred);
+  });
+
+  test("one failing order does not abort the others", async () => {
+    let seen = 0;
+    const { deps } = pollDeps({
+      pending: manyOrders(12),
+      verdict: { kind: "bind" },
+    });
+    deps.fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = String(init?.body ?? "");
+      if (!body.includes("contractAction")) {
+        return response(200, HEAD_HEIGHT_RESPONSE);
+      }
+      seen += 1;
+      // Fail the third action request outright with a non-retryable status.
+      if (seen === 3) return response(400, { error: "boom" });
+      return response(200, ACTION_RESPONSE);
+    }) as unknown as typeof fetch;
+
+    const summary = await runPoll(deps);
+    expect(summary.failed).toBe(1);
+    expect(summary.projected).toBe(11);
+    expect(summary.deferred).toBe(0);
+  });
+
+  test("the summary counts still add up to the pending set", async () => {
+    const { deps } = pollDeps({
+      pending: manyOrders(9),
+      verdict: { kind: "stale" },
+    });
+    const summary = await runPoll(deps);
+    expect(summary.polled).toBe(9);
+    expect(summary.skipped).toBe(9);
+    expect(summary.projected).toBe(0);
+    expect(summary.failed).toBe(0);
+    expect(summary.deferred).toBe(0);
   });
 });
 

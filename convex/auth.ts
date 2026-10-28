@@ -9,8 +9,10 @@ import { inviteFailureReason, sendEmail } from "../packages/backend/src/email";
 import { env } from "../packages/backend/src/encoding";
 import { ORDER_WINDOWS_MS } from "../packages/backend/src/order-windows";
 import {
+  operatorConfig,
   operatorEmails,
   requireSessionSubject,
+  warnIfNoOperator,
 } from "../packages/backend/src/session-identity";
 import { WALLET_EMAIL_DOMAIN } from "../packages/backend/src/wallet-auth";
 import { components } from "./_generated/api";
@@ -298,7 +300,13 @@ export function operatorAllowed(
 }
 
 export async function isOperator(ctx: QueryCtx): Promise<boolean> {
-  if (operatorEmails().length === 0) return false;
+  // R35 (b): `operatorConfig()` is the single source for "is an operator
+  // configured", shared with `diagnostics.read` and the digest. An unconfigured
+  // deployment logs once instead of failing silently on every dispute.
+  if (!operatorConfig().configured) {
+    warnIfNoOperator();
+    return false;
+  }
   const user = await authComponent.safeGetAuthUser(ctx);
   return operatorAllowed(user?.email);
 }

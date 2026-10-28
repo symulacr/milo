@@ -87,3 +87,35 @@ export function operatorEmails(): string[] {
     .filter((value) => value.length > 0);
   return cachedList;
 }
+
+/**
+ * R35 (b): the one place that answers "is an operator configured?".
+ *
+ * Three call sites used to answer it three ways — the digest tested
+ * `recipients.length === 0`, `orders.order` tested `operatorEmails().length > 0`
+ * inside `operatorAllowed`, and nothing at all answered it for diagnostics — so
+ * a misconfigured deployment looked healthy from two of the three. They now all
+ * read this, and `configured: false` is a fact the API can return instead of an
+ * absence a caller has to infer.
+ */
+export type OperatorConfig = { configured: boolean; count: number };
+
+export function operatorConfig(): OperatorConfig {
+  const count = operatorEmails().length;
+  return { configured: count > 0, count };
+}
+
+/**
+ * Logged once per process, not once per call: the point is to make a
+ * misconfiguration visible in the deployment log, not to flood a 60 s cron.
+ */
+let warnedUnconfigured = false;
+
+export function warnIfNoOperator(): void {
+  if (warnedUnconfigured || operatorEmails().length > 0) return;
+  warnedUnconfigured = true;
+  console.warn(
+    "operator-unconfigured",
+    "MILO_OPERATOR_EMAILS is empty: no dispute can be resolved and no operator key can be issued.",
+  );
+}
