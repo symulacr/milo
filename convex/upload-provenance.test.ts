@@ -291,3 +291,80 @@ describe("upload URL to storageId provenance is closed", () => {
     expect(f.tables.fileGrants[0].storageId).toBeUndefined();
   });
 });
+
+/**
+ * R28/R29 AC-01: `grantsForOrder` was an unbounded `.collect()` over a table
+ * that only grows (the sweep deliberately keeps consumed grants — see
+ * `sweepGrants`). Convex caps a transaction at 32,000 documents scanned, so a
+ * long-lived order would eventually fail every `freeze` and never complete.
+ *
+ * The bound is 512, **newest-first**. The ordering is the load-bearing half:
+ * with an ascending window, 600 old consumed grants would push the two live
+ * ones out of range, `requestUpload` would count 0 outstanding, and a merchant
+ * could open a fourth upload slot — the exact trap this test pins by value.
+ */
+describe("R29 AC-01: the per-order grant read is bounded and newest-first", () => {
+  test("the ceiling is exported and far above any real order", async () => {
+    const { ORDER_GRANT_LIMIT } = await import("./files");
+    // `requestUpload` allows 3 live grants, so 512 needs 171 upload cycles.
+    expect(ORDER_GRANT_LIMIT).toBe(512);
+    expect(ORDER_GRANT_LIMIT).toBeGreaterThan(3 * 100);
+  });
+
+  test("live grants are found even behind 600 consumed ones", async () => {
+    const f = databaseDouble();
+    const now = Date.now();
+    for (let i = 0; i < 600; i++) {
+      f.tables.fileGrants.push({
+        _id: `old-${i}`,
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: now + GRANT_TTL_MS,
+        consumed: true,
+        storageId: `blob-${i}`,
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      f.tables.fileGrants.push({
+        _id: `live-${i}`,
+        orderId: "order-1",
+        uploaderId: "merchant-1",
+        expiresAt: now + GRANT_TTL_MS,
+        consumed: false,
+      });
+    }
+    // Two live grants: one more is allowed.
+    const issued = await requestUpload(f.ctx, { orderId: "order-1" });
+    expect(issued.grantId).toBeTruthy();
+    // Three live grants now, so the next call must refuse. This is the
+    // assertion that fails on an ascending read: the two live grants would be
+    // outside the window and the count would read 1, not 3.
+    await expect(requestUpload(f.ctx, { orderId: "order-1" })).rejects.toThrow(
+      "outstanding upload limit",
+    );
+  });
+
+  /**
+   * The bound itself, asserted on the source of truth rather than through a
+   * proxy. `requestUpload` reaches `grantsForOrder` through a closure over
+   * `ctx.db`, so patching the double afterwards cannot observe the read — an
+   * earlier version of this test "passed" with `sizes.length === 0`, which is a
+   * false pass. The ordering test above is the behavioural proof; this one
+   * pins that the read is a `.take`, not a `.collect`.
+   */
+  test("the per-order read is a bounded take, not an unbounded collect", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./files.ts", import.meta.url),
+      "utf8",
+    );
+    const fn = source.slice(
+      source.indexOf("const grantsForOrder ="),
+      source.indexOf("/** One sweep run removes"),
+    );
+    expect(fn).toContain(".take(ORDER_GRANT_LIMIT)");
+    expect(fn).not.toContain(".collect()");
+    // Newest-first, so a freeze's own grants are inside the window.
+    expect(fn).toContain('.order("desc")');
+  });
+});

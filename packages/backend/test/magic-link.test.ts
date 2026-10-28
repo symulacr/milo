@@ -520,11 +520,11 @@ describe("R24 G-02: a link prefetch does not burn the magic link", () => {
       // `URL` is this file's link fixture, so the global is named explicitly.
       return new globalThis.URL(sent).searchParams.get("token") ?? "";
     };
-    const verify = (query: string) =>
+    const verify = (query: string, headers: Record<string, string> = {}) =>
       auth.handler(
         new Request(
           `https://site.convex.site/api/auth/magic-link/verify?${query}`,
-          { method: "GET", redirect: "manual" },
+          { method: "GET", redirect: "manual", headers },
         ),
       );
     return { issue, verify };
@@ -604,5 +604,164 @@ describe("R24 G-02: a link prefetch does not burn the magic link", () => {
     const page = await evil.text();
     expect(page).not.toContain("<script>");
     expect(page).toContain("&quot;&gt;&lt;script&gt;");
+  });
+});
+
+/**
+ * R28 G-02r: the confirm step stops a gateway that only *fetches* the link. One
+ * that follows the form and re-submits it would still burn the token, so a
+ * confirmed request must also look like a document navigation.
+ *
+ * The rule is **inverted on purpose**. `Sec-Fetch-User` is unsupported on Safari
+ * and every iOS browser (MDN, 2026-09-28), so requiring it would break sign-in
+ * for every iPhone. Instead a request is refused only when it *declares* it is
+ * not a navigation — absent headers are allowed. The tests below pin both
+ * directions: the scripted shapes are refused, and every real-browser shape
+ * (including the header-less Safari case) still signs in.
+ */
+describe("R28 G-02r: a scripted form submit does not burn the link either", () => {
+  const makeAuth = async () => {
+    const { betterAuth } = await import("better-auth/minimal");
+    const { magicLink } = await import("better-auth/plugins");
+    const { memoryAdapter } = await import("better-auth/adapters/memory");
+    const { confirmMagicLink } = await import("../../../convex/auth");
+    const db: Record<string, unknown[]> = {
+      user: [],
+      session: [],
+      account: [],
+      verification: [],
+    };
+    let sent = "";
+    const auth = betterAuth({
+      baseURL: "https://site.convex.site",
+      secret: "t".repeat(40),
+      database: memoryAdapter(db),
+      hooks: { before: confirmMagicLink },
+      plugins: [
+        magicLink({
+          sendMagicLink: async ({ url }: { url: string }) => {
+            sent = url;
+          },
+        }),
+      ],
+    });
+    const issue = async () => {
+      await auth.handler(
+        new Request("https://site.convex.site/api/auth/sign-in/magic-link", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://site.convex.site",
+          },
+          body: JSON.stringify({ email: "buyer@example.com" }),
+        }),
+      );
+      return new globalThis.URL(sent).searchParams.get("token") ?? "";
+    };
+    const confirm = (token: string, headers: Record<string, string> = {}) =>
+      auth.handler(
+        new Request(
+          // `callbackURL` is what makes a successful verify a 302. Without it
+          // the endpoint returns the session as JSON with status 200, which is
+          // still a sign-in — so the assertions below check the cookie, not the
+          // status, wherever a redirect is not the thing under test.
+          `https://site.convex.site/api/auth/magic-link/verify?token=${token}&confirm=1&callbackURL=%2Forders`,
+          { method: "GET", redirect: "manual", headers },
+        ),
+      );
+    return { issue, confirm };
+  };
+
+  /** The rule itself, by value, with no endpoint involved. */
+  test("only a declared non-navigation is refused", async () => {
+    const { isNotUserNavigation } = await import("../../../convex/auth");
+    const h = (headers: Record<string, string>) => new Headers(headers);
+    // Declared scripted: refused.
+    expect(isNotUserNavigation(h({ "sec-fetch-mode": "cors" }))).toBe(true);
+    expect(isNotUserNavigation(h({ "sec-fetch-mode": "no-cors" }))).toBe(true);
+    expect(isNotUserNavigation(h({ "sec-fetch-mode": "same-origin" }))).toBe(
+      true,
+    );
+    expect(isNotUserNavigation(h({ "sec-fetch-dest": "empty" }))).toBe(true);
+    expect(isNotUserNavigation(h({ "sec-fetch-dest": "image" }))).toBe(true);
+    // Declared navigation: allowed.
+    expect(isNotUserNavigation(h({ "sec-fetch-mode": "navigate" }))).toBe(
+      false,
+    );
+    expect(
+      isNotUserNavigation(
+        h({ "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" }),
+      ),
+    ).toBe(false);
+    // Nothing declared: allowed. This is the Safari / iOS / in-app case, and it
+    // is why the rule is inverted rather than requiring `Sec-Fetch-User`.
+    expect(isNotUserNavigation(h({}))).toBe(false);
+    expect(isNotUserNavigation(h({ "user-agent": "Safari" }))).toBe(false);
+  });
+
+  test("a cors submit gets the interstitial and leaves the token usable", async () => {
+    const { issue, confirm } = await makeAuth();
+    const token = await issue();
+    const scripted = await confirm(token, { "sec-fetch-mode": "cors" });
+    expect(scripted.status).toBe(200);
+    expect(scripted.headers.get("content-type")).toContain("text/html");
+    // The whole point: no session, and the token was not consumed.
+    expect(scripted.headers.getSetCookie()).toHaveLength(0);
+    const page = await scripted.text();
+    expect(page).toContain('name="confirm" value="1"');
+    // A real navigation still works afterwards — the link is not burned.
+    const human = await confirm(token, {
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
+    });
+    expect(human.status).toBe(302);
+    expect(human.headers.getSetCookie()).toHaveLength(1);
+  });
+
+  test("a fetch-dest submit is refused the same way", async () => {
+    const { issue, confirm } = await makeAuth();
+    const token = await issue();
+    const scripted = await confirm(token, { "sec-fetch-dest": "empty" });
+    expect(scripted.status).toBe(200);
+    expect(scripted.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  test("a request with no fetch metadata still signs in (Safari, iOS, webviews)", async () => {
+    const { issue, confirm } = await makeAuth();
+    const token = await issue();
+    // Safari and every iOS browser send neither header. This must not regress.
+    const safari = await confirm(token, {});
+    expect(safari.status).toBe(302);
+    expect(safari.headers.getSetCookie()).toHaveLength(1);
+  });
+
+  test("the interstitial is still the first hop for a bare prefetch", async () => {
+    const { betterAuth } = await import("better-auth/minimal");
+    const { magicLink } = await import("better-auth/plugins");
+    const { memoryAdapter } = await import("better-auth/adapters/memory");
+    const { confirmMagicLink } = await import("../../../convex/auth");
+    const auth = betterAuth({
+      baseURL: "https://site.convex.site",
+      secret: "t".repeat(40),
+      database: memoryAdapter({
+        user: [],
+        session: [],
+        account: [],
+        verification: [],
+      }),
+      hooks: { before: confirmMagicLink },
+      plugins: [magicLink({ sendMagicLink: async () => {} })],
+    });
+    // No `confirm` at all: the R24 behaviour, unchanged by this rule. The page
+    // is served before the token is read, so even a bogus token is harmless.
+    const prefetch = await auth.handler(
+      new Request(
+        "https://site.convex.site/api/auth/magic-link/verify?token=bogus",
+        { method: "GET", redirect: "manual" },
+      ),
+    );
+    expect(prefetch.status).toBe(200);
+    expect(prefetch.headers.get("content-type")).toContain("text/html");
+    expect(prefetch.headers.getSetCookie()).toHaveLength(0);
   });
 });

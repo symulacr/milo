@@ -101,6 +101,23 @@ function ctxDouble(identity: { issuer: string; subject: string } | null) {
             collect: async () => matched(),
             take: async (n: number) => matched().slice(0, n),
             first: async () => matched()[0] ?? null,
+            // R28: `.order("desc")` reverses the range, as Convex does. The
+            // evidence read takes the newest observation, so a double that
+            // ignored the direction would pass while reading the oldest.
+            order: (direction: "asc" | "desc") => {
+              const ordered = () =>
+                direction === "desc" ? [...matched()].reverse() : matched();
+              return {
+                unique: async () => {
+                  const rows = ordered();
+                  if (rows.length > 1) throw new Error("Duplicate rows");
+                  return rows[0] ?? null;
+                },
+                collect: async () => ordered(),
+                take: async (n: number) => ordered().slice(0, n),
+                first: async () => ordered()[0] ?? null,
+              };
+            },
             filter: (predicate: unknown) => {
               const next = {
                 filter: (second: unknown) => ({

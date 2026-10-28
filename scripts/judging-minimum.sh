@@ -111,6 +111,38 @@ j6() {
   fi
 }
 
-j1; j2; j3; j4; j5; j6
+j7() {
+  # The taste lint is not in the repo, so a clone cannot run it. Report MET when
+  # it passes, NOT MET when it finds a FAIL, and OWNER when the tool is absent:
+  # that keeps it out of the failing count on CI (where it never exists) while
+  # still failing a local run that regresses.
+  local lint="${TASTE_LINT:-}" dir
+  if [ -z "$lint" ]; then
+    # Walk up from the repo root: the skill sits beside the checkout in the
+    # common case, but a sandbox can be several levels deeper.
+    dir=$(pwd)
+    while [ "$dir" != "/" ]; do
+      if [ -f "$dir/.agents/skills/design-taste-frontend/scripts/lint.mjs" ]; then
+        lint="$dir/.agents/skills/design-taste-frontend/scripts/lint.mjs"
+        break
+      fi
+      dir=$(dirname "$dir")
+    done
+  fi
+  if [ -z "$lint" ] || [ ! -f "$lint" ]; then
+    needs_owner J7 "taste lint not installed (set TASTE_LINT)"
+    return
+  fi
+  local out
+  out=$(node "$lint" apps/web/src 2>&1)
+  if echo "$out" | grep -q 'RESULT: 0 FAIL'; then
+    met J7 "taste lint clean"
+  else
+    echo "$out" | grep -E 'RESULT|^\s+\[' | head -12
+    not_met J7 "taste lint found FAILs"
+  fi
+}
+
+j1; j2; j3; j4; j5; j6; j7
 echo "=== unmet: $unmet  owner: $owner ==="
 [ "$unmet" -eq 0 ]

@@ -18,6 +18,13 @@ const STALE_CHUNK =
 /**
  * One guarded reload per tab. Without the guard a genuinely broken chunk would
  * reload forever; with it, a second failure is left to the error boundary.
+ *
+ * AD-04: the flag used to be set and never cleared, so it guarded the *tab's
+ * lifetime* rather than one reload. A tab that survived two deploys — a long
+ * session, or a laptop left open overnight — could only ever recover from the
+ * first: the second stale chunk found the flag already set and fell through to
+ * the error boundary with no way back. The flag is now cleared once the app has
+ * mounted successfully, which is the moment we know the reload worked.
  */
 function reloadOnce(): void {
   try {
@@ -27,6 +34,15 @@ function reloadOnce(): void {
     // Storage can throw in a locked-down context; reloading once is still right.
   }
   location.reload();
+}
+
+/** The reload worked, so arm the guard again for the next deploy. */
+function clearReloadGuard(): void {
+  try {
+    sessionStorage.removeItem("milo:reloaded");
+  } catch {
+    // Nothing to clear.
+  }
 }
 
 /**
@@ -63,4 +79,7 @@ export function mount(App: ComponentType) {
       <App />
     </BrowserRouter>,
   );
+  // The app mounted, so the chunk it needed is present: the reload succeeded and
+  // the guard can be re-armed for the next deploy (AD-04).
+  clearReloadGuard();
 }

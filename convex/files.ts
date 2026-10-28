@@ -105,11 +105,26 @@ type DeliveryRow = {
 const grantRow = (ctx: AdmissionContext, id: string) =>
   ctx.db.get(id as never) as Promise<FileGrantRow | null>;
 
+/**
+ * R25 AC-01: a hard ceiling on the grants one order read may return.
+ *
+ * This is a **safety bound, not a working limit**: `requestUpload` allows 3 live
+ * grants, so an order needs 171 upload cycles to reach it. It exists because the
+ * read was an unbounded `.collect()` over a table that only grows (the sweep
+ * deliberately keeps consumed grants — see `sweepGrants`), and Convex caps a
+ * transaction at 32,000 documents scanned. 512 keeps every realistic order
+ * whole and the transaction far from the cap.
+ */
+export const ORDER_GRANT_LIMIT = 512;
+
 const grantsForOrder = (ctx: AdmissionContext, orderId: string) =>
   ctx.db
     .query("fileGrants")
     .withIndex("by_order", (q) => q.eq("orderId", orderId))
-    .collect() as Promise<FileGrantRow[]>;
+    // Newest first, so the grants a freeze is about to use are always inside
+    // the window even for an order that somehow reached the ceiling.
+    .order("desc")
+    .take(ORDER_GRANT_LIMIT) as Promise<FileGrantRow[]>;
 
 /** One sweep run removes at most this many grants. */
 export const SWEEP_BATCH = 64;
@@ -449,6 +464,16 @@ export async function sweepGrants(ctx: AdmissionContext) {
   // A cron sweep must not load every grant ever issued. `by_expiry` bounds the
   // read to the grants that are already past the grace window, and the cap
   // keeps one run small; the next run continues where this one stopped.
+  //
+  // R25 AC-01: a CONSUMED grant is still skipped here, and that is deliberate.
+  // `freeze` needs the order's consumed grants to prove which storage objects
+  // are attached, so deleting one before the delivery exists would break the
+  // freeze. Deleting only after a delivery exists was tried and rejected: a
+  // consumed grant with no delivery would be returned by this same
+  // `by_expiry` range on every run, so the batch would never advance past it
+  // and nothing else would ever be swept. The read bound in `grantsForOrder`
+  // is what keeps the transaction under the 32,000-document cap; this sweep
+  // keeps its original, non-starving shape.
   const stale = (await ctx.db
     .query("fileGrants")
     .withIndex("by_expiry", (q) => q.lt("expiresAt", cutoff))

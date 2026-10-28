@@ -19,6 +19,7 @@ import {
   hexToBytes,
   randomHex,
 } from "../packages/backend/src/encoding";
+import { REFRESH_COOLDOWN_MS } from "../packages/backend/src/order-windows";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { stripeMode } from "../packages/backend/src/stripe-mode";
 import {
@@ -492,6 +493,17 @@ const ORDER_SCOPE_MEMBER = makeFunctionReference<
   boolean
 >("chainObserver:orderScopeMember");
 
+/**
+ * R29 AC-03: the same per-order indexer cap `refreshOrder` uses. `attachContract`
+ * spends two Blockfrost reads before `recordDeployment` can replay, so a repeat
+ * call is not free even though the write is idempotent.
+ */
+const ORDER_OBSERVED_AT = makeFunctionReference<
+  "query",
+  { quoteId: string },
+  { observedAt: number | null } | null
+>("chainObserver:orderForQuote");
+
 const ADMISSION_BIND = makeFunctionReference<"mutation">("admission:bind");
 
 const PAYMENT_FOR_QUOTE = makeFunctionReference<
@@ -574,6 +586,19 @@ export const attachContract = actionGeneric({
     if (!quote) return reject("The order is not ready for its contract.");
     if (!quote.buyerCommitment || !quote.operatorCommitment)
       return reject("The order is not ready for its contract.");
+    // R29 AC-03: cap the indexer spend per order. This runs after the cheap
+    // refusals so a bad address or a stranger costs nothing, and before the two
+    // Blockfrost reads so a loop cannot drain the shared daily allowance.
+    const lastRead = await ctx.runQuery(ORDER_OBSERVED_AT, {
+      quoteId: args.quoteId,
+    });
+    if (
+      lastRead?.observedAt != null &&
+      Date.now() - lastRead.observedAt < REFRESH_COOLDOWN_MS
+    )
+      return reject(
+        "This order was just read from the chain. Try again shortly.",
+      );
     const { ContractState } = await import("@midnight-ntwrk/compact-runtime");
     const { ledger } = await import(
       "../packages/contract/generated/contract/index.js"

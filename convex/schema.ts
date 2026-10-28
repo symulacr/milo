@@ -133,6 +133,13 @@ export default defineSchema({
     revision: n,
     observedAt: n,
     kind: s,
+    /**
+     * R25 O-01: the dispute evidence the contract committed at this revision.
+     * Optional and therefore additive — every row written before this field
+     * existed still reads (the read path treats absent as "not recorded"), and
+     * a deployment that never redeploys the contract is unaffected.
+     */
+    evidenceCommitment: v.optional(s),
   }).index("by_order", ["orderId"]),
   memberships: defineTable({
     privySubject: s,

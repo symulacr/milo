@@ -16,6 +16,20 @@ export const ORDER_WINDOWS_MS = {
  */
 export const EXPIRY_GRACE_MS = 120_000;
 
+/**
+ * R29 AC-03: the shortest gap between two on-demand indexer reads for one
+ * order. `refreshOrder` and `attachContract` each spend two Blockfrost reads
+ * against the project id the 60 s `poll` cron also uses, so an authenticated
+ * member looping either one could exhaust the daily allowance and stop
+ * observation for every order.
+ *
+ * 30 s sits below the cron cadence — a human pressing "refresh" is never
+ * blocked — and far above what a loop needs. It lives here, in the module both
+ * runtimes already import, because `stripeProvisioning` is a Node action and
+ * cannot import from `convex/chainObserver` (Convex runtime).
+ */
+export const REFRESH_COOLDOWN_MS = 30_000;
+
 export type Deadlines = {
   acceptance: number;
   delivery: number;

@@ -244,6 +244,52 @@ describe("a stale chunk after a deploy", () => {
       boot.sessionStorage.clear();
     }
   });
+
+  test("a successful mount re-arms the guard for the next deploy", async () => {
+    const boot = globalThis as unknown as {
+      location: { reload: () => void };
+      sessionStorage: Storage;
+      dispatchEvent: (e: Event) => boolean;
+    };
+    let reloads = 0;
+    const originalReload = boot.location.reload;
+    boot.location.reload = () => {
+      reloads += 1;
+    };
+    boot.sessionStorage.clear();
+    const { installRecovery, mount } = await import("./bootstrap");
+    installRecovery();
+    const stale = () => {
+      const event = new Event("unhandledrejection", { cancelable: true });
+      Object.defineProperty(event, "reason", {
+        value: new TypeError(
+          "Failed to fetch dynamically imported module: /chunk-old.js",
+        ),
+      });
+      return event;
+    };
+    try {
+      boot.dispatchEvent(stale());
+      expect(reloads).toBe(1);
+      // The reload lands and the app mounts: the guard must be re-armed.
+      // `mount` needs a #root and a component; a stub App is enough, because
+      // the only behaviour under test is the flag being cleared.
+      const root = boot as unknown as { document: Document };
+      const host = root.document.createElement("div");
+      host.id = "root";
+      root.document.body.append(host as never);
+      mount((() => null) as never);
+      expect(boot.sessionStorage.getItem("milo:reloaded")).toBeNull();
+      // So the NEXT deploy's stale chunk reloads again, once.
+      boot.dispatchEvent(stale());
+      expect(reloads).toBe(2);
+      boot.dispatchEvent(stale());
+      expect(reloads).toBe(2);
+    } finally {
+      boot.location.reload = originalReload;
+      boot.sessionStorage.clear();
+    }
+  });
 });
 
 const RESEND_403 =
@@ -1683,5 +1729,103 @@ describe("Z-05 the countdown is announced", () => {
     // Assertive would interrupt the action buttons, which are the thing the
     // user is trying to reach.
     expect(source().includes('aria-live="assertive"')).toBe(false);
+  });
+});
+
+describe("AD-02 a reload mid-quote does not lose the brief", () => {
+  // `bootstrap.tsx` reloads the tab once when a hashed chunk is missing after a
+  // deploy — correctly, because a broken chunk cannot be repaired without one.
+  // The order page's note survives that (r23), but the quote form had no
+  // persistence at all, so a reload mid-quote lost the whole brief.
+  const keys = async () => {
+    const module = (await import("./workspace/keys")) as unknown as {
+      readQuoteDraft?: () => {
+        studio: string;
+        brief: string;
+        amount: string;
+        email: string;
+      };
+      writeQuoteDraft?: (draft: {
+        studio: string;
+        brief: string;
+        amount: string;
+        email: string;
+      }) => void;
+    };
+    return {
+      readQuoteDraft:
+        module.readQuoteDraft ??
+        (() => ({ studio: "", brief: "", amount: "", email: "" })),
+      writeQuoteDraft: module.writeQuoteDraft ?? (() => {}),
+    };
+  };
+
+  test("a written draft reads back, so a reload restores it", async () => {
+    const { readQuoteDraft, writeQuoteDraft } = await keys();
+    writeQuoteDraft({
+      studio: "North Studio",
+      brief: "Three hero images for the winter collection.",
+      amount: "900",
+      email: "client@example.com",
+    });
+    expect(readQuoteDraft()).toEqual({
+      studio: "North Studio",
+      brief: "Three hero images for the winter collection.",
+      amount: "900",
+      email: "client@example.com",
+    });
+  });
+
+  test("an all-empty draft clears the entry instead of storing one", async () => {
+    const { readQuoteDraft, writeQuoteDraft } = await keys();
+    writeQuoteDraft({ studio: "x", brief: "y", amount: "1", email: "z" });
+    writeQuoteDraft({ studio: "", brief: "", amount: "", email: "" });
+    expect(readQuoteDraft()).toEqual({
+      studio: "",
+      brief: "",
+      amount: "",
+      email: "",
+    });
+  });
+
+  test("the form restores the draft and clears it once the quote exists", () => {
+    const text = readFileSync("apps/web/src/routes/NewQuote.tsx", "utf8");
+    // Read once on mount, so the fields pre-fill after a reload.
+    expect(text.includes("useState(readQuoteDraft)")).toBe(true);
+    // Written on input, so the draft is current when the reload happens.
+    expect(text.includes("writeQuoteDraft({")).toBe(true);
+    // Every field restores from it.
+    for (const field of ["studio", "brief", "amount", "email"])
+      expect(text.includes(`defaultValue={draft.${field}}`)).toBe(true);
+    // Cleared on success, or the next quote inherits the previous brief.
+    expect(
+      text.includes('writeQuoteDraft({\n                  studio: ""'),
+    ).toBe(true);
+  });
+});
+
+describe("AD-05 an upload that loses the network says so", () => {
+  // Without a signal a dropped connection leaves the request hanging until the
+  // browser's own timeout (minutes), and a network failure throws
+  // `TypeError: Failed to fetch` — a browser internal that tells the user
+  // nothing and does not name the common cause.
+  const source = () => readFileSync("apps/web/src/workspace/flows.ts", "utf8");
+
+  test("the upload is bounded, so it cannot hang for minutes", () => {
+    expect(source().includes("AbortSignal.timeout(30_000)")).toBe(true);
+  });
+
+  test("offline and online failures get different, actionable sentences", () => {
+    const text = source();
+    // Offline names the cause and the remedy.
+    expect(
+      text.includes("this device is offline. Reconnect and try again."),
+    ).toBe(true);
+    // Online keeps the retry advice without blaming the device.
+    expect(text.includes("Check your connection and try again.")).toBe(true);
+  });
+
+  test("the branch is on navigator.onLine, not a guess", () => {
+    expect(source().includes("navigator.onLine")).toBe(true);
   });
 });

@@ -98,3 +98,44 @@ jobs:
             exit 1
           fi
           echo 'CSP narrowed to the configured origins.'
+
+  # The native Midnight lane needs no container runtime: setup-native-services.py
+  # extracts pinned binaries straight from the OCI registry over HTTPS and
+  # verifies the manifest, platform, layer and binary sha256. Nothing here is
+  # privileged. `milo` is a public repository, so standard runner minutes are
+  # free and unlimited; the only real cost is wall time.
+  #
+  # Advisory on purpose. This job is a SEPARATE job, so it cannot affect the
+  # `local-checks` job above, and `continue-on-error` means it cannot turn
+  # `main` red either. Remove that line once the lane has two green hosted runs.
+  native-network:
+    name: Native Midnight smoke (no container runtime)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - name: Check out source without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up exact integration Node runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '26.11.1'
+
+      - name: Install pinned Bun and root dependencies
+        run: |
+          test "$(node --version)" = 'v26.11.1'
+          sh scripts/setup.sh
+
+      # 416 MB of pinned binaries. Cached on the exact versions so a repeat run
+      # skips both downloads; a version bump misses the key and re-provisions.
+      - name: Restore native Midnight services
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/native-midnight
+          key: native-midnight-node-1.0.0-indexer-4.3.3-prover-8.1.3
+
+      - name: Run the native Midnight smoke
+        run: npm run test:native-network

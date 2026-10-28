@@ -44,6 +44,9 @@ const recordObservationArgs = v.object({
   phase: v.string(),
   revision: v.number(),
   deliveryManifest: v.optional(v.union(v.string(), v.null())),
+  // R25 O-01: optional, so an observer that has not been redeployed still
+  // writes a valid row and every existing row still reads.
+  evidenceCommitment: v.optional(v.string()),
 });
 
 const observationBinding = v.union(
@@ -165,6 +168,9 @@ export const recordObservation = internalMutationGeneric({
         ...(args.deliveryManifest !== undefined
           ? { deliveryManifest: args.deliveryManifest }
           : {}),
+        ...(args.evidenceCommitment !== undefined
+          ? { evidenceCommitment: args.evidenceCommitment }
+          : {}),
       },
       Date.now(),
     );
@@ -227,10 +233,13 @@ export const read = internalQueryGeneric({
         .query("deliveries")
         .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
         .collect(),
+      // R25 AC-01: bounded. Grants are kept forever by design (see
+      // `sweepGrants`), and this only feeds a fallback count, so a ceiling far
+      // above any real order is enough to keep the transaction bounded.
       ctx.db
         .query("fileGrants")
         .withIndex("by_order", (q) => q.eq("orderId", doc.orderId))
-        .collect(),
+        .take(512),
     ]);
     const lastDelivery = deliveries[deliveries.length - 1] as
       | { files?: unknown[] }
@@ -396,6 +405,13 @@ const orderDetailValidator = v.object({
       revision: v.number(),
       fresh: v.union(v.boolean(), v.null()),
       observedAt: v.union(v.number(), v.null()),
+      /**
+       * R25 O-01: the dispute evidence the chain committed, so a resolved
+       * dispute is auditable. `null` for a row observed before this field
+       * existed, and for an order that never disputed — the read path must not
+       * pretend "not recorded" is "no evidence".
+       */
+      evidenceCommitment: v.union(v.string(), v.null()),
     }),
     v.null(),
   ),
@@ -455,30 +471,41 @@ export const order = queryGeneric({
       : membership?.role === "merchant"
         ? "merchant"
         : "buyer";
-    const [observation, delivery, settlement] = await Promise.all([
-      payment
-        ? ctx.db
-            .query("paymentObservations")
-            .withIndex("by_payment_intent", (q) =>
-              q.eq("paymentIntentId", payment._id),
-            )
-            .unique()
-        : null,
-      chainOrder
-        ? ctx.db
-            .query("deliveries")
-            .withIndex("by_order", (q) => q.eq("orderId", chainOrder.orderId))
-            .first()
-        : null,
-      payment
-        ? ctx.db
-            .query("settlementOps")
-            .withIndex("by_intent_state", (q) =>
-              q.eq("paymentIntentId", payment._id).eq("state", "complete"),
-            )
-            .first()
-        : null,
-    ]);
+    const [observation, delivery, settlement, latestObservation] =
+      await Promise.all([
+        payment
+          ? ctx.db
+              .query("paymentObservations")
+              .withIndex("by_payment_intent", (q) =>
+                q.eq("paymentIntentId", payment._id),
+              )
+              .unique()
+          : null,
+        chainOrder
+          ? ctx.db
+              .query("deliveries")
+              .withIndex("by_order", (q) => q.eq("orderId", chainOrder.orderId))
+              .first()
+          : null,
+        payment
+          ? ctx.db
+              .query("settlementOps")
+              .withIndex("by_intent_state", (q) =>
+                q.eq("paymentIntentId", payment._id).eq("state", "complete"),
+              )
+              .first()
+          : null,
+        // R25 O-01: the newest observation row carries the evidence the chain
+        // committed at that revision. Indexed by order and read as the tail of
+        // the range, so this is one bounded read, not a scan.
+        chainOrder
+          ? ctx.db
+              .query("chainObservations")
+              .withIndex("by_order", (q) => q.eq("orderId", chainOrder.orderId))
+              .order("desc")
+              .first()
+          : null,
+      ]);
     const merchant = role === "merchant";
     return {
       quoteId: draft.id,
@@ -536,6 +563,7 @@ export const order = queryGeneric({
                 ? null
                 : Date.now() - chainOrder.observedAt <= MAX_OBSERVATION_AGE_MS,
             observedAt: chainOrder.observedAt ?? null,
+            evidenceCommitment: latestObservation?.evidenceCommitment ?? null,
           }
         : null,
       delivery: {

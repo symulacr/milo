@@ -42,6 +42,13 @@ const { databaseDouble } = await import("./orderProjection.double");
 function ctxDouble(
   identity: { issuer: string; subject: string } | null,
   tables: Record<string, Row[]> = {},
+  /**
+   * R29 AC-03: when supplied, `orderForQuote` answers with this `observedAt`
+   * instead of `null`, which is what lets a test drive the cooldown. Left
+   * undefined the routing is exactly as before, so the pre-existing assertions
+   * about *which* callers reach `orderForQuote` are untouched.
+   */
+  cooldown?: { observedAt: number | null },
 ) {
   const queries: string[] = [];
   const { db } = databaseDouble(tables).ctx;
@@ -63,6 +70,7 @@ function ctxDouble(
             _handler: (c: never, a: never) => Promise<boolean>;
           }
         )._handler(ctx as never, args as never);
+      if (name.includes("orderForQuote") && cooldown) return cooldown;
       return null;
     },
     // The shared double answers `withIndex(...).unique()`; the action only
@@ -190,5 +198,73 @@ describe("refreshOrder requires a participant, or an operator on a dispute", () 
     });
     await expect(handler(f.ctx, { quoteId: "quote-1" })).resolves.toEqual(NULL);
     expect(f.queries.some((q) => q.includes("orderForQuote"))).toBe(false);
+  });
+});
+
+/**
+ * R29 AC-03: `refreshOrder` spends two Blockfrost reads per call against the
+ * project id the 60 s `poll` cron also uses. Before this cap an authenticated
+ * member could loop it and exhaust the daily allowance, which would stop chain
+ * observation for **every** order — an availability bug reachable by anyone who
+ * belongs to one studio.
+ *
+ * The cap reuses `chainOrders.observedAt`, which the observer already writes, so
+ * there is no new table and no new index. The tests pin the boundary by value
+ * and, just as importantly, that a fresh order is still refreshed.
+ */
+describe("R29 AC-03: refreshOrder caps the indexer spend per order", () => {
+  const PARTICIPANT = { issuer: "privy.io", subject: "did:privy:buyer" };
+  const MEMBERSHIP = [
+    {
+      _id: "m1",
+      privySubject: PARTICIPANT.subject,
+      scopeId: "scope-1",
+      role: "buyer",
+      status: "active",
+      accountId: "buyer-1",
+    },
+  ];
+  const CHAIN = [
+    {
+      _id: "c1",
+      quoteId: "quote-1",
+      phase: "ACCEPTED",
+      address: "a".repeat(64),
+      nonce: "b".repeat(64),
+      artifactFingerprint: "c".repeat(64),
+    },
+  ];
+  const fixture = (cooldown: { observedAt: number | null }) =>
+    ctxDouble(
+      PARTICIPANT,
+      { quoteDrafts: [DRAFT], memberships: MEMBERSHIP, chainOrders: CHAIN },
+      cooldown,
+    );
+
+  test("an order observed inside the window is not read again", async () => {
+    const f = fixture({ observedAt: Date.now() - 1_000 });
+    // Answers from the recorded state without spending an indexer read.
+    await expect(handler(f.ctx, { quoteId: "quote-1" })).resolves.toEqual(NULL);
+  });
+
+  test("the boundary: just inside is refused, just outside is allowed", async () => {
+    // Inside: refused (resolves null, no indexer).
+    const inside = fixture({ observedAt: Date.now() - 1_000 });
+    await expect(handler(inside.ctx, { quoteId: "quote-1" })).resolves.toEqual(
+      NULL,
+    );
+    // Outside: the read is attempted. The indexer env is unset in this suite,
+    // so it fails closed — which is proof the cap did NOT short-circuit.
+    const outside = fixture({ observedAt: Date.now() - 10 * 60_000 });
+    await expect(
+      handler(outside.ctx, { quoteId: "quote-1" }),
+    ).rejects.toThrow();
+  });
+
+  test("a never-observed order is refreshed normally", async () => {
+    // `observedAt: null` means "never observed". Treating it as "observed at
+    // epoch" would block the very first refresh forever.
+    const f = fixture({ observedAt: null });
+    await expect(handler(f.ctx, { quoteId: "quote-1" })).rejects.toThrow();
   });
 });

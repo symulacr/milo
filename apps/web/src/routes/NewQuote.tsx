@@ -8,7 +8,7 @@ import { errorText, Outcome } from "../components/workspace";
 import { useGuard } from "../lib/utils";
 import { useMe } from "../workspace/backend";
 import { createQuote } from "../workspace/flows";
-import { randomHex } from "../workspace/keys";
+import { randomHex, readQuoteDraft, writeQuoteDraft } from "../workspace/keys";
 
 /** The server wants a 5-80 character title; the brief's first line is one. */
 export const titleFrom = (brief: string) => {
@@ -40,6 +40,12 @@ export function NewQuote() {
   // duplicate-nonce guard fires instead of creating a second quote.
   const [nonce] = useState(randomHex);
   const inFlight = useGuard();
+  // AD-02: the stale-chunk recovery in `bootstrap.tsx` calls `location.reload()`
+  // unconditionally — correctly, because a broken chunk cannot be fixed without
+  // one. The order page's note survives that (r23 persists it); this form had no
+  // persistence at all, so a reload mid-quote lost the whole brief. One draft
+  // entry, read once here and written on input, closes the asymmetry.
+  const [draft] = useState(readQuoteDraft);
   if (!me) return null;
   return (
     <>
@@ -49,6 +55,18 @@ export function NewQuote() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <form
           className="grid gap-4 rounded-lg bg-card p-5"
+          // One listener for the whole form rather than one per field: the
+          // inputs stay uncontrolled, so this is the cheapest way to keep the
+          // draft current without turning four fields into controlled state.
+          onInput={(event) => {
+            const data = new FormData(event.currentTarget);
+            writeQuoteDraft({
+              studio: String(data.get("studio") ?? ""),
+              brief: String(data.get("brief") ?? ""),
+              amount: String(data.get("amount") ?? ""),
+              email: String(data.get("email") ?? ""),
+            });
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             // `busy` only disables the button after a re-render, so guard here.
@@ -66,11 +84,19 @@ export function NewQuote() {
               orderNonce: nonce,
             };
             createQuote(convex, me.subject, me.studio ?? { studioName }, form)
-              .then(({ quoteId, emailed, reason }) =>
+              .then(({ quoteId, emailed, reason }) => {
+                // The quote exists, so the draft is spent: leaving it would
+                // pre-fill the next quote with the previous brief.
+                writeQuoteDraft({
+                  studio: "",
+                  brief: "",
+                  amount: "",
+                  email: "",
+                });
                 navigate(`/orders/${quoteId}`, {
                   state: emailed ? null : { emailFailed: reason },
-                }),
-              )
+                });
+              })
               .catch((cause) => setError(errorText(cause)))
               .finally(() => {
                 inFlight.end();
@@ -80,7 +106,13 @@ export function NewQuote() {
         >
           {!me.studio && (
             <Field label="Studio name">
-              <Input name="studio" required minLength={2} maxLength={60} />
+              <Input
+                name="studio"
+                required
+                minLength={2}
+                maxLength={60}
+                defaultValue={draft.studio}
+              />
             </Field>
           )}
           <Field label="Brief">
@@ -90,6 +122,7 @@ export function NewQuote() {
               minLength={20}
               maxLength={1000}
               rows={6}
+              defaultValue={draft.brief}
             />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -102,10 +135,17 @@ export function NewQuote() {
                 max={5000}
                 step={1}
                 inputMode="numeric"
+                defaultValue={draft.amount}
               />
             </Field>
             <Field label="Client email">
-              <Input name="email" type="email" required autoComplete="off" />
+              <Input
+                name="email"
+                type="email"
+                required
+                autoComplete="off"
+                defaultValue={draft.email}
+              />
             </Field>
           </div>
           <Button type="submit" className="w-fit" pending={Boolean(busy)}>

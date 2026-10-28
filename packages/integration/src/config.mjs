@@ -2,11 +2,12 @@
 export const HEX64 = /^[a-f0-9]{64}$/;
 
 /**
- * Every probe must finish inside a minute. The old 900 s default let a wedged
- * wallet sync hold a shell for fifteen minutes; the ceiling is now the same
- * minute so no environment override can exceed it either.
+ * A probe defaults to one minute so a wedged wallet sync cannot hold a shell for
+ * fifteen. The deploy-and-call lane measures about 393 s, so an explicit
+ * MILO_LOCAL_TIMEOUT_MS may raise it, but never past this ceiling.
  */
-export const PROBE_TIMEOUT_MS = 60_000;
+export const PROBE_TIMEOUT_MS = 1_800_000;
+const DEFAULT_PROBE_TIMEOUT_MS = 60_000;
 
 /** One loopback guard: an endpoint must be an explicit local address. */
 export function isLoopbackHostname(hostname) {
@@ -36,7 +37,9 @@ export function localConfig(env) {
   if (!/^0x[0-9a-f]{64}$/.test(env.MILO_LOCAL_GENESIS_HASH ?? "")) {
     throw new Error("An independently observed local genesis hash is required");
   }
-  const timeoutMs = Number(env.MILO_LOCAL_TIMEOUT_MS ?? PROBE_TIMEOUT_MS);
+  const timeoutMs = Number(
+    env.MILO_LOCAL_TIMEOUT_MS ?? DEFAULT_PROBE_TIMEOUT_MS,
+  );
   const bootstrapMode = env.MILO_LOCAL_BOOTSTRAP_MODE ?? "full";
   if (!["full", "staged"].includes(bootstrapMode)) {
     throw new Error("Unsupported local bootstrap mode");

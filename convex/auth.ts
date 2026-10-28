@@ -73,14 +73,42 @@ const noReferrerOnVerify = createAuthMiddleware(async (ctx) => {
  *
  * The page is the only place the token is rendered, hence `no-store` and
  * `no-referrer`; every parameter is escaped and echoed back as a hidden field.
+ *
+ * R25 residual: the confirm step stops a gateway that only *fetches* the link.
+ * One that follows the form and re-submits it would still burn the token, so a
+ * confirmed request is also asked to declare that it is a navigation.
+ *
+ * **Deliberately soft.** `Sec-Fetch-User` is unsupported on Safari and every
+ * iOS browser (MDN, 2026-09-28 — "Safari: No support", iOS Safari and iOS
+ * WebView likewise), so gating on it would lock out every iPhone user. The rule
+ * is inverted: refuse only when the request *declares* it is not a document
+ * navigation. Absent headers mean "unknown", and unknown is allowed — which is
+ * what keeps Safari, iOS WebViews, in-app browsers and privacy extensions
+ * working, since they send nothing.
+ *
+ * Two declarations count, and both are set by every engine that sets either:
+ * `Sec-Fetch-Mode` (a `fetch`/XHR submit is `cors`/`no-cors`/`same-origin`,
+ * never `navigate`) and `Sec-Fetch-Dest` (a scripted submit is `empty`, a form
+ * navigation is `document`). It does not catch `curl`, which sends neither —
+ * stated plainly rather than implied.
  */
+export const isNotUserNavigation = (headers: Headers): boolean => {
+  const mode = headers.get("sec-fetch-mode");
+  if (mode !== null && mode !== "navigate") return true;
+  const dest = headers.get("sec-fetch-dest");
+  return dest !== null && dest !== "document";
+};
+
 export const confirmMagicLink = createAuthMiddleware(async (ctx) => {
   if (ctx.path !== "/magic-link/verify") return;
   const query = (ctx.query ?? {}) as Record<string, unknown>;
-  if (query.confirm === "1") return;
-  const url = new URL(
-    (ctx as { request?: Request }).request?.url ?? `https://invalid${ctx.path}`,
-  );
+  const request = (ctx as { request?: Request }).request;
+  if (query.confirm === "1") {
+    // A confirmed request that says it is not a navigation is a scripted
+    // submit: fall through to the interstitial instead of consuming the token.
+    if (!request || !isNotUserNavigation(request.headers)) return;
+  }
+  const url = new URL(request?.url ?? `https://invalid${ctx.path}`);
   const html = (v: string) =>
     v
       .replaceAll("&", "&amp;")
@@ -93,12 +121,24 @@ export const confirmMagicLink = createAuthMiddleware(async (ctx) => {
     .map(([n, v]) => `<input type=hidden name="${html(n)}" value="${html(v)}">`)
     .join("");
   return new Response(
-    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Open your Milo link</title>" +
-      "<body style='font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem'>" +
-      "<h1 style='font-size:1.25rem'>Open your Milo link</h1>" +
+    // R29: `lang` is required by WCAG 3.1.1 and was absent — a screen reader had
+    // no language to pick pronunciation rules from. The wordmark and the focus
+    // ring are the other two gaps: this is the one page a buyer sees *before*
+    // signing in, served from `convex.site`, so it must look like Milo and its
+    // only interactive element must show where the keyboard is.
+    "<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Open your Milo link</title>" +
+      "<style>:root{color-scheme:light}body{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#1a1a1a}" +
+      ".mark{font-weight:800;letter-spacing:-.02em;margin:0 0 2rem}" +
+      "h1{font-size:1.25rem;margin:0 0 .5rem}" +
+      "button{font:inherit;padding:.6rem 1.2rem;border:1px solid #1a1a1a;border-radius:.375rem;background:#1a1a1a;color:#fff;cursor:pointer}" +
+      "button:hover{background:#333}" +
+      "button:focus-visible{outline:3px solid #1a1a1a;outline-offset:2px}" +
+      "</style>" +
+      "<body><p class=mark>milo</p>" +
+      "<h1>Open your Milo link</h1>" +
       "<p>This extra step stops email scanners from using up your single-use link before you do.</p>" +
       `<form method=get action="${html(url.pathname)}">${hidden}` +
-      "<button type=submit style='font:inherit;padding:.6rem 1.2rem'>Open my link</button></form>",
+      "<button type=submit>Open my link</button></form></body></html>",
     {
       status: 200,
       headers: {

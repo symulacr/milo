@@ -118,20 +118,25 @@ export function readSurface(
       const rows = () => tables[table] ?? [];
       const terminal = (predicate: (row: Row) => boolean) => {
         const matched = () => rows().filter(predicate);
-        return {
+        /** R28: `.order("desc")` reverses the range, as Convex does. */
+        const ordered = (direction: "asc" | "desc") =>
+          direction === "desc" ? [...matched()].reverse() : matched();
+        const surface = (direction: "asc" | "desc") => ({
           unique: async () => {
-            const hits = matched();
+            const hits = ordered(direction);
             if (options.strictUnique && hits.length > 1)
               throw new Error(options.strictUnique);
             return hits.length === 1 ? hits[0] : null;
           },
-          take: async (n: number) => matched().slice(0, n),
-          first: async () => matched()[0] ?? null,
-          collect: async () => matched(),
+          take: async (n: number) => ordered(direction).slice(0, n),
+          first: async () => ordered(direction)[0] ?? null,
+          collect: async () => ordered(direction),
+          order: (next: "asc" | "desc") => surface(next),
           filter: (
             pred: (q: ReturnType<typeof filterQ>) => (row: Row) => boolean,
           ) => terminal((row) => predicate(row) && pred(filterQ())(row)),
-        };
+        });
+        return surface("asc");
       };
       return {
         withIndex: (

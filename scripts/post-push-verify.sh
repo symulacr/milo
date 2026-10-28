@@ -147,6 +147,7 @@ if [ "$CI" -eq 1 ]; then
   wait
   run plan sh scripts/with-bun.sh $BUN_NOENV scripts/check-plan.ts
   run biome sh scripts/with-bun.sh $BUN_NOENV node_modules/@biomejs/biome/bin/biome check .
+  run judging bash scripts/judging-minimum.sh
   run strict sh scripts/with-bun.sh $BUN_NOENV node_modules/typescript/bin/tsc --noEmit --noUnusedLocals --noUnusedParameters
   wait
   run unit sh scripts/with-bun.sh $BUN_NOENV test --parallel apps/web packages/domain packages/contract packages/backend packages/midnight-client convex e2e scripts/*.test.ts
@@ -157,7 +158,7 @@ if [ "$CI" -eq 1 ]; then
   say "--- checks finished"
   failed=0
   total=0
-  for name in cohort plan biome strict unit integration build; do
+  for name in cohort plan biome judging strict unit integration build; do
     code=$(cat "$LOG_DIR/$name.log.code" 2>/dev/null || echo 1)
     total=$((total + 1))
     if [ "$code" -eq 0 ]; then say "PASS $name"; else

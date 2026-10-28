@@ -531,3 +531,41 @@ describe("runPoll: a missing decoder fails closed and spends nothing", () => {
     expect(mutations).toHaveLength(0);
   });
 });
+
+/**
+ * R28 O-01: the decoder must surface the ledger's `evidenceCommitment`, and the
+ * plan must carry it. Without this the record says "resolved" and nothing about
+ * what was resolved on.
+ *
+ * The second test is the compatibility half: a decoder built before this field
+ * existed (no `evidenceCommitment` on its output) must still plan a projection,
+ * leaving the key absent rather than inventing a zero digest.
+ */
+describe("R28 O-01: the plan carries the ledger's evidence commitment", () => {
+  test("a decoded evidence commitment reaches the plan", () => {
+    const evidence = "e".repeat(64);
+    const plan = planObservation({
+      action: actionFixture(),
+      headHeight: HEAD_HEIGHT,
+      decode: (stateHex) => ({
+        ...decodeFixture(stateHex),
+        evidenceCommitment: evidence,
+      }),
+    });
+    expect(plan.kind).toBe("project");
+    if (plan.kind !== "project") throw new Error("expected a projection");
+    expect(plan.evidenceCommitment).toBe(evidence);
+  });
+
+  test("a decoder without the field still plans, and does not invent a digest", () => {
+    const plan = planObservation({
+      action: actionFixture(),
+      headHeight: HEAD_HEIGHT,
+      decode: decodeFixture,
+    });
+    expect(plan.kind).toBe("project");
+    if (plan.kind !== "project") throw new Error("expected a projection");
+    // Absent, so the record omits the key and the read path reports null.
+    expect(plan.evidenceCommitment).toBeUndefined();
+  });
+});

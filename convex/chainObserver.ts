@@ -7,6 +7,7 @@ import {
 } from "convex/server";
 import { type Infer, v } from "convex/values";
 import { bytesToHex, env, hexToBytes } from "../packages/backend/src/encoding";
+import { REFRESH_COOLDOWN_MS } from "../packages/backend/src/order-windows";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { fail, type ReadContext, unavailable } from "./admissionContext";
 import { isOperator } from "./auth";
@@ -57,6 +58,13 @@ export type DecodedState = {
   phase: Phase;
   revision: number;
   deliveryManifest: string | null;
+  /**
+   * R25 O-01: the dispute evidence the ledger commits, or the zero digest.
+   * Optional because a decoder built before this field existed (and every test
+   * double) legitimately has nothing to report, and "not decoded" must not be
+   * confused with "no evidence" — the record simply omits the key.
+   */
+  evidenceCommitment?: string;
 };
 
 export type ObservationPlan =
@@ -66,6 +74,7 @@ export type ObservationPlan =
       phase: Phase;
       revision: number;
       deliveryManifest: string | null;
+      evidenceCommitment?: string;
       blockHeight: number;
       blockHash: string;
     }
@@ -109,6 +118,7 @@ export function planObservation(input: {
     phase: decoded.phase,
     revision: decoded.revision,
     deliveryManifest: decoded.deliveryManifest,
+    evidenceCommitment: decoded.evidenceCommitment,
     blockHeight: block.height,
     blockHash: block.hash,
   };
@@ -292,6 +302,11 @@ async function loadRuntimeDecoder(): Promise<
           phase === "SUBMITTED" && commitment !== ZERO_COMMITMENT
             ? commitment
             : null,
+        // R25 O-01: the dispute evidence the contract already commits
+        // (`order.compact:40`, `evidenceCommitment`). Reading it costs one
+        // `bytesToHex` and makes a resolved dispute auditable: without it the
+        // record said "resolved" and nothing about what was resolved on.
+        evidenceCommitment: bytesToHex(ledger.evidenceCommitment),
       };
     };
   } catch {
@@ -444,6 +459,7 @@ async function commitObservation(
     phase: plan.phase,
     revision: plan.revision,
     deliveryManifest: plan.deliveryManifest,
+    evidenceCommitment: plan.evidenceCommitment,
   })) as { kind: string } | null;
   if (verdict?.kind !== "bind") return false;
   await runMutation(markObservedRef, {
@@ -540,6 +556,7 @@ const orderForQuoteRef = makeFunctionReference<
     nonce: string;
     artifactFingerprint: string;
     lastStateHex: string | null;
+    observedAt: number | null;
   } | null
 >("chainObserver:orderForQuote");
 
@@ -552,6 +569,8 @@ export const orderForQuote = internalQueryGeneric({
       nonce: v.string(),
       artifactFingerprint: v.string(),
       lastStateHex: v.union(v.string(), v.null()),
+      /** R29 AC-03: when this order was last observed, for the refresh cap. */
+      observedAt: v.union(v.number(), v.null()),
     }),
     v.null(),
   ),
@@ -567,6 +586,7 @@ export const orderForQuote = internalQueryGeneric({
           nonce: row.nonce,
           artifactFingerprint: row.artifactFingerprint,
           lastStateHex: row.lastStateHex ?? null,
+          observedAt: row.observedAt ?? null,
         }
       : null;
   },
@@ -626,6 +646,17 @@ export const refreshOrder = actionGeneric({
       quoteId: args.quoteId,
     });
     if (!order) return { phase: null, revision: null };
+    // R29 AC-03: each refresh spends two Blockfrost reads against the SAME
+    // project id that `poll` uses, so a member looping this action can exhaust
+    // the daily allowance and stop chain observation for every order. The cap
+    // is per order and reuses `observedAt`, which the observer already writes —
+    // no new table, no new index. A refresh inside the window is not an error:
+    // it answers from the recorded state, so the caller still sees the order.
+    if (
+      order.observedAt !== null &&
+      Date.now() - order.observedAt < REFRESH_COOLDOWN_MS
+    )
+      return { phase: null, revision: null };
     const decode = requireDecoder(await loadRuntimeDecoder());
     const { url, token } = indexerConfig();
     const transport = createIndexerTransport(url, token, fetch);

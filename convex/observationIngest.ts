@@ -175,6 +175,8 @@ type ChainObservedInput = {
   phase: string;
   revision: number;
   deliveryManifest?: string | null;
+  /** R25 O-01: optional so an older caller still type-checks and writes. */
+  evidenceCommitment?: string;
 };
 
 const mismatch = (): ChainObservationResult => ({
@@ -247,6 +249,11 @@ export async function applyChainObservation(
     revision: observed.revision,
     observedAt: now,
     kind: "bind",
+    // R25 O-01: only present when the observer decoded a ledger that has the
+    // field, so an older caller still writes a valid row.
+    ...(observed.evidenceCommitment !== undefined
+      ? { evidenceCommitment: observed.evidenceCommitment }
+      : {}),
   });
   // Explicit keys, not `{...verdict}`: a spread silently forwards any field
   // `decideObservationBinding` grows, which is exactly how the create-quote

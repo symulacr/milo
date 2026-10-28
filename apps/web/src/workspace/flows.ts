@@ -406,6 +406,22 @@ export async function deliver(
         method: "POST",
         headers: { "Content-Type": contentType },
         body: file,
+        // AD-05: without a signal, a dropped connection leaves the request
+        // hanging until the browser's own timeout, which is minutes. The user
+        // sees "Upload three files" spinning with no way to tell whether it is
+        // working. Aborting after 30 s turns that into a sentence.
+        signal: AbortSignal.timeout(30_000),
+      }).catch((cause: unknown) => {
+        // A network failure throws `TypeError: Failed to fetch`, which is a
+        // browser internal and tells the user nothing. Going offline is the
+        // common cause and is worth naming, because the remedy is different
+        // (reconnect and retry, versus try again).
+        throw new Error(
+          navigator.onLine
+            ? `${file.name} did not upload. Check your connection and try again.`
+            : `${file.name} did not upload because this device is offline. Reconnect and try again.`,
+          { cause },
+        );
       });
       if (!response.ok)
         throw new Error(`${file.name} did not upload. Try again.`);

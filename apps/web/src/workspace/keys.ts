@@ -203,6 +203,64 @@ export const writeDraft = (quoteId: string, note: string) => {
   }
 };
 
+/**
+ * The quote form's draft.
+ *
+ * AD-02: `bootstrap.tsx` reloads the tab once when a hashed chunk is missing
+ * after a deploy — correctly, because a broken chunk cannot be repaired without
+ * a reload. The order page's note already survives that (the `readDraft` above),
+ * but the quote form had no persistence at all, so a reload mid-quote lost the
+ * whole brief. This is the same `sessionStorage` seam, keyed to the form rather
+ * than to an order, because there is no order yet.
+ *
+ * `sessionStorage` and not `localStorage`: a half-written quote should not
+ * reappear days later in a new tab. It is per-tab and dies with the tab, which
+ * is exactly the lifetime of the problem it solves.
+ */
+const QUOTE_DRAFT = "milo:quote-draft";
+
+export type QuoteDraft = {
+  studio: string;
+  brief: string;
+  amount: string;
+  email: string;
+};
+
+const EMPTY_DRAFT: QuoteDraft = {
+  studio: "",
+  brief: "",
+  amount: "",
+  email: "",
+};
+
+export const readQuoteDraft = (): QuoteDraft => {
+  try {
+    const raw = sessionStorage.getItem(QUOTE_DRAFT);
+    if (!raw) return EMPTY_DRAFT;
+    const parsed = JSON.parse(raw) as Partial<QuoteDraft>;
+    return {
+      studio: String(parsed.studio ?? ""),
+      brief: String(parsed.brief ?? ""),
+      amount: String(parsed.amount ?? ""),
+      email: String(parsed.email ?? ""),
+    };
+  } catch {
+    // Unreadable or blocked storage is a blank form, never a crash.
+    return EMPTY_DRAFT;
+  }
+};
+
+export const writeQuoteDraft = (draft: QuoteDraft) => {
+  try {
+    // An all-empty draft is a cleared draft, not a stored empty object.
+    if (Object.values(draft).some(Boolean))
+      sessionStorage.setItem(QUOTE_DRAFT, JSON.stringify(draft));
+    else sessionStorage.removeItem(QUOTE_DRAFT);
+  } catch {
+    // Storage disabled: the draft lives only in this render, as before.
+  }
+};
+
 async function derive(password: string, salt: Uint8Array) {
   const base = await crypto.subtle.importKey(
     "raw",

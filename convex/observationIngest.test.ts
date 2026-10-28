@@ -545,3 +545,63 @@ describe("applyChainObservation (recordObservation body, fixture-free)", () => {
     expect(patches).toHaveLength(0);
   });
 });
+
+/**
+ * R28 O-01: the dispute evidence the contract commits must be persisted, so a
+ * resolved dispute is auditable instead of merely asserted.
+ *
+ * The field is **schema-additive and optional**. These tests pin both halves: a
+ * caller that supplies it gets it stored, and a caller that does not (an
+ * observer deployed before the field existed) still writes a valid row — which
+ * is what makes the patch safe to ship before the contract change.
+ */
+describe("R28 O-01: evidence provenance is recorded when the observer has it", () => {
+  const EVIDENCE = "e".repeat(64);
+
+  test("the evidence commitment reaches the observation row", async () => {
+    const { db, observations } = chainDb(chainOrder);
+    await applyChainObservation(
+      db,
+      {
+        orderId: "order_1",
+        address: chainOrder.address,
+        nonce: chainOrder.nonce,
+        artifactFingerprint: hash,
+        phase: "DISPUTED",
+        revision: 1,
+        evidenceCommitment: EVIDENCE,
+      },
+      NOW,
+    );
+    expect(observations).toHaveLength(1);
+    expect(observations[0].evidenceCommitment).toBe(EVIDENCE);
+    // And the rest of the row is unchanged: this is an addition, not a reshape.
+    expect(observations[0]).toMatchObject({
+      orderId: "order_1",
+      phase: "DISPUTED",
+      revision: 1,
+      kind: "bind",
+    });
+  });
+
+  test("an older caller that omits it still writes a valid row", async () => {
+    const { db, observations } = chainDb(chainOrder);
+    const result = await applyChainObservation(
+      db,
+      {
+        orderId: "order_1",
+        address: chainOrder.address,
+        nonce: chainOrder.nonce,
+        artifactFingerprint: hash,
+        phase: "RESERVED",
+        revision: 1,
+      },
+      NOW,
+    );
+    expect(result.kind).toBe("bind");
+    expect(observations).toHaveLength(1);
+    // Absent, not null and not "" — "not recorded" must stay distinguishable
+    // from "recorded the zero digest".
+    expect("evidenceCommitment" in observations[0]).toBe(false);
+  });
+});
