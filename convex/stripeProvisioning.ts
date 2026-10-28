@@ -15,6 +15,7 @@ import type {
 import { inviteFailureReason } from "../packages/backend/src/email";
 import {
   bytesToHex,
+  env,
   HEX64,
   hexToBytes,
   randomHex,
@@ -316,6 +317,12 @@ export const holdPayment = actionGeneric({
      * the hold did not reach the freeze.
      */
     deadlines: v.optional(deadlineStringsValidator),
+    /**
+     * R38: present only on the live-mode path, where the buyer must be sent to
+     * Stripe's hosted page to enter a real card. Absent in test mode, so an
+     * existing client sees exactly the payload it saw before.
+     */
+    checkoutUrl: v.optional(v.string()),
   }),
   handler: async (
     ctx,
@@ -324,6 +331,7 @@ export const holdPayment = actionGeneric({
     state: "held" | "pending" | "needs-card" | "failed";
     reason?: string;
     deadlines?: DeadlineStrings;
+    checkoutUrl?: string;
   }> => {
     // Two hops, not three: this read exists only to seed the operator
     // capability, and `finalizeQuote` returns the accepted draft's own fields
@@ -347,11 +355,24 @@ export const holdPayment = actionGeneric({
     // Refuse a live key before freezing: freezing is a durable state change, so
     // a refusal after it would leave the quote frozen with no payment intent.
     const mode = stripeMode(process.env.STRIPE_SECRET_KEY);
-    if (mode === "live")
-      return {
-        state: "needs-card" as const,
-        reason: "Live card entry is not available yet.",
-      };
+    // R38: live mode used to stop here unconditionally. The test path below
+    // confirms an intent against a hardcoded `pm_card_visa` — a Stripe TEST card
+    // that does not exist in live mode — so live mode needs a different provider
+    // path (hosted Checkout with manual capture).
+    //
+    // That path sits behind a second, explicit switch, `MILO_LIVE_CHECKOUT`, on
+    // purpose: merely configuring a live key must not silently start taking real
+    // money. With the switch unset, the refusal below is byte-identical to what
+    // it was, so this deployment (test key, switch unset) is unchanged and live
+    // mode stays off.
+    if (mode === "live") {
+      if (!env("MILO_LIVE_CHECKOUT"))
+        return {
+          state: "needs-card" as const,
+          reason: "Live card entry is not available yet.",
+        };
+      return holdViaCheckout(ctx, args.quoteId, finalized);
+    }
     try {
       await ctx.runMutation(FREEZE, {
         quoteId: args.quoteId,
@@ -435,6 +456,114 @@ export const holdPayment = actionGeneric({
     }
   },
 });
+
+/**
+ * R38: the live-mode hold, via hosted Checkout with manual capture.
+ *
+ * Test mode confirms a PaymentIntent against `pm_card_visa`, which is a test
+ * card: there is no real instrument to confirm, so live mode cannot reuse that
+ * path. Hosted Checkout collects the card on Stripe's page and, with
+ * `payment_intent_data.capture_method = "manual"`, *authorizes* rather than
+ * captures — the same hold semantics, from a real card
+ * (docs.stripe.com/payments/place-a-hold-on-a-payment-method, accessed
+ * 2026-10-28).
+ *
+ * The action cannot wait for the buyer to finish on Stripe's page, so it
+ * returns `pending` with the redirect URL. The authorization then arrives as
+ * `payment_intent.amount_capturable_updated`, which `http.ts` already maps to
+ * `held`; an intent this deployment has never seen is recorded in
+ * `paymentInbox` rather than dropped, so the reconciliation is already built.
+ *
+ * This does NOT enable live mode: `stripeMode` still refuses a live key unless
+ * one is configured, and nothing here sets it.
+ */
+async function holdViaCheckout(
+  ctx: { runMutation: (ref: never, args: never) => Promise<unknown> },
+  quoteId: string,
+  finalized: {
+    version: number;
+    amountMinor: number;
+    currency: string;
+    buyerAccountId: string;
+    stripeCustomerId: string | null;
+    deadlines?: DeadlineStrings;
+  },
+): Promise<{
+  state: "pending" | "failed";
+  reason?: string;
+  deadlines?: DeadlineStrings;
+  checkoutUrl?: string;
+}> {
+  try {
+    const stripe = stripeClient();
+    const customerId =
+      finalized.stripeCustomerId ??
+      (
+        await stripe.customers.create(
+          { metadata: { buyerAccountId: finalized.buyerAccountId } },
+          { idempotencyKey: `milo-customer:${finalized.buyerAccountId}` },
+        )
+      ).id;
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        customer: customerId,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: finalized.currency.toLowerCase(),
+              unit_amount: finalized.amountMinor,
+              product_data: { name: `Milo order ${quoteId}` },
+            },
+          },
+        ],
+        payment_intent_data: {
+          capture_method: "manual",
+          metadata: {
+            quoteId,
+            quoteVersion: String(finalized.version),
+          },
+        },
+        success_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?held=1`,
+        cancel_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?cancelled=1`,
+        metadata: { quoteId, quoteVersion: String(finalized.version) },
+      },
+      { idempotencyKey: `milo-checkout:${quoteId}:v${finalized.version}` },
+    );
+    if (!session.url)
+      return { state: "failed", reason: "Stripe returned no checkout URL." };
+    // The session id is recorded so the webhook can be tied back to this quote
+    // even before the PaymentIntent exists.
+    await ctx.runMutation(
+      BIND_CHECKOUT as never,
+      {
+        quoteId,
+        quoteVersion: finalized.version,
+        buyerAccountId: finalized.buyerAccountId,
+        stripeCustomerId: customerId,
+        checkoutSessionId: session.id,
+      } as never,
+    );
+    return {
+      state: "pending",
+      deadlines: finalized.deadlines,
+      checkoutUrl: session.url,
+    };
+  } catch (error) {
+    return {
+      state: "failed",
+      reason:
+        error instanceof Error
+          ? error.message
+          : "The checkout session could not be created.",
+    };
+  }
+}
+
+const BIND_CHECKOUT = makeFunctionReference<"mutation">(
+  "trustedProvisioning:bindCheckoutSession",
+);
 
 const OPERATOR_EMAILS = makeFunctionReference<
   "query",

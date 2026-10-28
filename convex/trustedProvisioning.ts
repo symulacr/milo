@@ -928,6 +928,45 @@ export const observeHeldPayment = internalMutationGeneric({
   },
 });
 
+/**
+ * R38: record the hosted Checkout session a live-mode hold created.
+ *
+ * The live path cannot confirm an intent inline — the buyer enters the card on
+ * Stripe's page — so the only durable link between the quote and the eventual
+ * PaymentIntent is the session id. It goes on the draft, which the webhook
+ * already resolves by `quoteId` from the intent's metadata, so no new table and
+ * no new index are needed.
+ *
+ * Internal and idempotent: a retried hold with the same
+ * `milo-checkout:<quote>:v<version>` key rewrites the same value.
+ */
+export const bindCheckoutSession = internalMutationGeneric({
+  args: {
+    quoteId: v.string(),
+    quoteVersion: v.number(),
+    buyerAccountId: v.string(),
+    stripeCustomerId: v.string(),
+    checkoutSessionId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx: AdmissionContext, args) => {
+    const draft = await ctx.db
+      .query("quoteDrafts")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    if (!draft) fail("NOT_FOUND", "Order not found.");
+    // The caller is the hold action, which already proved the buyer; this only
+    // guards against a version that moved underneath it.
+    if (draft.buyerAccountId !== args.buyerAccountId)
+      fail("FORBIDDEN", "Only the client can hold the payment.");
+    await ctx.db.patch(draft._id, {
+      checkoutSessionId: args.checkoutSessionId,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
 export const finalizeQuote = internalMutationGeneric({
   args: { quoteId: v.string(), operatorCommitment: v.string() },
   returns: v.union(

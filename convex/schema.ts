@@ -175,6 +175,12 @@ export default defineSchema({
      * `HMAC(MILO_OPERATOR_SECRET, nonce)` derivation.
      */
     operatorSecret: optS,
+    /**
+     * R38: the hosted Checkout session a live-mode hold created, so the quote
+     * can be tied to its eventual PaymentIntent before that intent exists.
+     * Optional and absent in test mode, where the intent is confirmed inline.
+     */
+    checkoutSessionId: optS,
     termsCommitment: s,
     terms: v.object({
       unitPrice: s,

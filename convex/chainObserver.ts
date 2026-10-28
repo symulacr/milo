@@ -10,6 +10,7 @@ import { bytesToHex, env, hexToBytes } from "../packages/backend/src/encoding";
 import { REFRESH_COOLDOWN_MS } from "../packages/backend/src/order-windows";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { fail, type ReadContext, unavailable } from "./admissionContext";
+import { CHAIN_PHASES } from "./admissionValidators";
 import { isOperator } from "./auth";
 
 const PENDING_LIMIT = 25;
@@ -25,15 +26,9 @@ const BACKOFF_MS = [1_000, 4_000, 16_000] as const;
 const BACKOFF_JITTER = 0.25;
 const REQUEST_TIMEOUT_MS = 15_000;
 
-export const PHASES = [
-  "DEPLOYED",
-  "RESERVED",
-  "ACCEPTED",
-  "SUBMITTED",
-  "DISPUTED",
-  "APPROVED",
-  "CANCELLED",
-] as const;
+/** R38: declared once in `admissionValidators.ts`, beside the validator and
+ * schema that use it. Re-exported because `Phase`/`PHASE_SET` derive from it. */
+export const PHASES = CHAIN_PHASES;
 
 export type Phase = (typeof PHASES)[number];
 
