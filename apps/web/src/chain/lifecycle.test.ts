@@ -400,7 +400,9 @@ const watch = (
     {
       contractStateObservable(address: string, config: unknown) {
         expect(address).toBe(ADDRESS);
-        expect(config).toEqual({ type: "latest" });
+        // `all` is the server-filtered branch; `latest` streamed every block on
+        // chain for a client-side filter. See watch-order.test.ts.
+        expect(config).toEqual({ type: "all" });
         return {
           subscribe(observer: Observer) {
             observers.push(observer);
@@ -412,6 +414,10 @@ const watch = (
           },
         };
       },
+      // No one-shot read here, so the first subscribe stays synchronous and the
+      // existing tests can drive the observer immediately. The read-then-stream
+      // behaviour has its own file.
+      contractState: undefined,
     },
     ADDRESS,
     (state) => {
@@ -638,9 +644,21 @@ describe("watching the order contract", () => {
       expect(run.seen).toEqual([
         { phase: "DEPLOYED", revision: 0, evidenceCommitment: null },
       ]);
-      // The second attempt exhausts the budget: no third subscription.
+      run.stop();
+    });
+
+    test(`a ${kind} with no success between drops still exhausts the budget`, async () => {
+      // The budget counts CONSECUTIVE failures. A successful emission resets it
+      // (see watch-order.test.ts), so exhaustion is only reachable when every
+      // attempt fails. This is the case that must still stop rather than spin.
+      const stales: number[] = [];
+      const run = watch({ attempts: 2, onStale: (ms) => stales.push(ms) });
+      run.observers[0][kind](new Error("indexer dropped"));
+      await flush();
+      expect(run.observers).toHaveLength(2);
       run.observers[1][kind](new Error("indexer dropped"));
       await flush();
+      // Two failures against a budget of two: no third subscription.
       expect(run.observers).toHaveLength(2);
       run.stop();
     });

@@ -45,6 +45,17 @@ await Bun.$`mkdir -p ${buildEntrypoints}`;
 
 await Promise.all(HTML_NAMES.map(prepareHtmlEntrypoint));
 
+// The artifact version has to be known before the bundle is built, because the
+// client's key URL is a build-time constant. Emitting the versioned copy and
+// telling the client which copy to ask for must happen in the same build, or a
+// deploy could ship a client pointing at a directory it did not write.
+const zkSource = "packages/contract/generated";
+const zkVersion = (
+  (await Bun.file(`${zkSource}/compile-receipt.json`).json()) as {
+    sourceSha256: string;
+  }
+).sourceSha256.slice(0, 16);
+
 const result = await Bun.build({
   entrypoints: HTML_NAMES.map((name) => `${buildEntrypoints}/${name}.html`),
   outdir,
@@ -52,7 +63,12 @@ const result = await Bun.build({
   publicPath: "/",
   minify: true,
   plugins: [tailwind, wasmBindings()],
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    // Substituted textually into the client bundle, where runtime.ts reads it as
+    // `__ZK_VERSION__` behind a `typeof` guard so a test run without it is safe.
+    __ZK_VERSION__: JSON.stringify(zkVersion),
+  },
   splitting: true,
   naming: {
     entry: "[dir]/[name].[ext]",
@@ -276,18 +292,12 @@ if (browserConfig.betterAuthUrl)
 else console.warn("CSP left as shipped: no BETTER_AUTH_URL configured.");
 await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-const zkSource = "packages/contract/generated";
-
 // Artifacts are addressed by circuit name alone, so replacing them in place
 // would silently swap the keys an already-deployed order was created with.
 // Emit a second, content-addressed copy under the compile receipt's source hash
 // so an old order can keep asking for the set it was deployed against.
-const zkVersion = (
-  (await Bun.file(`${zkSource}/compile-receipt.json`).json()) as {
-    sourceSha256: string;
-  }
-).sourceSha256.slice(0, 16);
-
+// `zkSource` and `zkVersion` are computed above, before Bun.build, because the
+// client bundle embeds the version as a constant.
 for (const directory of ["keys", "zkir"] as const) {
   for (const path of new Bun.Glob("*").scanSync(`${zkSource}/${directory}`)) {
     const file = Bun.file(`${zkSource}/${directory}/${path}`);

@@ -69,7 +69,27 @@ import {
 } from "./staged-deploy.ts";
 
 const ORDER_CONTRACT_TAG = "milo";
-const DEFAULT_ZK_BASE_URL = "/zk";
+// The build emits every artifact twice: `/zk/…` (unversioned, must-revalidate)
+// and `/zk/<sourceSha256[0:16]>/…` (content-addressed, immutable). Only the
+// versioned copy is cached across visits, so the client asks for that one. The
+// constant is injected by scripts/build.ts; under `bun test` or the dev server it
+// is absent and the unversioned path is used, which is what those serve.
+declare const __ZK_VERSION__: string | undefined;
+
+/** The artifact base URL for one build. Exported so the derivation and its
+ * fail-safe are testable without depending on module-evaluation order: a test
+ * cannot set a global before this module's imports run. */
+export function zkBaseUrlFor(version: string | null | undefined): string {
+  // A malformed constant must degrade to today's behaviour, not produce a URL
+  // that 404s every key. The shape is exactly what build.ts emits.
+  return typeof version === "string" && /^[0-9a-f]{16}$/.test(version)
+    ? `/zk/${version}`
+    : "/zk";
+}
+
+const DEFAULT_ZK_BASE_URL = zkBaseUrlFor(
+  typeof __ZK_VERSION__ === "string" ? __ZK_VERSION__ : undefined,
+);
 const ORDER_PRIVATE_STATE_ID = "milo-order";
 const INTENT_TTL_MS = 600_000;
 /** Bound on one wallet submit, so a hung pop-up cannot strand the caller. */
@@ -591,8 +611,12 @@ type ObservableLike<T> = {
 type OrderStateSource = {
   contractStateObservable(
     address: never,
-    config: { type: "latest" },
+    config: { type: "latest" } | { type: "all" },
   ): ObservableLike<RuntimeContractState>;
+  /** The current state, read once. The `all` branch subscribes from the tip and
+   * does not replay, so the first paint needs this or the page is blank until the
+   * next change. Optional so a test or a caller with only an observable works. */
+  contractState?(address: never): Promise<RuntimeContractState | null>;
 };
 
 type WatchOrderStateOptions = {
@@ -663,35 +687,70 @@ export function watchOrderState(
     }, stop);
   };
 
+  const publish = (value: RuntimeContractState) => {
+    let decoded: OrderContractState;
+    try {
+      decoded = decodeOrderState(value);
+    } catch {
+      // An unreadable state is not recoverable by retrying: stop rather than
+      // report a guess.
+      stop();
+      return;
+    }
+    // The indexer can re-emit the same state, and a re-render per emission is
+    // wasted work. Publish one object per actual change.
+    if (sameState(decoded)) return;
+    published = decoded;
+    onState(decoded);
+  };
+
+  const subscribe = () => {
+    if (stopped) return;
+    subscription = source
+      .contractStateObservable(address as never, { type: "all" })
+      .subscribe({
+        next(value) {
+          if (stopped) return;
+          publish(value);
+          // A successful emission proves the stream is healthy, so the budget
+          // counts CONSECUTIVE failures. Without this reset `attempt` only ever
+          // grew, and since `latest` emitted once per block the default 30 was
+          // spent by ordinary operation: the page stopped updating after ~30
+          // blocks and never recovered.
+          attempt = 0;
+        },
+        // A dropped subscription is the normal case, not a fatal one. The SDK's
+        // graphql-ws client is built without retryAttempts or keepAlive, so
+        // reconnecting is this function's job and must stay.
+        error: schedule,
+        complete: schedule,
+      });
+  };
+
   const look = () => {
     if (stopped) return;
     if (attempt >= attempts) return stop();
     attempt += 1;
-    subscription = source
-      .contractStateObservable(address as never, { type: "latest" })
-      .subscribe({
-        next(value) {
-          if (stopped) return;
-          let decoded: OrderContractState;
-          try {
-            decoded = decodeOrderState(value);
-          } catch {
-            return stop();
-          }
-          // The indexer re-emits the latest contract state on every block, so an
-          // unchanged order would otherwise republish (and re-render) once per
-          // block. Publish one object per actual change.
-          if (!sameState(decoded)) {
-            published = decoded;
-            onState(decoded);
-          }
-          schedule();
-        },
-        // A dropped subscription is the normal case, not a fatal one: resubscribe
-        // with backoff rather than leaving the UI on a state that stopped updating.
-        error: schedule,
-        complete: schedule,
-      });
+    // `all` is the server-filtered branch: CONTRACT_STATE_SUB($address) streams
+    // only this contract's changes, where `latest` opened TXS_FROM_BLOCK_SUB and
+    // pushed every block on chain through the socket for a client-side filter.
+    //
+    // Measured on the local indexer (2026-10-28): `all` replays the contract's
+    // state history from deployment on every subscribe — 3 messages / 69,764 B
+    // for a 3-revision contract, against 1 message / 27,301 B for `latest` over
+    // the same 10 blocks. So it does deliver the current state on its own, and no
+    // separate read is needed; the dedupe below drops the trailing duplicate.
+    //
+    // A source without the optional read subscribes synchronously, which keeps the
+    // observable-only shape working.
+    if (!source.contractState) return subscribe();
+    void source
+      .contractState(address as never)
+      .then((current) => {
+        if (!stopped && current) publish(current);
+      })
+      .catch(() => undefined)
+      .then(subscribe);
   };
 
   look();
@@ -713,11 +772,24 @@ export async function watchOrderContract(
       config.indexerUri,
       config.indexerWsUri,
     );
-    return watchOrderState(provider, input.address, input.onState, {
-      attempts: input.attempts,
-      retryMs: input.retryMs,
-      wait: input.wait,
-    });
+    return watchOrderState(
+      {
+        contractStateObservable: (address, config) =>
+          provider.contractStateObservable(address as never, config as never),
+        // `queryContractState(address)` with no config is "as of the latest
+        // block". It does not accept `{type:"latest"}` — its config is
+        // `BlockHeightConfig | BlockHashConfig` only.
+        contractState: (address) =>
+          provider.queryContractState(address as never),
+      },
+      input.address,
+      input.onState,
+      {
+        attempts: input.attempts,
+        retryMs: input.retryMs,
+        wait: input.wait,
+      },
+    );
   } catch (error) {
     throw toChainError(error);
   }
