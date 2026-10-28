@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#fafaf9"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#c2410c"/>
+  <text x="80" y="90" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">WORKFLOW</text>
+  <text x="80" y="155" font-family="Georgia, serif" font-size="36" fill="#1c1917">Agreement → delivery → approval</text>
+  <text x="80" y="230" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">1. Buyer sees price, scope, recipient, deadline before authorizing</text>
+  <text x="80" y="280" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">2. Merchant receives a bounded brief and accepts or declines</text>
+  <text x="80" y="330" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">3. Merchant submits one identified three-image delivery</text>
+  <text x="80" y="380" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">4. Buyer reviews files and records approval or a bounded dispute path</text>
+  <text x="80" y="430" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">5. Approval and external payment status remain separate facts</text>
+  <rect x="80" y="490" width="1120" height="120" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="110" y="535" font-family="system-ui, sans-serif" font-size="18" fill="#9a3412">Capability profile image-pack-v1: packQuantity=1 · outputCount=3 · one immutable delivery · no split payouts</text>
+  <text x="110" y="575" font-family="system-ui, sans-serif" font-size="16" fill="#7c2d12">Excluded from this profile: routine revision rounds, source files, video, marketplace discovery</text>
+  <text x="80" y="660" font-family="system-ui, sans-serif" font-size="14" fill="#78716c">Slide 5 / 10</text>
+</svg>

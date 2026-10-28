@@ -1,0 +1,187 @@
+{
+  "scope": "owned-native-v2-deadline-observation-not-canonical-admission",
+  "date": "2026-09-10",
+  "run": "run-xr5c1B",
+  "command": "npm run test:native-node -- --with-services --transactions --staged-bootstrap",
+  "supervisor": {
+    "shellExitCode": 0,
+    "driverExitCode": 0,
+    "node": "1.0.0",
+    "archiveSha256": "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
+    "indexerReady": true,
+    "proverReady": true,
+    "indexedBlockOneMatchesNode": true
+  },
+  "implementationSource": {
+    "capturedBeforeExecution": true,
+    "unchangedAfterExecution": true,
+    "files": [
+      {
+        "sha256": "21c6365b016edd8d6fc11e942f4e82054a92cccbb2fb7b6618810a0e436ceaeb",
+        "path": "packages/integration/src/admission-observation.mjs"
+      },
+      {
+        "sha256": "553f2f5ee1b74dc2d0e3eec4614b4011729d6e0184151abbd6e469abba6a11ed",
+        "path": "packages/integration/src/artifacts.mjs"
+      },
+      {
+        "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead",
+        "path": "packages/integration/src/bootstrap.mjs"
+      },
+      {
+        "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553",
+        "path": "packages/integration/src/config.mjs"
+      },
+      {
+        "sha256": "3d7e23a0b1394862701587f8c26e0492899a6b9fce346991189c03e6f94c11f9",
+        "path": "packages/integration/src/diagnostics.mjs"
+      },
+      {
+        "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676",
+        "path": "packages/integration/src/dispatch-rejection.mjs"
+      },
+      {
+        "sha256": "f3c43b0ab4a0bd13de915fbec45d9531164c8a5e1989c648cb81d7dc6191bf19",
+        "path": "packages/integration/src/dust.mjs"
+      },
+      {
+        "sha256": "e51b9f1e00f1a5a027cecbe571a783d4ff97ba62c2f1c8d0040b3521cd32c5ba",
+        "path": "packages/integration/src/local.mjs"
+      },
+      {
+        "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70",
+        "path": "packages/integration/src/maintenance-audit.mjs"
+      },
+      {
+        "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066",
+        "path": "packages/integration/src/maintenance-controls.mjs"
+      },
+      {
+        "sha256": "0a2be7612617f9485e1a581ad679afe269e6e74f6855ef4c1e8558e11183116a",
+        "path": "packages/integration/src/order.mjs"
+      },
+      {
+        "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784",
+        "path": "packages/integration/src/recovery-process.mjs"
+      },
+      {
+        "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3",
+        "path": "packages/integration/src/recovery-store.mjs"
+      },
+      {
+        "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402",
+        "path": "packages/integration/src/recovery-worker.mjs"
+      },
+      {
+        "sha256": "0a164a542719595ff1bbb5e5644512de80a06c00e77cb7de4ce183f82e52cf97",
+        "path": "packages/integration/src/resources.mjs"
+      },
+      {
+        "sha256": "68a3011064ff36a353d80668b5e7d0cc58463734f8db36579cc9a0500e5185b7",
+        "path": "packages/integration/src/submissions.mjs"
+      },
+      {
+        "sha256": "dacb9dbb2990987beca1cdb283c6453b9648583e1ba266e422264fab6c8d7cff",
+        "path": "packages/backend/src/admission-policy.ts"
+      },
+      {
+        "sha256": "1fa7907bbb5c984d3730f0b5acffd214698d464196a42c967f2f6db4ae4fb111",
+        "path": "scripts/native-node-smoke.ts"
+      }
+    ]
+  },
+  "compilerEvidence": [
+    {
+      "artifactCount": 60,
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "compileReceiptSha256": "270b8e56340e8cb1b9b45a71cc3874a805679a16efd938aad6d56b09485892f4",
+      "sourceSha256": "8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96",
+      "compiler": "0.31.1",
+      "language": "0.23.0",
+      "runtime": "0.16.0",
+      "cohort": {
+        "node": "24.20.0",
+        "packageSha256": "956146576366e6cf10287a253360dd7301b4f0fe6da7cb811162e49910efdf70",
+        "lockfileSha256": "9104115c8816513c0e11a70b0c80a28f24f4e13cd475cfb5bfb45e345de29339"
+      }
+    }
+  ],
+  "bootstrapTransactions": [
+    {
+      "stage": "MID-T01-staged-deploy",
+      "address": "88b7b5c917e43eeda1a3566b5ded0b5058c1bb2c61a4c647dcfd62670b7715e0",
+      "txId": "0040ba3898e9cc449c9539b597a3bb284eab3936f08a6f42fe854824d6335ad0c3",
+      "txHash": "0501cb15ca0a00464fa8101f9cbe06f9bb71d9104d6449ddb7be40539ce0609f",
+      "blockHash": "7af4eb3582a779cd8ebf67ec1866b6ec107897d271e25f866b063b750f4df304",
+      "blockHeight": 26,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-install",
+      "address": "88b7b5c917e43eeda1a3566b5ded0b5058c1bb2c61a4c647dcfd62670b7715e0",
+      "txId": "006fdb40cb7ca4b2f9d71a900c39c7eabd7f9c7263d34104ab16be18c302d0ca36",
+      "txHash": "28faf83020f9d6e98efa11a85638dff38c55e4b7d59bb1045b71a88474464060",
+      "blockHash": "e282d7bc0367d97e3beccf79ece95e8f5bf20e4312625a572f4b41a72ffd05b7",
+      "blockHeight": 29,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-lock",
+      "address": "88b7b5c917e43eeda1a3566b5ded0b5058c1bb2c61a4c647dcfd62670b7715e0",
+      "txId": "00d65727f55af1acebaf5cef4d9df8821f0ffd17ad892c871ab2b072aae0c73bf1",
+      "txHash": "ae7d807e8a3133b8fda6902fd7a6ce67cf63f12d4a25c575c813ffa70b8f9f95",
+      "blockHash": "abd98d48d7a35ba7b9736d0866a350921ee3fa8b6843543baf7a997e9780afa9",
+      "blockHeight": 32,
+      "status": "SucceedEntirely"
+    }
+  ],
+  "observation": [
+    {
+      "observationVersion": 2,
+      "id": "0fa324048a477086b74b24b5d6feea45293aa17f871ada193a458256c7377516",
+      "address": "88b7b5c917e43eeda1a3566b5ded0b5058c1bb2c61a4c647dcfd62670b7715e0",
+      "blockHash": "abd98d48d7a35ba7b9736d0866a350921ee3fa8b6843543baf7a997e9780afa9",
+      "blockHeight": 32,
+      "stateFingerprint": "d82ce82760f6ce27ecf7837b2b0fb18b1c19a219482c35b6644371b289617023",
+      "artifactFingerprint": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "keySetFingerprint": "6ed52812c48493ea45e8b49a0115cd20f03423fafb61e12119079bdf04e8f6ed",
+      "maintenanceReceiptFingerprint": "6d576b9bdbf7dc82b18f3460138a143a7b40155c38e0e1667031bf4dd6d2aaa7",
+      "genesisHash": "e72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "observedAt": 1789049426385,
+      "expectedPolicyMatched": true,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false
+    }
+  ],
+  "result": [
+    {
+      "address": "88b7b5c917e43eeda1a3566b5ded0b5058c1bb2c61a4c647dcfd62670b7715e0",
+      "submissionCount": 3,
+      "operationCount": 14,
+      "phase": "DEPLOYED",
+      "revision": "0",
+      "counter": "2",
+      "maintenanceLockObserved": true,
+      "immutableOrderAdmission": false,
+      "canonicalQuoteBinding": false,
+      "reservationExecuted": false
+    }
+  ],
+  "limits": [
+    "Version-2 public observations bind four immutable deadlines to independently checked original generated ledger state; deadline values are omitted from this evidence projection.",
+    "Expected configuration is a disposable local fixture, not a real frozen backend quote.",
+    "The native run does not retrieve payment capture expiry, configure a measured safety margin, bind an order or authorize reservation.",
+    "Capture-window and observer-to-policy interoperability checks use explicit auth/payment/repository doubles in separate offline tests.",
+    "Official native services and SDK are used with existing provider adapters, test-wallet tooling and a runtime-resolution compatibility hook; this is not an adapter-free browser integration.",
+    "Maintenance attacks, actor recovery and business circuits were not rerun in this checkpoint. Earlier receipts remain historical.",
+    "Fingerprints are off-chain provenance, not consensus proofs or provider authentication. Version-1 records are not upgraded to version 2."
+  ],
+  "readiness": {
+    "release": "R0",
+    "completedProviders": 0,
+    "totalProviders": 6,
+    "completedOperations": 0,
+    "totalOperations": 14,
+    "r1Complete": false
+  }
+}

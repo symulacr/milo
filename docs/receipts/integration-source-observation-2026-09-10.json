@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-10",
+  "scope": "post-run-worktree-observation-not-execution-source-attestation",
+  "preRunImplementationSnapshotAvailable": false,
+  "note": "Collected during documentation after both native runs. Concurrent hardening may postdate execution; these hashes do not establish the exact implementation executed. Compiler/artifact fingerprints below were emitted during each run.",
+  "files": [
+    {
+      "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead",
+      "path": "packages/integration/src/bootstrap.mjs"
+    },
+    {
+      "sha256": "467084a8fb4d6c9a0f8ca6bae9a1f13480e2a416dc189adf9cf0137084dbfabd",
+      "path": "packages/integration/src/local.mjs"
+    },
+    {
+      "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553",
+      "path": "packages/integration/src/config.mjs"
+    },
+    {
+      "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70",
+      "path": "packages/integration/src/maintenance-audit.mjs"
+    },
+    {
+      "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066",
+      "path": "packages/integration/src/maintenance-controls.mjs"
+    },
+    {
+      "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676",
+      "path": "packages/integration/src/dispatch-rejection.mjs"
+    },
+    {
+      "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784",
+      "path": "packages/integration/src/recovery-process.mjs"
+    },
+    {
+      "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3",
+      "path": "packages/integration/src/recovery-store.mjs"
+    },
+    {
+      "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402",
+      "path": "packages/integration/src/recovery-worker.mjs"
+    },
+    {
+      "sha256": "1fa7907bbb5c984d3730f0b5acffd214698d464196a42c967f2f6db4ae4fb111",
+      "path": "scripts/native-node-smoke.ts"
+    }
+  ]
+}

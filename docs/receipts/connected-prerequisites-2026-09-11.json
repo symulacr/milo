@@ -1,0 +1,71 @@
+{
+  "scope": "preprod-profile-observation",
+  "observation": {
+    "scope": "preprod-finalized-block-health-only",
+    "observedAt": "2026-09-11T09:29:28.380Z",
+    "endpoints": {
+      "rpc": "https://rpc.preprod.midnight.network",
+      "indexer": "https://indexer.preprod.midnight.network/api/v4/graphql"
+    },
+    "chain": "Midnight Preprod",
+    "genesisHash": "0xdf831b09a8baa92badf47762ce5ac439b7e47e3ed3d39600cfdd44fad552361b",
+    "nodeVersion": "1.0.2-eb71e64e",
+    "runtime": {
+      "specName": "midnight",
+      "specVersion": 1000000
+    },
+    "blockHeight": 2501053,
+    "blockHash": "0x159508bc953cf423e012b57278bf33d73cfe08b02d9b310e1d55d6ac0a3f7840",
+    "nodeIndexerAgreement": true,
+    "sdkCompatibilityVerified": false,
+    "contractObserved": false,
+    "admissionVerified": false,
+    "transactionsSubmitted": 0
+  },
+  "profileVerified": true,
+  "serviceExpectations": {
+    "node": "1.0.2",
+    "indexer": "4.3.3-hotfix",
+    "proofServer": "8.1.0"
+  },
+  "indexerVersionVerified": false,
+  "proofServiceVerified": false,
+  "sdkCompatibilityVerified": false,
+  "deploymentVerified": false,
+  "admissionVerified": false,
+  "transactionsSubmitted": 0,
+  "sourceSha256": {
+    "apps/web/src/lace-transaction-runtime.test.ts": "5805624236a11c12a96cf6f543f8314ef57224c70b462ede5322db5c4e3f15ba",
+    "apps/web/src/lace-transaction-runtime.ts": "e31a0d679e37ccc00a34d4503b3ed1da74710008a3a8aba49672060ce72530eb",
+    "convex/provisioning.ts": "cd4cc9832612471232e14486b7973c930aa4ad27461710a908f2319bcc17debd",
+    "convex/schema.ts": "48752cb11121322e5c45e1c9ee8585c99cc4bfd5ac4c92d314bb7818511c78b5",
+    "convex/stripeProvisioning.ts": "c39301c54c228d8e0e1cfc210219959b0aa5b40285354285bfc52fdf2e4fa10e",
+    "packages/backend/src/admission-policy.ts": "0f6907b1bf4ae3afde4333f49cf9bd8b60e127bca1b9c2b704386e9f41ebeb53",
+    "packages/backend/src/provisioning-policy.ts": "44becbcb8242e092eeab5211c30b449e189cfa98ba7310920fce974787b9a320",
+    "packages/backend/src/stripe-observer.server.ts": "3b9482e36e70ffe7478eab45bbed12fef8e920400334543d56fb06379dfde54d",
+    "packages/backend/src/stripe-provisioning.server.ts": "33a296ce23f0f7101041042c1d20e86044df0c473b5eff675c86b8dc4b8d4cf4",
+    "packages/backend/test/admission-policy.test.ts": "87083760300dbe6a35f41217bf535a60acc384e5c97a23313a8497059dfdc249",
+    "packages/backend/test/providers.test.ts": "992b9eacbcc5248cd2cd2bf63ecc388bc5a7efe7876e77d551708335e0769eee",
+    "packages/backend/test/provisioning.test.ts": "5f186acd661313447ce8e2fb14a5a2c574a4f74681eaca96d8c0345586faee6e",
+    "packages/contract/tests/order.test.ts": "26dbdcbf61553260a7f5c96b79e229e8d6cfa31e5f1da06dac5ba427bd26fa45",
+    "packages/integration/package-lock.json": "fb80ffbbe8ca67a90101df7128547851f74a6dfe0f85b3a34cbb56f3dc305611",
+    "packages/integration/package.json": "83af515c98b1cec7ea18b0fb9ed3b928aba3774a0be33692ac15f0a74e4dd836",
+    "packages/integration/src/artifacts.mjs": "666b54bbb4c21f0fe25c19739b82a83ca500c4414b2f9a6e07d0cbd97a8d4069",
+    "packages/integration/src/preprod-observation.mjs": "969ca14fa4593111751ab554a073b74b74e9b071dcf85b92f6e4f96d93b94e6e",
+    "packages/integration/src/preprod-profile.mjs": "fee8bb458308c0ef81bd5839063abaf758681309687e79304ec7231f297c5c6e",
+    "packages/integration/src/preprod.mjs": "82c3666ca69fdc9e4670b413fbd3b307d6563856e6b0f5f197bb127d6b5b9df8",
+    "packages/integration/test/preprod-observation.test.mjs": "3e9eb8548591f4c465c10a262954afb42d4fc17a2aff41f9d670b51e6f8edad1",
+    "packages/integration/test/preprod-profile.test.mjs": "78c660186c26fd3f8f2c3d81aab625dea95912d6520164a9ae14219e3038d64e",
+    "packages/integration/test/sdk-compatibility.test.mjs": "3c2bb15d7b4f9c50c31acd030bc864d8616013cd8c7aba1c1c65b23c961d937f"
+  },
+  "verification": {
+    "unitTests": 215,
+    "unitAssertions": 1068,
+    "sdkTests": 104,
+    "node": "24.20.0",
+    "realLocalConvexAdmissionRegression": true,
+    "newPaymentWorkerConcurrency": "explicit doubles only",
+    "livePaymentRequests": 0,
+    "liveWalletTransactions": 0
+  }
+}

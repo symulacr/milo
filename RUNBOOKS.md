@@ -48,10 +48,10 @@ otherwise calling a function that no longer exists.
 |---|---|---|---|
 | local | test or none | compose undeployed | convex-local |
 | dev | sk_test_ | preprod | tremendous-rooster-473 |
-| prod | sk_live_ (owner) | TBD | TBD |
+| prod | not provisioned: the live site runs on the dev row above, in test mode | preprod | tremendous-rooster-473 |
 
 ## SBOM
-`bun pm ls` + `packages/integration/package-lock.json` (dual lockfiles).
+`npm sbom --sbom-format cyclonedx` (npm 10+) in the repo root and in `packages/integration` (dual lockfiles).
 
 ## PR3/PR4 addendum (Reliability + Chain ops)
 

@@ -1,0 +1,234 @@
+{
+  "recordedAt": "2026-09-11T23:45:17.940761+00:00",
+  "scope": "Local repair and internal provisioning checkpoint; not connected-provider or lifecycle acceptance",
+  "unitTests": {
+    "passed": 264,
+    "failed": 0,
+    "assertions": 1233
+  },
+  "sdkTests": {
+    "node": "24.20.0",
+    "walletSdk": "1.2.0",
+    "passed": 104,
+    "failed": 0
+  },
+  "staticChecks": [
+    "root typecheck",
+    "Convex typecheck",
+    "lint",
+    "production build",
+    "plan validation"
+  ],
+  "browser": {
+    "mode": "offline actual App in MemoryRouter; synthetic config HTTP 503",
+    "checks": [
+      "Connections keyboard navigation focus",
+      "Connections retry focus",
+      "merchant Enter activation focus",
+      "operator Space activation focus",
+      "merchant forward Tab target"
+    ],
+    "managedPreviewVerified": false,
+    "mobileAndZoomVerified": false
+  },
+  "convex": {
+    "verifiedAt": "2026-09-11T23:44:26.049Z",
+    "checksumVerifiedBeforeExecution": true,
+    "generatedCodeAndTypecheck": true,
+    "anonymousAdmissionDenied": true,
+    "concurrentAdmissionRequests": 16,
+    "concurrentAdmissionSingleWinner": true,
+    "concurrentAdmissionIdempotentReplays": 7,
+    "concurrentAdmissionConflictsRejected": 8,
+    "nativeRestartPreservedCanonicalBinding": true,
+    "observerFixturesAreSynthetic": true,
+    "privyJwtVerified": false
+  },
+  "native": {
+    "network": "undeployed",
+    "staged": {
+      "submissionCount": 3,
+      "operationCount": 14,
+      "phase": "DEPLOYED",
+      "revision": "0",
+      "counter": "2",
+      "maintenanceLockObserved": true,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false,
+      "r1Complete": false
+    },
+    "maintenanceAudit": {
+      "elapsedMs": 41897,
+      "retainedKeyCasesVerified": 7,
+      "nodeRejectedSubmissions": 7,
+      "requiredCases": 7,
+      "authorityRejectionVerified": true,
+      "replayCounterControlsVerified": true,
+      "postLockCounterCasesVerified": 3,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false
+    },
+    "maintenanceControls": {
+      "positiveBatchFinalized": true,
+      "updateCount": 7,
+      "counterControlsVerified": 3,
+      "signedMaintenanceReplayVerified": true,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false
+    },
+    "legacyTopLevelAdversarialFlag": false,
+    "recovery": {
+      "actorCommitmentsRestored": true,
+      "reconciledPendingTransactions": 1,
+      "actualActorProcessRestart": true,
+      "walletBrokerRestarted": false,
+      "submissionCount": 3,
+      "duplicateSubmissionCount": 0,
+      "operationCount": 14,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false,
+      "r1Complete": false
+    },
+    "preRunSourceHashes": [
+      {
+        "path": "packages/integration/package-lock.json",
+        "sha256": "fb80ffbbe8ca67a90101df7128547851f74a6dfe0f85b3a34cbb56f3dc305611"
+      },
+      {
+        "path": "packages/integration/package.json",
+        "sha256": "83af515c98b1cec7ea18b0fb9ed3b928aba3774a0be33692ac15f0a74e4dd836"
+      },
+      {
+        "path": "packages/integration/src/admission-observation.mjs",
+        "sha256": "dccf57ca4527c0e7760462663b0d22db613d0f503372e237cfe14785f70a241f"
+      },
+      {
+        "path": "packages/integration/src/artifacts.mjs",
+        "sha256": "666b54bbb4c21f0fe25c19739b82a83ca500c4414b2f9a6e07d0cbd97a8d4069"
+      },
+      {
+        "path": "packages/integration/src/bootstrap.mjs",
+        "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead"
+      },
+      {
+        "path": "packages/integration/src/config.mjs",
+        "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553"
+      },
+      {
+        "path": "packages/integration/src/diagnostics.mjs",
+        "sha256": "3d7e23a0b1394862701587f8c26e0492899a6b9fce346991189c03e6f94c11f9"
+      },
+      {
+        "path": "packages/integration/src/dispatch-rejection.mjs",
+        "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676"
+      },
+      {
+        "path": "packages/integration/src/dust.mjs",
+        "sha256": "f3c43b0ab4a0bd13de915fbec45d9531164c8a5e1989c648cb81d7dc6191bf19"
+      },
+      {
+        "path": "packages/integration/src/local.mjs",
+        "sha256": "f723da57b3309562a394db15ffbf7aebd5c370fd9b78124e1051ec1fac86a802"
+      },
+      {
+        "path": "packages/integration/src/maintenance-audit.mjs",
+        "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70"
+      },
+      {
+        "path": "packages/integration/src/maintenance-controls.mjs",
+        "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066"
+      },
+      {
+        "path": "packages/integration/src/order.mjs",
+        "sha256": "0a2be7612617f9485e1a581ad679afe269e6e74f6855ef4c1e8558e11183116a"
+      },
+      {
+        "path": "packages/integration/src/preprod-observation.mjs",
+        "sha256": "969ca14fa4593111751ab554a073b74b74e9b071dcf85b92f6e4f96d93b94e6e"
+      },
+      {
+        "path": "packages/integration/src/preprod-profile.mjs",
+        "sha256": "fee8bb458308c0ef81bd5839063abaf758681309687e79304ec7231f297c5c6e"
+      },
+      {
+        "path": "packages/integration/src/preprod.mjs",
+        "sha256": "82c3666ca69fdc9e4670b413fbd3b307d6563856e6b0f5f197bb127d6b5b9df8"
+      },
+      {
+        "path": "packages/integration/src/recovery-process.mjs",
+        "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784"
+      },
+      {
+        "path": "packages/integration/src/recovery-store.mjs",
+        "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3"
+      },
+      {
+        "path": "packages/integration/src/recovery-worker.mjs",
+        "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402"
+      },
+      {
+        "path": "packages/integration/src/resources.mjs",
+        "sha256": "0a164a542719595ff1bbb5e5644512de80a06c00e77cb7de4ce183f82e52cf97"
+      },
+      {
+        "path": "packages/integration/src/submissions.mjs",
+        "sha256": "68a3011064ff36a353d80668b5e7d0cc58463734f8db36579cc9a0500e5185b7"
+      },
+      {
+        "path": "scripts/native-node-smoke.ts",
+        "sha256": "1fa7907bbb5c984d3730f0b5acffd214698d464196a42c967f2f6db4ae4fb111"
+      },
+      {
+        "path": "scripts/native-processes.test.ts",
+        "sha256": "12617627ce36e7881611adff5e91a645d691cc93d5408941ff5f296c4156b1e8"
+      },
+      {
+        "path": "scripts/native-processes.ts",
+        "sha256": "0e096484e16146e6bc3a611e834da9ef413ebda34eb74d07db018427f20b408d"
+      },
+      {
+        "path": "scripts/native-services-health.ts",
+        "sha256": "338d448d743dfd6ada2d8025a1ecd9ea4d7f96fdd066879e3c20927b4a988e98"
+      },
+      {
+        "path": "scripts/setup-integration-runtime.ts",
+        "sha256": "ac5b86dfc461e6684866d4f84bd053c96d16fee5a3ce8fee26dc3281e3d86017"
+      },
+      {
+        "path": "scripts/setup-native-node.ts",
+        "sha256": "f0c5132a25f465cba3ed3fd5e3b0fd1a95c912106a57ddd5854ec37227db15d8"
+      },
+      {
+        "path": "scripts/setup-native-services.py",
+        "sha256": "05d13376643717728a4ca4af7f6a1699ae28c00a4cf4410b9853c88758ffd2a8"
+      },
+      {
+        "path": "packages/contract/src/order.compact",
+        "sha256": "8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96"
+      }
+    ],
+    "postRunCheck": {
+      "at": "2026-09-11T23:41:11.133689+00:00",
+      "filesChecked": 90,
+      "changed": []
+    }
+  },
+  "postVerificationSourceHashes": {
+    "apps/web/src/App.tsx": "c81ee181b26fe62d394228871743bf230354bfa006a2cfbfd90f410ee49041ad",
+    "apps/web/src/Connections.tsx": "4a64d6679f96ca7059b9fe17858aca2d4472081d3b64b9dd4cec711b5590c0ba",
+    "apps/web/src/route-headings.test.tsx": "74a9ec2ca43e5683c414953948e1587f48d6b5d856edc5b225fb914ac6f8f5ae",
+    "convex/trustedProvisioning.ts": "10305cf89d756fe83f74dd4a3a5fef9b86db6345fcab2e1cade4e1bb28f6a5ea",
+    "convex/provisioning.ts": "c2e95a8b12a1fa1e411266c01a2a3539f91cbd7c21d3754900a641b91a7f0c97",
+    "convex/schema.ts": "6068996446db479c9d9df52cffbc58c1e1fa0924a7d27daac083e05988280d39",
+    "packages/backend/src/trusted-provisioning-policy.ts": "ddfab0f286b54c658b4c688a1d365f1750376eed6cc2cf84c58009f31a306337",
+    "packages/backend/src/convex-admission.ts": "8ab69648921f158a4ffac68ca5099b77d2888c69d1a7a3f69b2ebc434bbd18ec",
+    "packages/backend/test/trusted-provisioning.test.ts": "75eca3b319943c173a34435953263a28d654e6f8014556c38303f5a54aefdaa8"
+  },
+  "limits": [
+    "Handler provisioning tests use database doubles, not real source verification or provisioning OCC.",
+    "Local Convex tests use synthetic identities and observations.",
+    "Native recovery preserves wallet broker and key; no full-wallet/device recovery.",
+    "No public Preprod transactions, payment effects, canonical order admission or buyer reservation.",
+    "R0 / 0-of-6 / 0-of-14 unchanged."
+  ]
+}

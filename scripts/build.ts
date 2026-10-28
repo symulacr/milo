@@ -222,6 +222,28 @@ if (securityContact) {
   );
 }
 
+// Every production deployment so far was uploaded from a dirty working tree
+// (gitDirty: "1" on all eight, per the Vercel API), so nothing tied a live
+// artifact to a commit. This records the commit the build saw, and whether the
+// tree was clean, into a file the CDN serves.
+const git = (args: string[]) => {
+  const run = Bun.spawnSync(["git", ...args]);
+  return run.exitCode === 0 ? run.stdout.toString().trim() : "";
+};
+await Bun.write(
+  `${outdir}/deploy.json`,
+  `${JSON.stringify(
+    {
+      commit: git(["rev-parse", "HEAD"]) || null,
+      branch: git(["rev-parse", "--abbrev-ref", "HEAD"]) || null,
+      dirty: git(["status", "--porcelain"]).length > 0,
+      builtAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  )}\n`,
+);
+
 const publicDirectory = "apps/web/public";
 const QA_ONLY = [/^qa-/];
 

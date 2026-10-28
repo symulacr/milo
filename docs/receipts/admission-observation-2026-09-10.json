@@ -1,0 +1,185 @@
+{
+  "scope": "owned-native-read-only-admission-observation-not-canonical-admission",
+  "date": "2026-09-10",
+  "run": "run-k1ERXP",
+  "command": "npm run test:native-node -- --with-services --transactions --staged-bootstrap",
+  "supervisor": {
+    "shellExitCode": 0,
+    "driverExitCode": 0,
+    "node": "1.0.0",
+    "archiveSha256": "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
+    "indexerReady": true,
+    "proverReady": true,
+    "indexedBlockOneMatchesNode": true
+  },
+  "implementationSource": {
+    "capturedBeforeExecution": true,
+    "unchangedAfterExecution": true,
+    "files": [
+      {
+        "sha256": "db2b6309384a8054174048557e95609f3678dae1fa47bc93fc167026137dc72c",
+        "path": "packages/integration/src/admission-observation.mjs"
+      },
+      {
+        "sha256": "553f2f5ee1b74dc2d0e3eec4614b4011729d6e0184151abbd6e469abba6a11ed",
+        "path": "packages/integration/src/artifacts.mjs"
+      },
+      {
+        "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead",
+        "path": "packages/integration/src/bootstrap.mjs"
+      },
+      {
+        "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553",
+        "path": "packages/integration/src/config.mjs"
+      },
+      {
+        "sha256": "3d7e23a0b1394862701587f8c26e0492899a6b9fce346991189c03e6f94c11f9",
+        "path": "packages/integration/src/diagnostics.mjs"
+      },
+      {
+        "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676",
+        "path": "packages/integration/src/dispatch-rejection.mjs"
+      },
+      {
+        "sha256": "f3c43b0ab4a0bd13de915fbec45d9531164c8a5e1989c648cb81d7dc6191bf19",
+        "path": "packages/integration/src/dust.mjs"
+      },
+      {
+        "sha256": "e51b9f1e00f1a5a027cecbe571a783d4ff97ba62c2f1c8d0040b3521cd32c5ba",
+        "path": "packages/integration/src/local.mjs"
+      },
+      {
+        "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70",
+        "path": "packages/integration/src/maintenance-audit.mjs"
+      },
+      {
+        "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066",
+        "path": "packages/integration/src/maintenance-controls.mjs"
+      },
+      {
+        "sha256": "0a2be7612617f9485e1a581ad679afe269e6e74f6855ef4c1e8558e11183116a",
+        "path": "packages/integration/src/order.mjs"
+      },
+      {
+        "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784",
+        "path": "packages/integration/src/recovery-process.mjs"
+      },
+      {
+        "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3",
+        "path": "packages/integration/src/recovery-store.mjs"
+      },
+      {
+        "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402",
+        "path": "packages/integration/src/recovery-worker.mjs"
+      },
+      {
+        "sha256": "0a164a542719595ff1bbb5e5644512de80a06c00e77cb7de4ce183f82e52cf97",
+        "path": "packages/integration/src/resources.mjs"
+      },
+      {
+        "sha256": "68a3011064ff36a353d80668b5e7d0cc58463734f8db36579cc9a0500e5185b7",
+        "path": "packages/integration/src/submissions.mjs"
+      },
+      {
+        "sha256": "e26bb97e60238fac1fbf774605b134461dbdf0fd2721130e166ca293147845e7",
+        "path": "packages/backend/src/admission-policy.ts"
+      },
+      {
+        "sha256": "1fa7907bbb5c984d3730f0b5acffd214698d464196a42c967f2f6db4ae4fb111",
+        "path": "scripts/native-node-smoke.ts"
+      }
+    ]
+  },
+  "compilerEvidence": [
+    {
+      "artifactCount": 60,
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "compileReceiptSha256": "270b8e56340e8cb1b9b45a71cc3874a805679a16efd938aad6d56b09485892f4",
+      "sourceSha256": "8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96",
+      "compiler": "0.31.1",
+      "language": "0.23.0",
+      "runtime": "0.16.0",
+      "cohort": {
+        "node": "24.20.0",
+        "packageSha256": "956146576366e6cf10287a253360dd7301b4f0fe6da7cb811162e49910efdf70",
+        "lockfileSha256": "9104115c8816513c0e11a70b0c80a28f24f4e13cd475cfb5bfb45e345de29339"
+      }
+    }
+  ],
+  "bootstrapTransactions": [
+    {
+      "stage": "MID-T01-staged-deploy",
+      "address": "e5b29302817a44618226f127ada2e74f6892300b6836d1c1147f3e9bf2727730",
+      "txId": "005b72ed7200ea0081cfe3ae32f64f5148ab0ac82575d0642d3f084e36980b2b45",
+      "txHash": "330e0d9b70dd6c2e12165c770c8197d813d52dd5d1410808fc8e012154746bb2",
+      "blockHash": "533f1ef5fbb3735f0f0f430af78cc5b3406d5bfeced18c6ba8fd45ddcb905b3b",
+      "blockHeight": 27,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-install",
+      "address": "e5b29302817a44618226f127ada2e74f6892300b6836d1c1147f3e9bf2727730",
+      "txId": "000b49ef3187d735fe5e401c68aabfee04abed45f2629441f54942bbccdf350dcb",
+      "txHash": "2f0b7dcc08fe05b95240424bb66eec0ce2ab4a579d346c59995dc3742c195636",
+      "blockHash": "f9346ffe2af1927c4d707f31cc7d33be3a968405530cbc5e43b8639719d274e5",
+      "blockHeight": 30,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-lock",
+      "address": "e5b29302817a44618226f127ada2e74f6892300b6836d1c1147f3e9bf2727730",
+      "txId": "00497790b4a2c4c9d91e7cb8140f032ade46172dd3d1e4f16d12000aed3bbd69f1",
+      "txHash": "346a3de53921e7ea2b740932384944dfcf9798e1d0fe6db54a18d685beb4bc9f",
+      "blockHash": "fe1bc5692503e3ed03e13dfc2273a4619a9665fd410954e29a2851e6124f48d4",
+      "blockHeight": 33,
+      "status": "SucceedEntirely"
+    }
+  ],
+  "observation": [
+    {
+      "observationVersion": 1,
+      "id": "242b01965976533817319eaa4f89c56923530af1a79d1266d59ecdaf0dbacaed",
+      "address": "e5b29302817a44618226f127ada2e74f6892300b6836d1c1147f3e9bf2727730",
+      "blockHash": "fe1bc5692503e3ed03e13dfc2273a4619a9665fd410954e29a2851e6124f48d4",
+      "blockHeight": 33,
+      "stateFingerprint": "8bfb069ace215ae4ed1fa2680b8927a76e833c761f8705ecd6328e1f1cd85dd2",
+      "artifactFingerprint": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "keySetFingerprint": "bd87809ca5765fdf9d1b136e1da96316aa4581d468036b23040d07f73f96067a",
+      "maintenanceReceiptFingerprint": "83bb258121a30b282eb4677bd759394e1885a45f762c81dd7d019f4f6a2e0770",
+      "genesisHash": "e72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "observedAt": 1789040931282,
+      "expectedPolicyMatched": true,
+      "immutableOrderAdmission": false,
+      "reservationExecuted": false
+    }
+  ],
+  "result": [
+    {
+      "address": "e5b29302817a44618226f127ada2e74f6892300b6836d1c1147f3e9bf2727730",
+      "submissionCount": 3,
+      "operationCount": 14,
+      "phase": "DEPLOYED",
+      "revision": "0",
+      "counter": "2",
+      "maintenanceLockObserved": true,
+      "immutableOrderAdmission": false,
+      "canonicalQuoteBinding": false,
+      "reservationExecuted": false
+    }
+  ],
+  "limits": [
+    "Expected configuration comes from a disposable local fixture, not a real frozen backend quote.",
+    "The observer is read-only and creates no canonical database binding, payment authorization or buyer reservation.",
+    "Backend interoperability uses explicit transaction/auth/payment test doubles in separate tests, not this native run.",
+    "Hashes are local observation provenance, not consensus or Compact transaction proofs.",
+    "Recovery and maintenance attack modes were not rerun for this observation checkpoint; their earlier receipts remain historical."
+  ],
+  "readiness": {
+    "release": "R0",
+    "completedProviders": 0,
+    "totalProviders": 6,
+    "completedOperations": 0,
+    "totalOperations": 14,
+    "r1Complete": false
+  }
+}

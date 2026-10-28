@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#fafaf9"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#c2410c"/>
+  <text x="80" y="90" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">ROI · GTM</text>
+  <text x="80" y="155" font-family="Georgia, serif" font-size="36" fill="#1c1917">One measurable claim · one studio step</text>
+  <rect x="80" y="210" width="1120" height="180" rx="12" fill="#1c1917"/>
+  <text x="110" y="260" font-family="system-ui, sans-serif" font-size="18" fill="#fdba74">MEASURABLE ROI CLAIM</text>
+  <text x="110" y="305" font-family="system-ui, sans-serif" font-size="20" fill="#fafaf9">Replace private chat/email archives with a public re-queryable</text>
+  <text x="110" y="345" font-family="system-ui, sans-serif" font-size="20" fill="#fafaf9">lifecycle record: phase + deliveryCommitment, without price or brief.</text>
+  <text x="110" y="375" font-family="system-ui, sans-serif" font-size="14" fill="#a8a29e">Measure in pilot: independent re-query pass/fail + minutes-to-evidence. No ROI % claimed today.</text>
+  <rect x="80" y="420" width="1120" height="160" rx="12" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
+  <text x="110" y="470" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">ONE STUDIO GTM STEP</text>
+  <text x="110" y="515" font-family="system-ui, sans-serif" font-size="20" fill="#292524">One design-partner product-photo studio → invite-only order links</text>
+  <text x="110" y="555" font-family="system-ui, sans-serif" font-size="20" fill="#292524">to that studio’s existing buyers. No marketplace. No discovery build.</text>
+  <text x="80" y="630" font-family="system-ui, sans-serif" font-size="14" fill="#a8a29e">No design partner signed yet — this is the single distribution experiment.</text>
+  <text x="80" y="660" font-family="system-ui, sans-serif" font-size="14" fill="#78716c">Slide 9 / 10</text>
+</svg>

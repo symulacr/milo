@@ -1,0 +1,77 @@
+{
+  "date": "2026-09-10",
+  "scope": "pre-run-integration-implementation-snapshot",
+  "preRunImplementationSnapshotAvailable": true,
+  "captureSource": ".hoplite/artifacts/final-native-source-sha256.txt",
+  "note": "Snapshot captured before the final native reruns; all 16 listed files were checked unchanged after maintenance run-f5Chw8 and recovery run-jOvW0R. This does not retroactively attest source for earlier runs.",
+  "verifiedRuns": [
+    "run-f5Chw8",
+    "run-jOvW0R"
+  ],
+  "files": [
+    {
+      "sha256": "553f2f5ee1b74dc2d0e3eec4614b4011729d6e0184151abbd6e469abba6a11ed",
+      "path": "packages/integration/src/artifacts.mjs"
+    },
+    {
+      "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead",
+      "path": "packages/integration/src/bootstrap.mjs"
+    },
+    {
+      "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553",
+      "path": "packages/integration/src/config.mjs"
+    },
+    {
+      "sha256": "3d7e23a0b1394862701587f8c26e0492899a6b9fce346991189c03e6f94c11f9",
+      "path": "packages/integration/src/diagnostics.mjs"
+    },
+    {
+      "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676",
+      "path": "packages/integration/src/dispatch-rejection.mjs"
+    },
+    {
+      "sha256": "f3c43b0ab4a0bd13de915fbec45d9531164c8a5e1989c648cb81d7dc6191bf19",
+      "path": "packages/integration/src/dust.mjs"
+    },
+    {
+      "sha256": "467084a8fb4d6c9a0f8ca6bae9a1f13480e2a416dc189adf9cf0137084dbfabd",
+      "path": "packages/integration/src/local.mjs"
+    },
+    {
+      "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70",
+      "path": "packages/integration/src/maintenance-audit.mjs"
+    },
+    {
+      "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066",
+      "path": "packages/integration/src/maintenance-controls.mjs"
+    },
+    {
+      "sha256": "0a2be7612617f9485e1a581ad679afe269e6e74f6855ef4c1e8558e11183116a",
+      "path": "packages/integration/src/order.mjs"
+    },
+    {
+      "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784",
+      "path": "packages/integration/src/recovery-process.mjs"
+    },
+    {
+      "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3",
+      "path": "packages/integration/src/recovery-store.mjs"
+    },
+    {
+      "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402",
+      "path": "packages/integration/src/recovery-worker.mjs"
+    },
+    {
+      "sha256": "0a164a542719595ff1bbb5e5644512de80a06c00e77cb7de4ce183f82e52cf97",
+      "path": "packages/integration/src/resources.mjs"
+    },
+    {
+      "sha256": "68a3011064ff36a353d80668b5e7d0cc58463734f8db36579cc9a0500e5185b7",
+      "path": "packages/integration/src/submissions.mjs"
+    },
+    {
+      "sha256": "1fa7907bbb5c984d3730f0b5acffd214698d464196a42c967f2f6db4ae4fb111",
+      "path": "scripts/native-node-smoke.ts"
+    }
+  ]
+}

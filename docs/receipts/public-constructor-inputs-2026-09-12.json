@@ -1,0 +1,66 @@
+{
+  "verifiedAt": "2026-09-12T22:17:36.896932+00:00",
+  "scope": "T10a versioned public constructor persistence and offline generated-ledger parity",
+  "baseCommit": "11ef050418d35e52ded5760edbfd2b3765b832e7",
+  "releaseLevel": "R0",
+  "providerGatesPassed": 0,
+  "operationGatesPassed": 0,
+  "commands": {
+    "npm run test:unit": {
+      "passed": 355,
+      "failed": 0,
+      "assertions": 1697
+    },
+    "npm run typecheck": "passed",
+    "Convex typecheck": "passed",
+    "npm run lint": "passed; both touched excluded Convex files separately matched Biome output",
+    "npm run build": "passed",
+    "npm run check:plan": "passed",
+    "pinned Node 24.20.0 SDK suite": {
+      "passed": 106,
+      "failed": 0
+    },
+    "npm run test:convex-local": "passed"
+  },
+  "nativeConstructorEvidence": {
+    "invalidAndMissingInputsRejectedWithoutWrites": true,
+    "concurrentFreezeRequests": 8,
+    "persistedFrozenRows": 1,
+    "restartPreservesExactRowAndReplay": true,
+    "actualReloadedRowPassedToGeneratedConstructor": true,
+    "independentDecodedLedgerFingerprintsMatch": true,
+    "networkLabel": "preprod",
+    "execution": "offline generated constructor, not public Preprod",
+    "authentication": "local admin impersonation; not hosted Privy JWT",
+    "providerIO": "synthetic; default provider factory unchanged"
+  },
+  "limits": [
+    "No public-chain transaction, Preprod observation ingestion or real artifact/key/network provenance.",
+    "No authoritative role ownership, hosted authentication, live Stripe or connected UI acceptance.",
+    "Legacy incomplete approved/frozen/observation rows require reviewed source-backed migration before strict schema deployment.",
+    "Commitments are public/correlatable; no private terms opening or capability/signing keys persisted.",
+    "Native-chain transaction receipts and browser evidence were not refreshed."
+  ],
+  "sourceFingerprintsUnchangedAcrossNativeRun": true,
+  "sourceSha256": {
+    "bun.lock": "3aa973703f5db36eaef8aef4f1a4012f2242d0b48904267480e11415ac27563b",
+    "convex/admissionValidators.ts": "2e4e55b72bbf68bdd2733b8bdde53ea4936540ae4873a7222a9f8ee4787958c4",
+    "convex/provisioning.ts": "8396ae878a169ddb615e807a9eb25eaa106915dc0ea4c0161a755ca559465278",
+    "package.json": "1998506a3a02b5a06ee9a655ea3ba528abbdea06f77fcfde704fa432f080a653",
+    "packages/backend/src/admission-policy.ts": "7e253396d1ab713c4f3db569c56de66d722ed326aa740e81049ac46635944305",
+    "packages/backend/src/provisioning-policy.ts": "52fe43551e76c04c003c4d0e3d8cacd23181f936432596241f15d740ee6258ac",
+    "packages/backend/src/public-constructor.d.mts": "c5da4a4274a7834756b71cda16841d69cf24782c6977514a749909aa500b0b63",
+    "packages/backend/src/public-constructor.mjs": "030bea7267ecada8fa453f54143319570e9b7e79299b3013fe37698600bc2ed9",
+    "packages/backend/test/admission-policy.test.ts": "c59af5cb3c79a480e30487570d866d5e14320b426a826566065e047e9124d307",
+    "packages/backend/test/convex-admission.test.ts": "9384b71c38f014832a3256384bd242d62a4ef3be2d364e0b21505ea2f9c3f50a",
+    "packages/backend/test/provisioning.test.ts": "287b00f6150d9935b9dbb1fe443a9e8ac1934007a61aeac48fecffd66d52e56f",
+    "packages/backend/test/public-constructor.test.ts": "064726faa0e754a57d785bec2c5b3cdba727f2b8706b60da5247ed2f4927ab6a",
+    "packages/backend/test/trusted-provisioning.test.ts": "5863324e7783c4cb2d87a1f1fec2a5aad7265b31deaeae08866ab7d53732b9a5",
+    "packages/integration/src/admission-observation.mjs": "14ef77bf2b50a1e3eeb28183382d5ad289eaa31f2335d49cc241938bb406e641",
+    "packages/integration/src/verify-persisted-constructor.mjs": "5d7f2b982c7cc8d6b4732a257f1717dd9e073f7fab434ed3d2babdc181acba06",
+    "packages/integration/test/admission-observation.test.mjs": "654695d1b2d22c2eb30862390155956512810b895438d220c299c07b1d1029eb",
+    "scripts/convex-local-fixtures.ts": "fe20f87190ff911abec22153161e4bab962c2abd54a81b95e1870976e3a3c783",
+    "scripts/convex-local-provisioning-fixtures.mjs": "d2e8b6a975e6eca92435a75353950351ba14aeacba0b3b510c9e652dbf2edd24",
+    "scripts/convex-local-verify.mjs": "2c9dafd7b21ea7fa9a9e23c0bd7451ce1f07e7cb0a7b897436df70a8c4a9409b"
+  }
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#fafaf9"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#c2410c"/>
+  <text x="80" y="90" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">PRODUCT</text>
+  <text x="80" y="155" font-family="Georgia, serif" font-size="36" fill="#1c1917">One order. Private terms. Public lifecycle.</text>
+  <rect x="80" y="210" width="520" height="280" rx="12" fill="#1c1917"/>
+  <text x="110" y="260" font-family="system-ui, sans-serif" font-size="18" fill="#fdba74">PRIVATE (off-chain)</text>
+  <text x="110" y="310" font-family="system-ui, sans-serif" font-size="20" fill="#fafaf9">Price and commercial terms</text>
+  <text x="110" y="350" font-family="system-ui, sans-serif" font-size="20" fill="#fafaf9">Brief and creative files</text>
+  <text x="110" y="390" font-family="system-ui, sans-serif" font-size="20" fill="#fafaf9">Identities of parties (off-ledger)</text>
+  <text x="110" y="440" font-family="system-ui, sans-serif" font-size="16" fill="#a8a29e">Terms freeze after reserve; never published as ledger plaintext</text>
+  <rect x="640" y="210" width="560" height="280" rx="12" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
+  <text x="670" y="260" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">PUBLIC (Midnight ledger)</text>
+  <text x="670" y="310" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Order phase</text>
+  <text x="670" y="350" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Hashed commitments</text>
+  <text x="670" y="390" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Who may advance which step</text>
+  <text x="670" y="440" font-family="system-ui, sans-serif" font-size="16" fill="#7c2d12">Inspectable by buyer, merchant, and independent re-query</text>
+  <text x="80" y="560" font-family="system-ui, sans-serif" font-size="20" fill="#44403c">That split is the product. Payment capture is external and separate from approval.</text>
+  <text x="80" y="660" font-family="system-ui, sans-serif" font-size="14" fill="#78716c">Slide 4 / 10</text>
+</svg>

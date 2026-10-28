@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A $0 uptime check. GitHub's minimum interval is five minutes and a run can
+  # slip under load, so this is a backstop, not an SLO instrument.
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -137,5 +141,82 @@ jobs:
           path: .tools/native-midnight
           key: native-midnight-node-1.0.0-indexer-4.3.3-prover-8.1.3
 
+      # `packages/contract/generated` is gitignored, so a fresh clone has none of
+      # it and the driver's first stage (validateArtifacts) fails before it does
+      # any work. The main job compiles it; this job must too.
+      - name: Compile the contract
+        timeout-minutes: 60
+        run: npm run contract:compile
+
+      # The driver also validates the integration cohort, which the main job
+      # installs and verifies. Without these two steps the lane cannot start.
+      - name: Install isolated integration SDK cohort from lockfile
+        run: npm ci --prefix packages/integration --ignore-scripts --no-audit --no-fund
+
+      - name: Verify compiler and runtime cohort
+        run: npm run contract:cohort
+
       - name: Run the native Midnight smoke
         run: npm run test:native-network
+
+      # The assertion only reports an exit code; the driver's own `failed` event
+      # and the service logs live in this directory, which is gitignored. Without
+      # this upload a red run is undiagnosable from the log alone.
+      - name: Upload the native diagnostic evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-midnight-evidence
+          # Only the diagnostics: `res/` is 44 MB of node config presets and the
+          # `.sqlite` files are throwaway ledger state, together 99% of the dir.
+          path: |
+            .hoplite/artifacts/native-node/**/transactions.jsonl
+            .hoplite/artifacts/native-node/**/transactions.stderr.log
+            .hoplite/artifacts/native-node/**/node.stderr.log
+            .hoplite/artifacts/native-node/**/indexer.stdout.log
+            .hoplite/artifacts/native-node/**/prover.stdout.log
+          retention-days: 3
+          if-no-files-found: warn
+
+  # Nothing watched the live site before this job. The static host and the Convex
+  # backend can be down independently, so both are checked.
+  #
+  # `continue-on-error` is deliberately NOT set: a failed run is the alert. It
+  # notifies the owner through GitHub's own settings, the only free channel on
+  # this plan (Vercel log drains and Convex periodic backups are both Pro-only).
+  uptime:
+    name: Live site is up
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: The page answers 200 and is the app, not a parked page
+        run: |
+          set -eu
+          url=https://milo-nine-delta.vercel.app/
+          code=$(curl -sS -o /tmp/page.html -w '%{http_code}' --max-time 20 "$url")
+          echo "$url -> $code"
+          test "$code" = 200
+          grep -qi 'milo' /tmp/page.html
+
+      # The workspace cannot start without this, and the build emits it, so a 200
+      # here proves the artifact on the CDN is the one we shipped.
+      - name: The public config is served and names a Convex deployment
+        run: |
+          set -eu
+          body=$(curl -sS --max-time 20 https://milo-nine-delta.vercel.app/api/public-config)
+          echo "$body"
+          echo "$body" | grep -q '"convexUrl":"https://'
+          echo "$body" | grep -q '"betterAuthUrl":"https://'
+
+      # convex.site is a different host and can be down alone. `/csp-report` is
+      # the one route that exists there (convex/http.ts:493) and answers 204.
+      - name: The Convex site origin answers
+        run: |
+          set -eu
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            -X POST -H 'content-type: application/csp-report' \
+            -d '{"csp-report":{"violated-directive":"uptime-probe"}}' \
+            https://tremendous-rooster-473.convex.site/csp-report)
+          echo "convex.site /csp-report -> $code"
+          test "$code" = 204

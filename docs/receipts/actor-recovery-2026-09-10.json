@@ -1,0 +1,190 @@
+{
+  "scope": "owned-native-actor-process-bootstrap-recovery-not-wallet-or-browser-recovery",
+  "date": "2026-09-10",
+  "run": "run-jOvW0R",
+  "command": "npm run test:native-node -- --with-services --transactions --staged-bootstrap --recovery-audit",
+  "supervisor": {
+    "node": "1.0.0",
+    "archiveSha256": "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
+    "blockOneHash": "0x83394ea45867e28fdcce51dffef280e2907da3c83333bf2afd9866ec70ab6cca",
+    "driverExitCode": 0,
+    "indexerReady": true,
+    "proverReady": true,
+    "indexedBlockOneMatchesNode": true,
+    "completionMarkerObserved": true,
+    "cleanupMarkerObserved": true,
+    "shellExitCodeObserved": false
+  },
+  "provenance": {
+    "implementationSource": "Actual pre-run snapshot: final-native-source-2026-09-10.json. All 16 listed implementation files verified unchanged after both final native runs. Earlier run-oyoIbg had only post-run implementation provenance and is superseded, not retroactively source-attested.",
+    "extraction": "Strict field allowlist from supervisor receipt and transaction events; no raw node logs, private state, ciphertext or prepared transaction bytes.",
+    "interruption": "Actor SIGKILL after broker obtained the deployment result and before delivering its acknowledgement. Broker and recovery key survived; not a full-wallet or provider outage.",
+    "supervisorOutcome": "Durable receipt reports driverExitCode 0; supervisor log contains successful diagnostic completion and cleanup markers. The shell polling session was lost, so no directly observed supervisor shell exit code is claimed."
+  },
+  "compilerEvidence": [
+    {
+      "artifactCount": 60,
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "cohort": {
+        "lockfileSha256": "9104115c8816513c0e11a70b0c80a28f24f4e13cd475cfb5bfb45e345de29339",
+        "node": "24.20.0",
+        "packageSha256": "956146576366e6cf10287a253360dd7301b4f0fe6da7cb811162e49910efdf70"
+      },
+      "compileReceiptSha256": "270b8e56340e8cb1b9b45a71cc3874a805679a16efd938aad6d56b09485892f4",
+      "compiler": "0.31.1",
+      "language": "0.23.0",
+      "runtime": "0.16.0",
+      "sourceSha256": "8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96"
+    }
+  ],
+  "pending": [
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "identifiers": [
+        "00056ed6fcc1ea0c5b2c906d3d58fc5ee40b18eba168da5a78cedf7c1329f291de",
+        "00142ca2e0d28bbd9842361bb0b0024b0edbadff229815a8fdb807bac56f1c1a52"
+      ],
+      "operation": "deploy"
+    },
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "identifiers": [
+        "0032c433a31fdbcff29fab2b0aa38d710b844a60c53d1822aa5df823c71318b886",
+        "002e693616e2d47c2ee256b4032cad31c777621bc0254f52010b1670eeddc0870b"
+      ],
+      "operation": "install"
+    },
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "identifiers": [
+        "0002ba58c07386079670fb1a2d0d4fa20caf293f0bc0527bf513eddd2caa0af058",
+        "0095ae94234a1bd907ee71fb540f67db4542f925ed758aad88794be625b60e9bd3"
+      ],
+      "operation": "lock"
+    }
+  ],
+  "interruption": [
+    {
+      "acknowledgementDelivered": false,
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "operation": "deploy",
+      "reservationExecuted": false
+    }
+  ],
+  "reconciliation": [
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "blockHash": "43fe37c20c7eeea76fb6464cf8f4ecc39c2c1f61cf43e0bb550b6dad0e1425dc",
+      "blockHeight": 26,
+      "operation": "deploy",
+      "source": "fresh-indexer-query",
+      "status": "SucceedEntirely",
+      "txHash": "7ab72b5c7ca136d7785ce231d3a7d83fe318eaa882ce98ebeec08b9323804430",
+      "txId": "00142ca2e0d28bbd9842361bb0b0024b0edbadff229815a8fdb807bac56f1c1a52"
+    }
+  ],
+  "inspectedSteps": [
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "blockHash": "43fe37c20c7eeea76fb6464cf8f4ecc39c2c1f61cf43e0bb550b6dad0e1425dc",
+      "operation": "deploy"
+    },
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "blockHash": "aad35a5e6aeb19055d7dd03bda506721b064c2f6e4c8a2b1b70a570e7fa53c01",
+      "operation": "install"
+    },
+    {
+      "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+      "blockHash": "1faf63b9353ef797c7ddcbe62dfccd942ff81ca92aa365879d35a0f01f2b3651",
+      "operation": "lock"
+    }
+  ],
+  "submissions": [
+    {
+      "identifiers": [
+        "00056ed6fcc1ea0c5b2c906d3d58fc5ee40b18eba168da5a78cedf7c1329f291de",
+        "00142ca2e0d28bbd9842361bb0b0024b0edbadff229815a8fdb807bac56f1c1a52"
+      ],
+      "stage": "MID-T01-recovery-deploy",
+      "transactionBytes": 18651
+    },
+    {
+      "identifiers": [
+        "0032c433a31fdbcff29fab2b0aa38d710b844a60c53d1822aa5df823c71318b886",
+        "002e693616e2d47c2ee256b4032cad31c777621bc0254f52010b1670eeddc0870b"
+      ],
+      "stage": "MID-T01-recovery-install",
+      "transactionBytes": 15348
+    },
+    {
+      "identifiers": [
+        "0002ba58c07386079670fb1a2d0d4fa20caf293f0bc0527bf513eddd2caa0af058",
+        "0095ae94234a1bd907ee71fb540f67db4542f925ed758aad88794be625b60e9bd3"
+      ],
+      "stage": "MID-T01-recovery-lock",
+      "transactionBytes": 3595
+    }
+  ],
+  "resourcePreflights": [
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xc42a1d274188c031b2bdadc95088812a838da3a6f3d7b9b833070adc35940a49",
+      "blockHeight": "23",
+      "extrinsicBytes": 18662,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-recovery-deploy",
+      "transactionBytes": 18651,
+      "transactionSha256": "7ab72b5c7ca136d7785ce231d3a7d83fe318eaa882ce98ebeec08b9323804430",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x43fe37c20c7eeea76fb6464cf8f4ecc39c2c1f61cf43e0bb550b6dad0e1425dc",
+      "blockHeight": "26",
+      "extrinsicBytes": 15355,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-recovery-install",
+      "transactionBytes": 15348,
+      "transactionSha256": "5e848fe0c26df623af96cc007c920558089ff7326aad2c21514946529f00aca8",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xaad35a5e6aeb19055d7dd03bda506721b064c2f6e4c8a2b1b70a570e7fa53c01",
+      "blockHeight": "30",
+      "extrinsicBytes": 3602,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-recovery-lock",
+      "transactionBytes": 3595,
+      "transactionSha256": "7476e4b5a6272bcd9d85fc2be653c6a1d6c390f56ae59e60d786852290c819e3",
+      "withinIndividualLimits": true
+    }
+  ],
+  "result": {
+    "actorCommitmentsRestored": true,
+    "actualActorProcessRestart": true,
+    "address": "6646ddafc12c718e569f8a37f10768f94cb973f56c628a9f5396e37c51875742",
+    "counter": "2",
+    "duplicateSubmissionCount": 0,
+    "immutableOrderAdmission": false,
+    "interruptedAcknowledgement": "deploy",
+    "operationCount": 14,
+    "phase": "DEPLOYED",
+    "r1Complete": false,
+    "reconciledPendingTransactions": 1,
+    "reservationExecuted": false,
+    "revision": "0",
+    "submissionCount": 3,
+    "walletBrokerRestarted": false
+  },
+  "readiness": {
+    "release": "R0",
+    "completedProviders": 0,
+    "totalProviders": 6,
+    "completedOperations": 0,
+    "totalOperations": 14,
+    "r1Complete": false,
+    "r3Complete": false
+  }
+}

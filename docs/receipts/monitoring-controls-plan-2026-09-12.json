@@ -1,0 +1,141 @@
+{
+  "verifiedAt": "2026-09-12T16:54:57.314357+00:00",
+  "scope": "T14c1/c2 local status and control implementation plus ordered completion plan",
+  "baseCommit": "f6493f74e7295d48e84c6e11856c6b6fede3b7a3",
+  "releaseLevel": "R0",
+  "providerGatesPassed": 0,
+  "operationGatesPassed": 0,
+  "commands": {
+    "npm run test:unit": {
+      "passed": 299,
+      "failed": 0,
+      "assertions": 1406
+    },
+    "npm run typecheck": "passed",
+    "Convex typecheck": "passed",
+    "npm run lint": "passed; changed excluded Convex file separately checked with Biome",
+    "npm run build": "passed",
+    "npm run check:plan": "passed: 8 documents, 51 gate IDs, 185 links",
+    "npm run test:convex-local -- --monitor": "passed"
+  },
+  "nativeMonitoring": {
+    "syntheticProvider": true,
+    "onlyCopiedMonitoringWorkerImportOverridden": true,
+    "publicStatusAuthorizationAndRedaction": true,
+    "scenarios": [
+      {
+        "name": "start-stop-restart",
+        "observationsBeforeStop": 2,
+        "attempts": 2,
+        "sameDatabaseRestart": true
+      },
+      {
+        "name": "expiry-in-flight",
+        "attempts": 1,
+        "authorizationRows": 0,
+        "paymentRows": 1,
+        "provisioningJobs": 0
+      },
+      {
+        "name": "stop-in-flight",
+        "attempts": 1,
+        "authorizationRows": 0,
+        "paymentRows": 1,
+        "provisioningJobs": 0
+      },
+      {
+        "name": "revoke-in-flight",
+        "attempts": 1,
+        "authorizationRows": 0,
+        "paymentRows": 1,
+        "provisioningJobs": 0
+      }
+    ]
+  },
+  "browser": {
+    "realApp": "Direct npm run dev listener; managed Preview tool remains blocked",
+    "path": "/connections",
+    "unconfiguredPrivyConvexAndHiddenControls": true,
+    "mobileWidth": 390,
+    "noHorizontalOverflow": true,
+    "keyboardConsentThenConnectFocus": true,
+    "walletConnectInvoked": false,
+    "axeViolations": 0,
+    "axeIncomplete": [
+      "color-contrast"
+    ],
+    "actualControlsSyntheticTransport": [
+      "explicit unchecked consent",
+      "exact quote/version/consent arguments",
+      "start then refreshed waiting state",
+      "stop then refreshed stopped state",
+      "revoked owner can stop",
+      "unknown result redacted and retry gated",
+      "local deadline disables start without renewal",
+      "390px no horizontal overflow"
+    ],
+    "cleanErrorBufferVerified": false
+  },
+  "limits": [
+    "Local admin identity fixtures, not hosted JWT verification.",
+    "Control interaction uses actual React components with private synthetic transport, not real Stripe or authenticated hosted UI.",
+    "Expiry fixture shortens its test deadline; native expiry backdates consent while preserving the five-minute policy invariant.",
+    "Persistent browser buffer retained an import.meta error; current real page and controls rendered, but clean-console/full-browser acceptance is not claimed.",
+    "No confirmation, capture, settlement, public-chain execution, full accessibility or provider acceptance."
+  ],
+  "sourceHashesUnchangedAfterExecution": true,
+  "sourceSha256": {
+    "apps/web/src/App.tsx": "c81ee181b26fe62d394228871743bf230354bfa006a2cfbfd90f410ee49041ad",
+    "apps/web/src/Connections.tsx": "24d63ed035ebbeab7d9468480fd22ce351ccd1ebde1cf55acf0db239fc134eda",
+    "apps/web/src/ConvexConnection.tsx": "94465e8720d426b41c3ad48c2c33f6fb0914ca68985e601000c1a623be20265b",
+    "apps/web/src/PaymentMonitoring.tsx": "1dcfab5d76f00deb78a020dcfcc530a163eef28a29492d13fb33261ca0a00d15",
+    "apps/web/src/PrivyConnection.tsx": "3ffabbbb43c00bccc52cc1a6c91b1478b9afc50d0a3b7e60e6ca40c5f698fda8",
+    "apps/web/src/assets.test.ts": "fcb60d178cb59821f4bd930f520233341a4900ccfda807ff75c4279761503054",
+    "apps/web/src/assets.ts": "b95bb822fef2e6a8880155ec4d2d7b2df241447ac003311939d4843c2b54853c",
+    "apps/web/src/connection-runtime.ts": "091061fdabe6325c025d65d63f64f8302ff3c86360bbdfdc3f6bf90d2b789edb",
+    "apps/web/src/connections.test.ts": "e6abe3a2688c57ed8281f3bc4ddae31b67143274f533433306cdd9f85dc7bef3",
+    "apps/web/src/convex-session-runtime.ts": "e8f08e9c0532f85469979a35317edbe3a3d8ef92e39bb9879c638544b028aa58",
+    "apps/web/src/convex-session.test.ts": "b69104432c49023138e91e1162d6b955551ddbc43446b5fa835eb68d54716fb9",
+    "apps/web/src/lace-transaction-runtime.test.ts": "5805624236a11c12a96cf6f543f8314ef57224c70b462ede5322db5c4e3f15ba",
+    "apps/web/src/lace-transaction-runtime.ts": "e31a0d679e37ccc00a34d4503b3ed1da74710008a3a8aba49672060ce72530eb",
+    "apps/web/src/main.tsx": "49c18159d8aa595c6d89bae54d643062b5e3f03d031133d37040896914be3e83",
+    "apps/web/src/payment-monitoring-runtime.ts": "7cd790904117e55e64aba5348ddac5d2414f1d3266836a0bdc838188a0e7fec1",
+    "apps/web/src/payment-monitoring.test.ts": "3fcca05b40db5a230c0db33b5487bb15c0c02aa335db522f5d89b07fcd45ed88",
+    "apps/web/src/route-headings.test.tsx": "74a9ec2ca43e5683c414953948e1587f48d6b5d856edc5b225fb914ac6f8f5ae",
+    "convex/admission.ts": "bfdb78525a0ac9b5740bd6795ac23638d783b50c831ac70aaa1b6480261b03fc",
+    "convex/admissionValidators.ts": "a3266afd0d21baa9c9be4e763639de3b4889cc0e953541546b4935977abd67e9",
+    "convex/auth.config.ts": "1f28f3b6020ed65f8fe59349fc59cd91115425079aaeb8ad1b9807bf3bf6e847",
+    "convex/auth/identity.ts": "89d9b28eb301743f08f9ed7291743d23cf08a749faa8ad64fcbfadb6b15dd672",
+    "convex/auth/session.ts": "c11f4e9058265087e1097218ac46122ea8729caf6b6c9ca24e6e103df21848e9",
+    "convex/paymentMonitoring.ts": "224297a40472053510254cf0177556f4aec88da3b1ddf187dbeeaab48b5a56ef",
+    "convex/provisioning.ts": "ff40a7235a95efe4d7914488ea28368a0b8f909729b219b09e3590b9bed46a4c",
+    "convex/schema.ts": "492a090cb401236d4d8c2584b741d145760b818779391b0182f39b75a50b5708",
+    "convex/stripeMonitoring.ts": "b36057f6602c88a8d93be7793d2ac462e934de50444393d0474b404511adb85c",
+    "convex/stripeProvisioning.ts": "142b5aaa3a0b6fa979a3bcfed0c1353063d74b566e9fa144df2886e8a9dc2ec0",
+    "convex/trustedProvisioning.ts": "10305cf89d756fe83f74dd4a3a5fef9b86db6345fcab2e1cade4e1bb28f6a5ea",
+    "packages/backend/src/admission-policy.ts": "0f6907b1bf4ae3afde4333f49cf9bd8b60e127bca1b9c2b704386e9f41ebeb53",
+    "packages/backend/src/convex-admission.ts": "579721190822b2e5865598bfd9a4a00a355adbefc77a51b1a7ad7c5b46e842a8",
+    "packages/backend/src/delivery-policy.ts": "476423128a0b39df7041ded6a0669d03cc70a975e86531cb119ceb8e5b9de55c",
+    "packages/backend/src/payment-monitor.ts": "d78bff12cddbb80c5a9e509245cb3acd4a093ede2ebd2c8aad6e9cafc8685d75",
+    "packages/backend/src/privy-identity.ts": "1eaba50963760ea79f1847f0e86524d5b5f28421af87c5d7d2aeb690dab9796b",
+    "packages/backend/src/provisioning-policy.ts": "44becbcb8242e092eeab5211c30b449e189cfa98ba7310920fce974787b9a320",
+    "packages/backend/src/reconciliation.ts": "ed29d9c8cf5536a9a955b01e91c044edeca6ad6c6ca8dcd85ff2c1bee3f0eb1b",
+    "packages/backend/src/stripe-observer.server.ts": "3b9482e36e70ffe7478eab45bbed12fef8e920400334543d56fb06379dfde54d",
+    "packages/backend/src/stripe-provisioning.server.ts": "33a296ce23f0f7101041042c1d20e86044df0c473b5eff675c86b8dc4b8d4cf4",
+    "packages/backend/src/trusted-provisioning-policy.ts": "ddfab0f286b54c658b4c688a1d365f1750376eed6cc2cf84c58009f31a306337",
+    "packages/backend/test/admission-policy.test.ts": "87083760300dbe6a35f41217bf535a60acc384e5c97a23313a8497059dfdc249",
+    "packages/backend/test/convex-admission.test.ts": "5b26acb7659922a9dbe32cfe528af40f5c3c6eedce3c5fa90fa9b50385cfb928",
+    "packages/backend/test/delivery-policy.test.ts": "8f650efb9857ae6475c3339d3c79c830a3641ae3cb8a7fa5d6aebc0407d972f0",
+    "packages/backend/test/providers.test.ts": "992b9eacbcc5248cd2cd2bf63ecc388bc5a7efe7876e77d551708335e0769eee",
+    "packages/backend/test/provisioning.test.ts": "fd9085a9a63e016a6b83f61f348f8d6f86387037e9354a49dd213dca111e93e6",
+    "packages/backend/test/reconciliation.test.ts": "bd319c0a24b9b013f89fd1066fa13df001be3c3a866f84f9f6d8dba701f96711",
+    "packages/backend/test/trusted-provisioning.test.ts": "80ff5a7d744d8958e0248523cb2e833f9b6632265843b7dcbec5a173aaf30447",
+    "scripts/convex-local-fixtures.ts": "aeca1a0e7958543b4b22bf49b0ac3d444e143b0666957dfb5c998abf9028366a",
+    "scripts/convex-local-lifecycle-check.py": "4c9193f387159132cfdacd3341eb91e35d22a5f8539624addfe6f1cc0c9e4555",
+    "scripts/convex-local-monitor-fixtures.ts": "635f03f3942e258bf82759078980519809653a4ae7ffc84ac1c1366e5a90a205",
+    "scripts/convex-local-monitor-provider.ts": "f5422576464b0d0fb7f133fa669af72c5d2995a51ef1d85df2bbb456cfe7e578",
+    "scripts/convex-local-monitor-verify.mjs": "526891e99c2f243f584c4732604726342c8071276d220ad64f44a2020692c38b",
+    "scripts/convex-local-provisioning-fixtures.mjs": "0205688013f75e05016afb3839c0d661025775245a2fc7384fbd640620484718",
+    "scripts/convex-local-verify.mjs": "dff0babcc03d4b028b5f28caca44d91e86013f609e98b7fb3d43e5418711ef29"
+  }
+}

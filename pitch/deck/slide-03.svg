@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#fafaf9"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#c2410c"/>
+  <text x="80" y="90" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">BUYER PERSONA · ONE</text>
+  <text x="80" y="160" font-family="Georgia, serif" font-size="36" fill="#1c1917">Launch ops lead · e-commerce brand</text>
+  <text x="80" y="210" font-family="system-ui, sans-serif" font-size="18" fill="#57534e">UC-01: brand ↔ product photographer · three launch-ready product photos</text>
+  <text x="80" y="290" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Job-to-be-done</text>
+  <text x="100" y="335" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Commission a confidential three-image pack before a SKU drop.</text>
+  <text x="80" y="400" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Must see before authorizing</text>
+  <text x="100" y="445" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Price · scope · recipient · deadline · consequences</text>
+  <text x="80" y="510" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Must get after delivery</text>
+  <text x="100" y="555" font-family="system-ui, sans-serif" font-size="20" fill="#292524">Clear approval record of which three files were accepted</text>
+  <text x="80" y="620" font-family="system-ui, sans-serif" font-size="14" fill="#a8a29e">Persona is a wedge hypothesis from the blueprint fit matrix — not signed demand.</text>
+  <text x="80" y="660" font-family="system-ui, sans-serif" font-size="14" fill="#78716c">Slide 3 / 10</text>
+</svg>

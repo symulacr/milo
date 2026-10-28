@@ -1,0 +1,161 @@
+{
+  "scope": "native-read-only-frozen-quote-coordinator-not-canonical-admission",
+  "date": "2026-09-10",
+  "run": "run-zYY0XT",
+  "command": "bun run test:native-node --with-services --transactions --staged-bootstrap",
+  "supervisorExitCode": 0,
+  "supervisor": {
+    "scope": "isolated native node block-1 observation; no transaction proof or R1",
+    "node": "1.0.0",
+    "archiveSha256": "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
+    "blockOneHash": "0xbdb57269c7d67fc5b053294ec40c9f50e36dcc7375549a859aa86c2ff3baab54",
+    "rpcLoopback": true,
+    "services": {
+      "indexerReady": true,
+      "proverReady": true,
+      "indexedBlockOneMatchesNode": true,
+      "transactionProven": false
+    },
+    "transactionDiagnostic": {
+      "bootstrapMode": "staged",
+      "driverExitCode": 0,
+      "maintenanceAudit": false,
+      "evidence": "transactions.jsonl",
+      "immutableOrderAdmission": false,
+      "r1Complete": false
+    }
+  },
+  "implementationSource": {
+    "capturedBeforeExecution": true,
+    "unchangedAfterExecution": true,
+    "files": [
+      {
+        "path": "packages/integration/src/admission-observation.mjs",
+        "sha256": "dccf57ca4527c0e7760462663b0d22db613d0f503372e237cfe14785f70a241f"
+      },
+      {
+        "path": "packages/integration/src/artifacts.mjs",
+        "sha256": "553f2f5ee1b74dc2d0e3eec4614b4011729d6e0184151abbd6e469abba6a11ed"
+      },
+      {
+        "path": "packages/integration/src/bootstrap.mjs",
+        "sha256": "cfe0ee44d69f84f0f83222f573b5004e559f4e8712a79982635be6348fa69ead"
+      },
+      {
+        "path": "packages/integration/src/config.mjs",
+        "sha256": "088fa93cf39a9134f468f5fce84397c5e85f714b62697a0dd450e829ed7e5553"
+      },
+      {
+        "path": "packages/integration/src/diagnostics.mjs",
+        "sha256": "3d7e23a0b1394862701587f8c26e0492899a6b9fce346991189c03e6f94c11f9"
+      },
+      {
+        "path": "packages/integration/src/dispatch-rejection.mjs",
+        "sha256": "01d8e9a86651499c7d6b6b18434c49b6942fef2f6d1ab3f09d449b8079d8b676"
+      },
+      {
+        "path": "packages/integration/src/dust.mjs",
+        "sha256": "f3c43b0ab4a0bd13de915fbec45d9531164c8a5e1989c648cb81d7dc6191bf19"
+      },
+      {
+        "path": "packages/integration/src/local.mjs",
+        "sha256": "f723da57b3309562a394db15ffbf7aebd5c370fd9b78124e1051ec1fac86a802"
+      },
+      {
+        "path": "packages/integration/src/maintenance-audit.mjs",
+        "sha256": "fb3812205c25d54c31ba7b47f29a52209dd513a269d80e3b668654033e407d70"
+      },
+      {
+        "path": "packages/integration/src/maintenance-controls.mjs",
+        "sha256": "f2dd222682c9d2172e02c8a193e2e47a00986912b64aa2235a77e286bc875066"
+      },
+      {
+        "path": "packages/integration/src/order.mjs",
+        "sha256": "0a2be7612617f9485e1a581ad679afe269e6e74f6855ef4c1e8558e11183116a"
+      },
+      {
+        "path": "packages/integration/src/recovery-process.mjs",
+        "sha256": "c50c122d39267566f01571a6f8975ec95aea990d11305ed2288325684380a784"
+      },
+      {
+        "path": "packages/integration/src/recovery-store.mjs",
+        "sha256": "6e9e6aa199769c37246ffdf919f78b4c5603f540017e35553db1399fc26a4dd3"
+      },
+      {
+        "path": "packages/integration/src/recovery-worker.mjs",
+        "sha256": "dbbfb832689e9da84cf56a7a59c35e6dbd8ce62b561b6fbb536d35ced7eb8402"
+      },
+      {
+        "path": "packages/integration/src/resources.mjs",
+        "sha256": "0a164a542719595ff1bbb5e5644512de80a06c00e77cb7de4ce183f82e52cf97"
+      },
+      {
+        "path": "packages/integration/src/submissions.mjs",
+        "sha256": "68a3011064ff36a353d80668b5e7d0cc58463734f8db36579cc9a0500e5185b7"
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "event": "staged-bootstrap-transaction-finalized",
+      "stage": "MID-T01-staged-deploy",
+      "address": "13b1eafebe2a28a9534081dc42bd917cc949ecf772f32f7ff2850605830a8e2e",
+      "txId": "00ef658c77518b056846722b14eb5cd4d050a4ed2f29dae4b8f1f0e92c755bc316",
+      "txHash": "c9314664652d21ee3b2b14d5681bd87bb5cb3603fa8c6fc58b7a77ef36f6b435",
+      "blockHash": "26c3cbeb0bc46350e40d778894a27150a4f0ed040c0b37b1a1008a59201c513a",
+      "blockHeight": 26,
+      "status": "SucceedEntirely"
+    },
+    {
+      "event": "staged-bootstrap-transaction-finalized",
+      "stage": "MID-T01-staged-install",
+      "address": "13b1eafebe2a28a9534081dc42bd917cc949ecf772f32f7ff2850605830a8e2e",
+      "txId": "000f2bcf657b3ba4fd9dcb061c9a9a0c80a721a32543d78c66431d6c1478b439a9",
+      "txHash": "e1574c95836a82ce330b9702aa6bfbdc420ccb6da8c11855e078c2cda47b4e26",
+      "blockHash": "dd7f25e455f99eb66a73c27e3722fa10d828b18de858fc099e2338b3a8589a97",
+      "blockHeight": 29,
+      "status": "SucceedEntirely"
+    },
+    {
+      "event": "staged-bootstrap-transaction-finalized",
+      "stage": "MID-T01-staged-lock",
+      "address": "13b1eafebe2a28a9534081dc42bd917cc949ecf772f32f7ff2850605830a8e2e",
+      "txId": "004c5ed68ed6829d88d4365dbadb722c56bd6108cc5edc39fe8f8f877b28367fa7",
+      "txHash": "fa5c7cef0660d6831f8bc3ff2e7907e304d03fd03cb8e9da0c8e919c86e3388f",
+      "blockHash": "ed737d6a009371037292d1c6a1d97af186f2eb44569a14eb0ed8c6fd17acee9a",
+      "blockHeight": 32,
+      "status": "SucceedEntirely"
+    }
+  ],
+  "observation": {
+    "event": "admission-observation-verified",
+    "observationVersion": 2,
+    "id": "5bd0360ec79bac90f36d6df658d26dadbef34f02b3fd52c8e94526fc44acf1c8",
+    "address": "13b1eafebe2a28a9534081dc42bd917cc949ecf772f32f7ff2850605830a8e2e",
+    "blockHash": "ed737d6a009371037292d1c6a1d97af186f2eb44569a14eb0ed8c6fd17acee9a",
+    "blockHeight": 32,
+    "stateFingerprint": "c9b1ac000b151ec378a96436656fc2e3a566b41a67c6849b16fd25af7fe4ea29",
+    "artifactFingerprint": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+    "keySetFingerprint": "6ed52812c48493ea45e8b49a0115cd20f03423fafb61e12119079bdf04e8f6ed",
+    "maintenanceReceiptFingerprint": "ad4b2174b4a707460153cd6634e126aecc7bc6b27da9a30a7c8ee9a829cdd82d",
+    "genesisHash": "e72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+    "observedAt": 1789061894619,
+    "expectedPolicyMatched": true,
+    "immutableOrderAdmission": false,
+    "reservationExecuted": false,
+    "observationCoordinator": "trusted-frozen-quote",
+    "frozenQuoteSource": "synthetic-in-memory-fixture",
+    "quoteVersion": 1,
+    "canonicalBindingPersisted": false,
+    "authenticationVerified": false,
+    "paymentAuthorizationVerified": false
+  },
+  "limitations": [
+    "Frozen quote is an explicit synthetic in-memory fixture, not persisted application data.",
+    "No authenticated membership, payment-provider retrieval, atomic binding or buyer reserve execution.",
+    "No browser wallet/prover or UI integration; native services were scoped and stopped.",
+    "Maintenance attacks and actor recovery were not rerun in this checkpoint.",
+    "Staged deployment does not demonstrate that full single-transaction deployment fits.",
+    "R0 only; provider coverage 0/6 and operation coverage 0/14."
+  ]
+}

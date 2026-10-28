@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "recordedDate": "2026-09-10",
+  "scope": "disposable-owned-local-staged-bootstrap-not-admission",
+  "run": "run-gtM1Mv",
+  "command": "npm run test:native-node -- --with-services --transactions --staged-bootstrap",
+  "privateSourceSha256": {
+    "transactionsJsonl": "8ea29f70e5d92677a98ae6a192c0db81359c094e3fb78d0033969d3367b75707",
+    "supervisorReceipt": "81b15fa689c005a39b7ccf31ea6df28f128b6accdcaf2662a719d135ebaf7631"
+  },
+  "artifactBinding": [
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "compileReceiptSha256": "270b8e56340e8cb1b9b45a71cc3874a805679a16efd938aad6d56b09485892f4"
+    }
+  ],
+  "resourceMeasurements": [
+    {
+      "stage": "MID-T01-staged-deploy",
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "blockHash": "0xf62904fbc169f9505e8b481fa8da6c2714dc979e5360474fabbdc64187fe8a66",
+      "blockHeight": "23",
+      "runtime": {
+        "specName": "midnight",
+        "specVersion": "1000000",
+        "transactionVersion": "3",
+        "codeHash": "0x11504f7312a72b7d4b4ec26dc5c31788d4d704e3f4a9f026fd77b5823ef9e027",
+        "metadataSha256": "2327ab001932dfa07cf0eeba7130e6f04d9514187dc339acb9a6d43272f8712f"
+      },
+      "identifierCount": 2,
+      "identifierListSha256": "4124a0e4df36a6b6c8f1657260a53c4d9c67a73455685718031d3b27ff421c04",
+      "transactionSha256": "a95d56053f37eb59518f72a6dd92417ad37984dcf80ac2fa32ea559ce2e26cf2",
+      "extrinsicSha256": "1707747ef1816004bdea09e6eea071ae24d05f1550b59dd320f902766b451d12",
+      "costStatus": "ok",
+      "transactionBytes": 18651,
+      "extrinsicBytes": 18662,
+      "gasRefTime": "735600000001",
+      "configurableSizeWeight": {
+        "refTime": "20000000000",
+        "proofSize": "0"
+      },
+      "declaredDispatchWeight": {
+        "refTime": "755600000001",
+        "proofSize": "0"
+      },
+      "normalMaxExtrinsicWeight": {
+        "refTime": "1299891843000",
+        "proofSize": "11990383647911208550"
+      },
+      "normalMaxLength": "786432",
+      "exceeded": [],
+      "withinIndividualLimits": true
+    },
+    {
+      "stage": "MID-T01-staged-install",
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "blockHash": "0x77466541722c3192c3f75df7d9fb64df087d057098999b87cdaf92966c3f739e",
+      "blockHeight": "26",
+      "runtime": {
+        "specName": "midnight",
+        "specVersion": "1000000",
+        "transactionVersion": "3",
+        "codeHash": "0x11504f7312a72b7d4b4ec26dc5c31788d4d704e3f4a9f026fd77b5823ef9e027",
+        "metadataSha256": "2327ab001932dfa07cf0eeba7130e6f04d9514187dc339acb9a6d43272f8712f"
+      },
+      "identifierCount": 2,
+      "identifierListSha256": "d9f7f7230d2d705c4e1251fd045255f8c39aa249324d083efd2e1931db00b8b4",
+      "transactionSha256": "8de5631f83ac9edf17d6d4b242d1469baf88c3a07a37728abc8c435d36ba8d47",
+      "extrinsicSha256": "156d8b57b02f0a69b87e37a0e43ecfd5b6d2f7bfa6fd61d43cc4bd40aa3a10b3",
+      "costStatus": "ok",
+      "transactionBytes": 15349,
+      "extrinsicBytes": 15356,
+      "gasRefTime": "826760000001",
+      "configurableSizeWeight": {
+        "refTime": "20000000000",
+        "proofSize": "0"
+      },
+      "declaredDispatchWeight": {
+        "refTime": "846760000001",
+        "proofSize": "0"
+      },
+      "normalMaxExtrinsicWeight": {
+        "refTime": "1299891843000",
+        "proofSize": "11990383647911208550"
+      },
+      "normalMaxLength": "786432",
+      "exceeded": [],
+      "withinIndividualLimits": true
+    },
+    {
+      "stage": "MID-T01-staged-lock",
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "blockHash": "0xe2c2dd2d3bcdca351f07bd30a40a1424b5dabfb5fd93cecf46a705bf40e894c5",
+      "blockHeight": "30",
+      "runtime": {
+        "specName": "midnight",
+        "specVersion": "1000000",
+        "transactionVersion": "3",
+        "codeHash": "0x11504f7312a72b7d4b4ec26dc5c31788d4d704e3f4a9f026fd77b5823ef9e027",
+        "metadataSha256": "2327ab001932dfa07cf0eeba7130e6f04d9514187dc339acb9a6d43272f8712f"
+      },
+      "identifierCount": 2,
+      "identifierListSha256": "bff1df9ee5baf1d9ffce3c999763b57ccfebc685dc85af74ea24ecab5c9f1bab",
+      "transactionSha256": "53dc84cb0fae8890f8c04e975c6c088c0bdeadca9636f3b04ae59dbc0a2e67cd",
+      "extrinsicSha256": "82785660361a1a389fbcc15f827eb7c078ecf236b7b5bddb4dab0580fbe9c18e",
+      "costStatus": "ok",
+      "transactionBytes": 3595,
+      "extrinsicBytes": 3602,
+      "gasRefTime": "12920000001",
+      "configurableSizeWeight": {
+        "refTime": "20000000000",
+        "proofSize": "0"
+      },
+      "declaredDispatchWeight": {
+        "refTime": "32920000001",
+        "proofSize": "0"
+      },
+      "normalMaxExtrinsicWeight": {
+        "refTime": "1299891843000",
+        "proofSize": "11990383647911208550"
+      },
+      "normalMaxLength": "786432",
+      "exceeded": [],
+      "withinIndividualLimits": true
+    }
+  ],
+  "indexedObservations": [
+    {
+      "stage": "MID-T01-staged-deploy",
+      "address": "15739b6acd94c4176f7491ab7d1855a84a5e2d7fceedb3fffc5165fb3984089a",
+      "txHash": "a95d56053f37eb59518f72a6dd92417ad37984dcf80ac2fa32ea559ce2e26cf2",
+      "blockHash": "77466541722c3192c3f75df7d9fb64df087d057098999b87cdaf92966c3f739e",
+      "blockHeight": 26,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-install",
+      "address": "15739b6acd94c4176f7491ab7d1855a84a5e2d7fceedb3fffc5165fb3984089a",
+      "txHash": "8de5631f83ac9edf17d6d4b242d1469baf88c3a07a37728abc8c435d36ba8d47",
+      "blockHash": "e2c2dd2d3bcdca351f07bd30a40a1424b5dabfb5fd93cecf46a705bf40e894c5",
+      "blockHeight": 30,
+      "status": "SucceedEntirely"
+    },
+    {
+      "stage": "MID-T01-staged-lock",
+      "address": "15739b6acd94c4176f7491ab7d1855a84a5e2d7fceedb3fffc5165fb3984089a",
+      "txHash": "53dc84cb0fae8890f8c04e975c6c088c0bdeadca9636f3b04ae59dbc0a2e67cd",
+      "blockHash": "41dcea9e279ccb927538f149bd46c862d593974ebff5824acc614d0ec6f6af07",
+      "blockHeight": 33,
+      "status": "SucceedEntirely"
+    }
+  ],
+  "incompleteOrTrustedGuardChecks": [
+    {
+      "operationCount": 7,
+      "counter": "0",
+      "locked": false,
+      "completionGuardRejects": true
+    },
+    {
+      "operationCount": 14,
+      "counter": "1",
+      "locked": false,
+      "completionGuardRejects": true
+    }
+  ],
+  "outcome": {
+    "address": "15739b6acd94c4176f7491ab7d1855a84a5e2d7fceedb3fffc5165fb3984089a",
+    "elapsedMs": 62362,
+    "submissionCount": 3,
+    "operationCount": 14,
+    "phase": "DEPLOYED",
+    "revision": "0",
+    "counter": "2",
+    "maintenanceLockObserved": true,
+    "immutableOrderAdmission": false,
+    "adversarialMaintenanceRejectionVerified": false,
+    "canonicalQuoteBinding": false,
+    "reservationExecuted": false,
+    "r1Complete": false,
+    "feeEstimates": [
+      {
+        "stage": "MID-T01-staged-deploy",
+        "feeEstimateSpecksWithMargin": "1683650862976763"
+      },
+      {
+        "stage": "MID-T01-staged-install",
+        "feeEstimateSpecksWithMargin": "1740469108252935"
+      },
+      {
+        "stage": "MID-T01-staged-lock",
+        "feeEstimateSpecksWithMargin": "36248202015927"
+      }
+    ],
+    "totalFeeEstimateSpecksWithMargin": "3460368173245625"
+  },
+  "supervisor": {
+    "exitCode": 0,
+    "ownedServicesStopped": true
+  },
+  "limitations": [
+    "Lock observation is not proof of rejected retained-key maintenance operations.",
+    "No actual network interruption/private recovery, quote binding or reservation was executed.",
+    "Elapsed time covers bootstrap only after wallet funding/readiness, not end-to-end onboarding or a performance benchmark.",
+    "SPECK values are SDK transaction fee estimates with margins and overhead, not settled charges; funding, service costs and production affordability are excluded.",
+    "Completed MID provider/operation rows remain 0/6 and 0/14; release gate remains R0.",
+    "No raw transaction identifiers, bodies, private state, witnesses, signing material, seeds or raw ledger errors are included."
+  ]
+}

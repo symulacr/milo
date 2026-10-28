@@ -29,7 +29,7 @@ Four windows, each counted from the previous step: 1 hour to accept, 24 hours to
 
 ## Out of scope
 
-Live Stripe mode, Stripe Connect and merchant payout, and a production Convex deployment are not built. Milo is not an escrow service.
+Live Stripe mode, Stripe Connect and merchant payout, and a separate production Convex deployment are not built: the live site runs on the dev deployment in test mode. Milo is not an escrow service.
 
 ## Decisions
 

@@ -1,0 +1,39 @@
+{
+  "date": "2026-09-07",
+  "scope": "Separate disposable local executions; no public-network or admitted-order claim",
+  "cohort": {
+    "node": "1.0.0",
+    "indexer": "4.3.3",
+    "prover": "8.1.0",
+    "transactionRuntime": "Node.js 24.20.0"
+  },
+  "healthExecution": {
+    "blockOneHash": "0xe4d1a2a6275f9594e4de7ba18d5cd667433d23da025533f14e4afa4784cd0e1e",
+    "indexedBlockOneMatchesNode": true,
+    "indexerCaughtUp": true,
+    "proverQueueAvailable": true,
+    "ownedProcessesStopped": true
+  },
+  "separateFundingExecution": {
+    "txId": "005e7c15206476be42e0db27664c686ca079f5b02a8293a3171b08e9161ee69e96",
+    "txHash": "97e0767f46f1140f0e81211164df2ccc1c2bb27b584d7472b044cd9cecf56131",
+    "blockHash": "ea77c95e16e8f8a3ccd276f2d9ad593ee39201892909561836eb2f2acf21f439",
+    "blockHeight": 11,
+    "status": "SucceedEntirely",
+    "buyerNightObserved": true,
+    "buyerDustObserved": true,
+    "deploymentAttempt": {
+      "stage": "MID-T01-deploy",
+      "rpcCode": 1010,
+      "reason": "Invalid Transaction: Transaction would exhaust the block limits",
+      "byteVersusWeightLimitIdentified": false,
+      "deploymentFinalized": false,
+      "reservationExecuted": false
+    }
+  },
+  "immutableOrderAdmission": false,
+  "r1Complete": false,
+  "completedProviderRows": "0/6",
+  "completedOperationRows": "0/14",
+  "privacy": "Public hashes and allowlisted observations only; no seeds, witnesses, transaction bodies or raw logs"
+}

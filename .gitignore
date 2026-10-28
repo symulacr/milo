@@ -26,19 +26,20 @@
 !/apps/**
 !/convex/
 !/convex/**
+# `docs/` ships whole. The allowlist that used to live here named four files and
+# four directories, so twenty real documents existed only on the machine that
+# wrote them. A list that rots silently is worse than no list. Scratch goes in
+# `docs/scratch/`, which stays ignored.
 !/docs/
-!/docs/ARCHITECTURE.md
-!/docs/MIDNIGHT-INTEGRATION.md
-!/docs/PROVENANCE.md
-!/docs/RECEIPTS.md
-!/docs/adr/
-!/docs/adr/**
-!/docs/audit/
-!/docs/audit/**
-!/docs/media/
-!/docs/media/**
-!/docs/plan/
-!/docs/plan/**
+!/docs/**
+/docs/scratch/
+# `pitch/` is a judged deliverable: judging-minimum.sh J4 reads
+# pitch/deck/milo-d7-deck.pdf, so an untracked pitch/ makes that gate fail on
+# every clone.
+!/pitch/
+/pitch/*
+!/pitch/deck/
+!/pitch/deck/**
 !/e2e/
 !/e2e/**
 !/evidence/
@@ -77,6 +78,8 @@ e2e/**/out/
 *.pem
 *.tgz
 *.webm
+# The showreel is a judged deliverable; the generic rule above would hide it.
+!/pitch/showreel/video/*.webm
 *Zone.Identifier
 .DS_Store
 .env

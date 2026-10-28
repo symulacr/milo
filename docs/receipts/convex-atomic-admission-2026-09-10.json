@@ -1,0 +1,118 @@
+{
+  "scope": "native-local-convex-atomicity-not-provider-admission",
+  "node": "24.20.0",
+  "command": "PATH=\"$PWD/.tools/node-runtime/node-v24.20.0-linux-x64/bin:$PATH\" python3 scripts/convex-local-lifecycle-check.py",
+  "exitCode": 0,
+  "sourceHashesCapturedBeforeRun": true,
+  "sourceHashesUnchangedAfterRun": true,
+  "sources": [
+    {
+      "path": "convex/admission.ts",
+      "sha256": "bfdb78525a0ac9b5740bd6795ac23638d783b50c831ac70aaa1b6480261b03fc"
+    },
+    {
+      "path": "convex/admissionValidators.ts",
+      "sha256": "a3266afd0d21baa9c9be4e763639de3b4889cc0e953541546b4935977abd67e9"
+    },
+    {
+      "path": "convex/auth.config.ts",
+      "sha256": "1f28f3b6020ed65f8fe59349fc59cd91115425079aaeb8ad1b9807bf3bf6e847"
+    },
+    {
+      "path": "convex/auth/identity.ts",
+      "sha256": "89d9b28eb301743f08f9ed7291743d23cf08a749faa8ad64fcbfadb6b15dd672"
+    },
+    {
+      "path": "convex/auth/session.ts",
+      "sha256": "c11f4e9058265087e1097218ac46122ea8729caf6b6c9ca24e6e103df21848e9"
+    },
+    {
+      "path": "convex/schema.ts",
+      "sha256": "e6a9c0e55c6be9c37e240f796504f1dba3c4a3c89a9ba7fd3170447515421b55"
+    },
+    {
+      "path": "convex/tsconfig.json",
+      "sha256": "a109d08828606510f2d160976adc17b863ccde1cdb3ccf371f179b96c59e0131"
+    },
+    {
+      "path": "packages/backend/src/admission-policy.ts",
+      "sha256": "dacb9dbb2990987beca1cdb283c6453b9648583e1ba266e422264fab6c8d7cff"
+    },
+    {
+      "path": "packages/backend/src/convex-admission.ts",
+      "sha256": "e36ae220444994c2d1a6b2fb64c500fd8d5fdbf7d4528f90dc35e0893c95d85b"
+    },
+    {
+      "path": "packages/backend/src/delivery-policy.ts",
+      "sha256": "476423128a0b39df7041ded6a0669d03cc70a975e86531cb119ceb8e5b9de55c"
+    },
+    {
+      "path": "packages/backend/src/privy-identity.ts",
+      "sha256": "1eaba50963760ea79f1847f0e86524d5b5f28421af87c5d7d2aeb690dab9796b"
+    },
+    {
+      "path": "packages/backend/src/reconciliation.ts",
+      "sha256": "ed29d9c8cf5536a9a955b01e91c044edeca6ad6c6ca8dcd85ff2c1bee3f0eb1b"
+    },
+    {
+      "path": "packages/backend/src/stripe-observer.server.ts",
+      "sha256": "28232213e61112b8cb3090d71cf61e126b325a2669a7d1d714c5288f4a07466d"
+    },
+    {
+      "path": "scripts/convex-local-fixtures.ts",
+      "sha256": "aeca1a0e7958543b4b22bf49b0ac3d444e143b0666957dfb5c998abf9028366a"
+    },
+    {
+      "path": "scripts/convex-local-lifecycle-check.py",
+      "sha256": "4c9193f387159132cfdacd3341eb91e35d22a5f8539624addfe6f1cc0c9e4555"
+    },
+    {
+      "path": "scripts/convex-local-verify.mjs",
+      "sha256": "3c97f9cb0a36fdca8ddf0287f3d4b0faf78f27a422db51a75bf7e19385bab13a"
+    }
+  ],
+  "nativeResult": {
+    "verifiedAt": "2026-09-10T20:07:21.793Z",
+    "cliVersion": "1.45.0",
+    "backendVersion": "precompiled-2026-08-25-7cce8fb",
+    "backendArtifactUrl": "https://github.com/get-convex/convex-backend/releases/download/precompiled-2026-08-25-7cce8fb/convex-local-backend-x86_64-unknown-linux-gnu.zip",
+    "sha256": "97bab85225a860dfd5e9039d9899d76bd419ddc8d863a313f289992b25e82df9",
+    "checksumVerifiedBeforeExecution": true,
+    "url": "http://127.0.0.1:3210",
+    "generatedCodeAndTypecheck": true,
+    "authConfigPushed": true,
+    "anonymousSessionDenied": true,
+    "malformedJwtDenied": true,
+    "localAdminIdentityFixture": true,
+    "fixtureMutationNotPublic": true,
+    "privyJwtVerified": false,
+    "anonymousAdmissionDenied": true,
+    "missingMembershipDenied": true,
+    "staleQuoteVersionRejected": true,
+    "concurrentAdmissionRequests": 16,
+    "concurrentAdmissionSingleWinner": true,
+    "concurrentAdmissionIdempotentReplays": 7,
+    "concurrentAdmissionConflictsRejected": 8,
+    "canonicalBindingRows": 1,
+    "observerFixturesAreSynthetic": true,
+    "nativeRestartPreservedFunctions": true,
+    "nativeRestartPreservedMembership": true,
+    "nativeRestartPreservedCanonicalBinding": true,
+    "rootEnvUnchanged": true
+  },
+  "lifecycle": {
+    "tamperedBinaryRejectedBeforeExecution": true,
+    "coldDownloadVerified": true,
+    "sigintDuringCliCleanup": true,
+    "sigtermDuringNativeCleanup": true,
+    "unownedProcessPreserved": true,
+    "lockReleased": true,
+    "fullRetryPassed": true
+  },
+  "limitations": [
+    "Synthetic chain and payment records; local admin-injected identity, not valid Privy JWT evidence.",
+    "No hosted Convex, Stripe request, actual preprod observation or reservation.",
+    "Trusted input provisioning and ordered payment-observation ingestion remain unimplemented.",
+    "R0; provider acceptance 0/6 and operation acceptance 0/14."
+  ]
+}

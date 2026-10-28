@@ -1,0 +1,27 @@
+{
+  "scope": "preprod-finalized-block-health-only",
+  "observedAt": "2026-09-11T08:14:41.252Z",
+  "endpoints": {
+    "rpc": "https://rpc.preprod.midnight.network",
+    "indexer": "https://indexer.preprod.midnight.network/api/v4/graphql"
+  },
+  "chain": "Midnight Preprod",
+  "genesisHash": "0xdf831b09a8baa92badf47762ce5ac439b7e47e3ed3d39600cfdd44fad552361b",
+  "nodeVersion": "1.0.2-eb71e64e",
+  "runtime": {
+    "specName": "midnight",
+    "specVersion": 1000000
+  },
+  "blockHeight": 2500305,
+  "blockHash": "0xb7efa8892cd06af7f12c241dfc5f262bf68b63e47f412d452ba9fe9458e58cc6",
+  "nodeIndexerAgreement": true,
+  "sdkCompatibilityVerified": false,
+  "contractObserved": false,
+  "admissionVerified": false,
+  "transactionsSubmitted": 0,
+  "sourceSha256": {
+    "packages/integration/src/preprod-observation.mjs": "37db5013a6ad0fe30a6074feecf78cd4d7ba5aada9344664be42e4d649b32971",
+    "scripts/preprod-observe.mjs": "cb2ecdce752c1f9f18fda934482c3ff0e9f2393586a837df7c3f8814646ba5fc",
+    "packages/integration/package.json": "956146576366e6cf10287a253360dd7301b4f0fe6da7cb811162e49910efdf70"
+  }
+}

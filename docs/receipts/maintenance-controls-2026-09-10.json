@@ -1,0 +1,544 @@
+{
+  "scope": "owned-native-maintenance-controls-and-retained-key-negatives-not-admission",
+  "date": "2026-09-10",
+  "run": "run-f5Chw8",
+  "command": "npm run test:native-node -- --with-services --transactions --staged-bootstrap --maintenance-audit --maintenance-controls",
+  "supervisor": {
+    "shellExitCodeObserved": true,
+    "shellExitCode": 0,
+    "node": "1.0.0",
+    "archiveSha256": "a3cb2e00ad074cbdac2f9f7c01400f449ec05f54941d415be868ccaae1e737bf",
+    "blockOneHash": "0x37fbe2bce71e72495a54300c5d6fa0536b6ba9b90a318e1aa40b14c3e9ad70d0",
+    "driverExitCode": 0,
+    "indexerReady": true,
+    "proverReady": true,
+    "indexedBlockOneMatchesNode": true
+  },
+  "provenance": {
+    "implementationSource": "Actual pre-run snapshot: final-native-source-2026-09-10.json. All 16 listed implementation files verified unchanged after this successful run. Earlier run-9Q08JL had only post-run implementation provenance and is superseded, not retroactively source-attested.",
+    "extraction": "Strict field allowlist from supervisor receipt and transaction events; no raw node logs, private state or transaction bytes."
+  },
+  "compilerEvidence": [
+    {
+      "artifactCount": 60,
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "cohort": {
+        "lockfileSha256": "9104115c8816513c0e11a70b0c80a28f24f4e13cd475cfb5bfb45e345de29339",
+        "node": "24.20.0",
+        "packageSha256": "956146576366e6cf10287a253360dd7301b4f0fe6da7cb811162e49910efdf70"
+      },
+      "compileReceiptSha256": "270b8e56340e8cb1b9b45a71cc3874a805679a16efd938aad6d56b09485892f4",
+      "compiler": "0.31.1",
+      "language": "0.23.0",
+      "runtime": "0.16.0",
+      "sourceSha256": "8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96"
+    }
+  ],
+  "bootstrapTransactions": [
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "blockHash": "2f044a4da3a015b018baba32af45f0ad09e998fbda899dce91b448de916deea8",
+      "blockHeight": 26,
+      "stage": "MID-T01-staged-deploy",
+      "status": "SucceedEntirely",
+      "txHash": "bf98ec824292b6e3b0f93986801028fd2f9767b5f20900c3730d52dc7021539e",
+      "txId": "002a83798f0894d9e576d2e79e3e8aabcd329f23e61936134c9af5a9d9f0ab1aa6"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "blockHash": "3a427cf24b7ad9b36976419720991ab0a14225a84469d1693ef561bddc25a296",
+      "blockHeight": 29,
+      "stage": "MID-T01-staged-install",
+      "status": "SucceedEntirely",
+      "txHash": "4913a19411234a48423812236d4a11b993e96283640cc8b0770a5e7c1a4fcd20",
+      "txId": "00d2df49e5e4a8eec0ae7f4b9b0eaa6b29723d79bf0119d9f4b9f7a821e0fd1bf3"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "blockHash": "94f887d7682674e15d66f860fdffbcfe2faa26e448397fdc688e3d84eaad69a0",
+      "blockHeight": 44,
+      "stage": "MID-T01-staged-lock",
+      "status": "SucceedEntirely",
+      "txHash": "c2f32e5fe1a01d2296bf870d00410772c16b84a4f3bde18cc9234fc39504c739",
+      "txId": "0060caaf9a112a74d59f864d53fb433974c369092463ec526e975c52b825ae80dd"
+    }
+  ],
+  "positiveControls": [
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "blockHash": "b4d7000bcedd314804c84faea5205679d72a83ea8eda36771f626ca92ebe57b3",
+      "blockHeight": 38,
+      "counter": "2",
+      "immutableOrderAdmission": false,
+      "operationsRestored": true,
+      "signedUpdateSha256": "b8d8a69cb1d26d16e0511602d7e557ce77f2f635fa06b7d91fb2a48fee9cdf6d",
+      "status": "SucceedEntirely",
+      "txHash": "f605b7f324f42583a8a2d5145227bba4153a869e833be57990e186fc495191b9",
+      "txId": "003e11c981f114b2fc69f8c01a37a84c448d611088ce5460ac4f1d5eb5c8c57666",
+      "updateCount": 7
+    }
+  ],
+  "counterFailures": [
+    {
+      "blockHash": "f58847924fc47d3a5d96bacc9c8515b341869848f6a07cd942cddd46c8868369",
+      "blockHeight": 32,
+      "conclusion": "ReplayCounterMismatch",
+      "extrinsicIndex": 3,
+      "failedSegment": 1,
+      "kind": "stale-counter",
+      "matchedLogRecords": 1,
+      "rejectionBoundary": "finalized-partial-success-and-native-log",
+      "status": "FailFallible",
+      "txHash": "69d6c43812eed90084286bacfaf8599d0860beaa2fac2e7cc02ef05b290c283b",
+      "txId": "00f7072b2f8781d5b435c0526ec39a2bd534d21d545b089b6187cb7a0fb7f0cc4c"
+    },
+    {
+      "blockHash": "2955384f1b12a3eba00d5930b98d29418258964e31c065c64437335fb723dc77",
+      "blockHeight": 35,
+      "conclusion": "ReplayCounterMismatch",
+      "extrinsicIndex": 3,
+      "failedSegment": 1,
+      "kind": "future-counter",
+      "matchedLogRecords": 1,
+      "rejectionBoundary": "finalized-partial-success-and-native-log",
+      "status": "FailFallible",
+      "txHash": "036f8d62ca5f38bbdf3c0e2348221a5e000aacc97db00d861fe24a6cf2e5c0ad",
+      "txId": "00955e762b9a89e748c0e99c13f140d891c7e4c72c21efc06afc361ff3a70bab3b"
+    },
+    {
+      "blockHash": "73fe58f221a8b4da1b79df210d740d3b5cea7a8de3a3137b23e6e44cad458125",
+      "blockHeight": 41,
+      "conclusion": "ReplayCounterMismatch",
+      "extrinsicIndex": 3,
+      "failedSegment": 1,
+      "kind": "signed-update-replay",
+      "matchedLogRecords": 1,
+      "rejectionBoundary": "finalized-partial-success-and-native-log",
+      "status": "FailFallible",
+      "txHash": "d41340db807be887ae6cb4d858fbf731b93b56594b851ad479352b476bde753b",
+      "txId": "0014dc4356a0daa9be845873e058a3d284edb2c2cddb5cc70ce1e846a8ba88be69"
+    }
+  ],
+  "counterObservations": [
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "afterBlockHash": "0xf58847924fc47d3a5d96bacc9c8515b341869848f6a07cd942cddd46c8868369",
+      "afterBlockHeight": 32,
+      "beforeBlockHash": "0x3a427cf24b7ad9b36976419720991ab0a14225a84469d1693ef561bddc25a296",
+      "beforeBlockHeight": 29,
+      "kind": "stale-counter",
+      "observedCounter": "1",
+      "signedCounter": "0",
+      "signedUpdateSha256": "c56432dcafd948233cc3e64668970e6ceb21d9350a4876b304e5abc41e81eb74",
+      "stateSha256": "1a5533346b11d497b8b2001e77818b07456f8125e2306c07d44d3c7cff60a17f",
+      "unchanged": true
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "afterBlockHash": "0x2955384f1b12a3eba00d5930b98d29418258964e31c065c64437335fb723dc77",
+      "afterBlockHeight": 35,
+      "beforeBlockHash": "0xf58847924fc47d3a5d96bacc9c8515b341869848f6a07cd942cddd46c8868369",
+      "beforeBlockHeight": 32,
+      "kind": "future-counter",
+      "observedCounter": "1",
+      "signedCounter": "2",
+      "signedUpdateSha256": "50cba0734de9d75271e1b02c8dde9c01d8890deb88cd0d60d4fe8faecf45fe45",
+      "stateSha256": "1a5533346b11d497b8b2001e77818b07456f8125e2306c07d44d3c7cff60a17f",
+      "unchanged": true
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "afterBlockHash": "0x73fe58f221a8b4da1b79df210d740d3b5cea7a8de3a3137b23e6e44cad458125",
+      "afterBlockHeight": 41,
+      "beforeBlockHash": "0xb4d7000bcedd314804c84faea5205679d72a83ea8eda36771f626ca92ebe57b3",
+      "beforeBlockHeight": 38,
+      "kind": "signed-update-replay",
+      "observedCounter": "2",
+      "signedCounter": "1",
+      "signedUpdateSha256": "b8d8a69cb1d26d16e0511602d7e557ce77f2f635fa06b7d91fb2a48fee9cdf6d",
+      "stateSha256": "575c6917f05ca012bf9343404842098efc185d5f53d7f4eda50387d03b8fbe61",
+      "unchanged": true
+    }
+  ],
+  "retainedProposals": [
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "insert-verifier",
+      "retainedSignerVerified": true,
+      "signedCounter": "3",
+      "signedUpdateSha256": "4a4435c1294aaa605ddbda66ac58d1d5c5760e8020225e36e6b2cf212684329c",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "replace-verifier",
+      "retainedSignerVerified": true,
+      "signedCounter": "3",
+      "signedUpdateSha256": "e03e6512b1e52ba5371242b39c467deb5a3083920962fce9e993456500269b0b",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "remove-verifier",
+      "retainedSignerVerified": true,
+      "signedCounter": "3",
+      "signedUpdateSha256": "3307c6296fbdccf0088afce085a69bcacc28f8f903576153af050f38a1d764e9",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "restore-authority",
+      "retainedSignerVerified": true,
+      "signedCounter": "3",
+      "signedUpdateSha256": "3e37316578d1b5c1c6ef3e4ad6444f5c6de41c57d47dfa36b2e22e2ac4c7fd34",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "locked-stale-counter",
+      "retainedSignerVerified": true,
+      "signedCounter": "2",
+      "signedUpdateSha256": "50cba0734de9d75271e1b02c8dde9c01d8890deb88cd0d60d4fe8faecf45fe45",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "locked-future-counter",
+      "retainedSignerVerified": true,
+      "signedCounter": "4",
+      "signedUpdateSha256": "f8bb56722b70dea9ec33d32b242d69bac6a2fa40b5f37daeb80faa21e367db95",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    },
+    {
+      "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+      "counter": "3",
+      "kind": "locked-signed-update-replay",
+      "retainedSignerVerified": true,
+      "signedCounter": "1",
+      "signedUpdateSha256": "b8d8a69cb1d26d16e0511602d7e557ce77f2f635fa06b7d91fb2a48fee9cdf6d",
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e"
+    }
+  ],
+  "retainedRejections": [
+    {
+      "afterBlockHash": "0xdd0e697b85c44b67d3de61a36dac3f767b629ef68c9730c4432493d7573d0a9a",
+      "afterBlockHeight": 45,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0x94f887d7682674e15d66f860fdffbcfe2faa26e448397fdc688e3d84eaad69a0",
+      "beforeBlockHeight": 44,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "insert-verifier",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0x2726c8c95ff6095a03aa5a5fd5935a56040bf755f31e5bce53060e6bb7845617",
+      "afterBlockHeight": 46,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0xdd0e697b85c44b67d3de61a36dac3f767b629ef68c9730c4432493d7573d0a9a",
+      "beforeBlockHeight": 45,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "replace-verifier",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0x14bf692e77de68f04579d4c272cac4da7d427df7f90ad0f6a835280a1ec27892",
+      "afterBlockHeight": 47,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0x2726c8c95ff6095a03aa5a5fd5935a56040bf755f31e5bce53060e6bb7845617",
+      "beforeBlockHeight": 46,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "remove-verifier",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0xaf38c864011fc344fd6d2ff955486c7fc3d9a4b218da3f90e4a25e906edff126",
+      "afterBlockHeight": 48,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0x14bf692e77de68f04579d4c272cac4da7d427df7f90ad0f6a835280a1ec27892",
+      "beforeBlockHeight": 47,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "restore-authority",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0x7d8eccf339b11ec8a006b4765d694e5f3ef21eac3936384d89e23d4cca62828c",
+      "afterBlockHeight": 49,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0xaf38c864011fc344fd6d2ff955486c7fc3d9a4b218da3f90e4a25e906edff126",
+      "beforeBlockHeight": 48,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "locked-stale-counter",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0xf2267746fec41a5a6fa50b05347006bc629a478f31757957bd095d81511ead14",
+      "afterBlockHeight": 50,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0x7d8eccf339b11ec8a006b4765d694e5f3ef21eac3936384d89e23d4cca62828c",
+      "beforeBlockHeight": 49,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "locked-future-counter",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    },
+    {
+      "afterBlockHash": "0x90b436414d19b398b7b097f8d7a937e4b8abaad72e537011a45ff70c1595b3da",
+      "afterBlockHeight": 51,
+      "authorityRejectionVerified": true,
+      "beforeBlockHash": "0xf2267746fec41a5a6fa50b05347006bc629a478f31757957bd095d81511ead14",
+      "beforeBlockHeight": 50,
+      "conclusion": "KeyNotInCommittee",
+      "kind": "locked-signed-update-replay",
+      "rpcCodes": [
+        1010
+      ],
+      "runtimeCustomCodes": [
+        134
+      ],
+      "stateSha256": "0ddca2a5bbaacde76a189fd69de0be91c250b76058961e801f6727e90feef72e",
+      "unchanged": true
+    }
+  ],
+  "resourcePreflights": [
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xe229e86c55f0023b0aaeb9d15becaf6aca302f2b7951a7ca41b44735ea3a6178",
+      "blockHeight": "23",
+      "extrinsicBytes": 18661,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-staged-deploy",
+      "transactionBytes": 18650,
+      "transactionSha256": "bf98ec824292b6e3b0f93986801028fd2f9767b5f20900c3730d52dc7021539e",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x2f044a4da3a015b018baba32af45f0ad09e998fbda899dce91b448de916deea8",
+      "blockHeight": "26",
+      "extrinsicBytes": 15356,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-staged-install",
+      "transactionBytes": 15349,
+      "transactionSha256": "4913a19411234a48423812236d4a11b993e96283640cc8b0770a5e7c1a4fcd20",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x3a427cf24b7ad9b36976419720991ab0a14225a84469d1693ef561bddc25a296",
+      "blockHeight": "29",
+      "extrinsicBytes": 3634,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-control-stale-counter",
+      "transactionBytes": 3627,
+      "transactionSha256": "69d6c43812eed90084286bacfaf8599d0860beaa2fac2e7cc02ef05b290c283b",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xf58847924fc47d3a5d96bacc9c8515b341869848f6a07cd942cddd46c8868369",
+      "blockHeight": "32",
+      "extrinsicBytes": 3634,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-control-future-counter",
+      "transactionBytes": 3627,
+      "transactionSha256": "036f8d62ca5f38bbdf3c0e2348221a5e000aacc97db00d861fe24a6cf2e5c0ad",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x2955384f1b12a3eba00d5930b98d29418258964e31c065c64437335fb723dc77",
+      "blockHeight": "35",
+      "extrinsicBytes": 10042,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-control-positive-batch",
+      "transactionBytes": 10035,
+      "transactionSha256": "f605b7f324f42583a8a2d5145227bba4153a869e833be57990e186fc495191b9",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xb4d7000bcedd314804c84faea5205679d72a83ea8eda36771f626ca92ebe57b3",
+      "blockHeight": "38",
+      "extrinsicBytes": 10042,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-control-signed-update-replay",
+      "transactionBytes": 10035,
+      "transactionSha256": "d41340db807be887ae6cb4d858fbf731b93b56594b851ad479352b476bde753b",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x73fe58f221a8b4da1b79df210d740d3b5cea7a8de3a3137b23e6e44cad458125",
+      "blockHeight": "41",
+      "extrinsicBytes": 3602,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-staged-lock",
+      "transactionBytes": 3595,
+      "transactionSha256": "c2f32e5fe1a01d2296bf870d00410772c16b84a4f3bde18cc9234fc39504c739",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x94f887d7682674e15d66f860fdffbcfe2faa26e448397fdc688e3d84eaad69a0",
+      "blockHeight": "44",
+      "extrinsicBytes": 5712,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-insert-verifier",
+      "transactionBytes": 5705,
+      "transactionSha256": "d295202a7b2b90ca9730bcd5170c135995e6db909f131554806d75cdc62ea60b",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xdd0e697b85c44b67d3de61a36dac3f767b629ef68c9730c4432493d7573d0a9a",
+      "blockHeight": "45",
+      "extrinsicBytes": 5728,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-replace-verifier",
+      "transactionBytes": 5721,
+      "transactionSha256": "f3f6ba8f51b35b35ed2d8fc348ed8372599deb375a9b97bd193b179a9cb63a9f",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x2726c8c95ff6095a03aa5a5fd5935a56040bf755f31e5bce53060e6bb7845617",
+      "blockHeight": "46",
+      "extrinsicBytes": 3607,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-remove-verifier",
+      "transactionBytes": 3600,
+      "transactionSha256": "f97d5e757d069208ead66a13c0ce0aab8b97eb5257bed925413a9b567adcbcd2",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x14bf692e77de68f04579d4c272cac4da7d427df7f90ad0f6a835280a1ec27892",
+      "blockHeight": "47",
+      "extrinsicBytes": 3633,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-restore-authority",
+      "transactionBytes": 3626,
+      "transactionSha256": "f43f1ff46f44528d87b0d8ed9cf2d1279a874ff1f21141ab21943bf0ad160a07",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xaf38c864011fc344fd6d2ff955486c7fc3d9a4b218da3f90e4a25e906edff126",
+      "blockHeight": "48",
+      "extrinsicBytes": 3633,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-locked-stale-counter",
+      "transactionBytes": 3626,
+      "transactionSha256": "be9dfd05d5109884b84b5006f0ab728690c80c1841b3dd0a0c694f5d65a04700",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0x7d8eccf339b11ec8a006b4765d694e5f3ef21eac3936384d89e23d4cca62828c",
+      "blockHeight": "49",
+      "extrinsicBytes": 3634,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-locked-future-counter",
+      "transactionBytes": 3627,
+      "transactionSha256": "41b816940b17617ec3bfecbbbbb5fe656746f16cfc991197217c8fcf2d37774b",
+      "withinIndividualLimits": true
+    },
+    {
+      "artifactSetSha256": "ec9ce5362834013742b3c5f8cf53c3a670c89c89e0d52a0fe607c5300fdca561",
+      "blockHash": "0xf2267746fec41a5a6fa50b05347006bc629a478f31757957bd095d81511ead14",
+      "blockHeight": "50",
+      "extrinsicBytes": 10042,
+      "genesisHash": "0xe72f7a21a0397844563b4206f887b779ffa0d937c2d1b2339441faa1f08b9846",
+      "stage": "MID-T01-attack-locked-signed-update-replay",
+      "transactionBytes": 10035,
+      "transactionSha256": "f3c7bb122014460fb87fe00be6a85bbb5e76a6c4eba974d7bfb1d28006c8ba3f",
+      "withinIndividualLimits": true
+    }
+  ],
+  "result": {
+    "address": "e031847e88d1668303761a8015efaec709f8d37d67212a14267eed0010238023",
+    "adversarialMaintenanceRejectionVerified": false,
+    "canonicalQuoteBinding": false,
+    "counter": "3",
+    "elapsedMs": 128118,
+    "immutableOrderAdmission": false,
+    "maintenanceAudit": {
+      "authorityRejectionVerified": true,
+      "elapsedMs": 41944,
+      "nodeRejectedSubmissions": 7,
+      "postLockCounterCasesVerified": 3,
+      "replayCounterControlsVerified": true,
+      "requiredCases": 7,
+      "retainedKeyCasesVerified": 7
+    },
+    "maintenanceControls": {
+      "counterControlsVerified": 3,
+      "positiveBatchFinalized": true,
+      "signedMaintenanceReplayVerified": true,
+      "updateCount": 7
+    },
+    "maintenanceLockObserved": true,
+    "operationCount": 14,
+    "phase": "DEPLOYED",
+    "r1Complete": false,
+    "reservationExecuted": false,
+    "revision": "0",
+    "submissionCount": 3
+  },
+  "readiness": {
+    "release": "R0",
+    "completedProviders": 0,
+    "totalProviders": 6,
+    "completedOperations": 0,
+    "totalOperations": 14,
+    "r1Complete": false,
+    "r3Complete": false
+  }
+}

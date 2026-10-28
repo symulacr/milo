@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#fafaf9"/>
+  <rect x="0" y="0" width="1280" height="10" fill="#c2410c"/>
+  <text x="80" y="90" font-family="system-ui, sans-serif" font-size="18" fill="#c2410c">PROBLEM</text>
+  <text x="80" y="160" font-family="Georgia, serif" font-size="40" fill="#1c1917">Fragmented coordination is the product gap</text>
+  <text x="80" y="240" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Quote in email. Confidential brief in a shared folder.</text>
+  <text x="80" y="285" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Approval in chat. Payment elsewhere.</text>
+  <text x="80" y="330" font-family="system-ui, sans-serif" font-size="22" fill="#44403c">Then: disagreement about which terms or which files were accepted.</text>
+  <rect x="80" y="400" width="1120" height="160" rx="12" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="110" y="455" font-family="system-ui, sans-serif" font-size="20" fill="#9a3412">Hypothesis (01-blueprint §1.1) — not measured demand</text>
+  <text x="110" y="500" font-family="system-ui, sans-serif" font-size="18" fill="#7c2d12">Buyers need price, scope, recipient, deadline, and consequences before authorizing.</text>
+  <text x="110" y="535" font-family="system-ui, sans-serif" font-size="18" fill="#7c2d12">Merchants need a bounded brief and an explicit approval — not a chat reaction.</text>
+  <text x="80" y="660" font-family="system-ui, sans-serif" font-size="14" fill="#78716c">Slide 2 / 10</text>
+</svg>
