@@ -509,7 +509,13 @@ describe("CSP narrowing", () => {
     expect(workflow.match(/^\s+group: (.+)$/m)?.[1] ?? "").toContain(
       "github.event_name",
     );
-    expect(workflow).toContain("cron: '*/15 * * * *'");
+    // Four ticks an hour, in whichever spelling: `*/15` or an explicit list. The
+    // claim is that a schedule exists often enough to be a watchdog; pinning the
+    // literal expression made a retime a build failure.
+    const cron = workflow.match(/^\s+- cron: '([^']+)'$/m)?.[1] ?? "";
+    const minute = cron.split(" ")[0];
+    const step = minute.match(/^\*\/(\d+)$/)?.[1];
+    expect(step ? 60 / Number(step) : minute.split(",").length).toBe(4);
     expect(workflow).toContain(
       "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
     );
