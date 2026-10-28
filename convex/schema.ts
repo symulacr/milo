@@ -352,4 +352,16 @@ export default defineSchema({
     .index("by_intent_state", ["paymentIntentId", "state"])
     .index("by_identity", ["orderId", "action", "contractRevision"])
     .index("by_due", ["state", "nextAt"]),
+  /**
+   * R42: the deploy watchdog's one row. It exists so a transition can be told
+   * from a steady state — without it every tick that finds a mirror down would
+   * email, which is 1,440 mails a day. `since` is the episode start (0 when
+   * healthy) so the recovery mail can say how long it lasted.
+   */
+  deployWatch: defineTable({
+    key: s,
+    down: v.array(s),
+    since: n,
+    checkedAt: n,
+  }).index("by_key", ["key"]),
 });

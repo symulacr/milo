@@ -54,4 +54,15 @@ crons.daily(
   internalRef<"mutation">("diagnostics:reapPaymentInbox"),
 );
 
+// R42: the deploy watchdog. GitHub's `schedule` trigger is unreliable, so the
+// Actions uptime probe cannot be the only thing watching the mirrors. Five
+// minutes is the smallest interval that still catches a bad deploy quickly
+// without spending a function call a minute on two HTTP requests; the mail is
+// transition-only, so the interval is not the email rate.
+crons.interval(
+  "deploy watchdog",
+  { minutes: 5 },
+  internalRef<"action">("deployWatch:checkDeploy"),
+);
+
 export default crons;
