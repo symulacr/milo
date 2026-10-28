@@ -6,6 +6,7 @@ import {
   walletChoices,
   watchWallets,
 } from "../../../../packages/midnight-client/src";
+import { storage } from "./keys";
 
 let state: WalletConnectionState = { status: "disconnected" };
 let choices: readonly WalletChoice[] = [];
@@ -64,24 +65,15 @@ export const useWallets = () =>
 /** The rdns of the wallet this browser used last, so a reload reconnects. */
 const LAST_KEY = "milo:wallet-rdns";
 
-export const lastRdns = (): string | null => {
-  try {
-    return localStorage.getItem(LAST_KEY);
-  } catch {
-    return null;
-  }
-};
+export const lastRdns = (): string | null => storage.read(LAST_KEY, "") || null;
 
 /**
  * Connect one wallet. The handle must be passed synchronously from the click
  * handler, because a wallet opens its approval popup inside `connect`.
  */
 export const connectWallet = (choice: WalletChoice) => {
-  try {
-    localStorage.setItem(LAST_KEY, choice.rdns);
-  } catch {
-    // Storage disabled: the connection still works, only the memory is lost.
-  }
+  // Storage disabled: the connection still works, only the memory is lost.
+  storage.write(LAST_KEY, choice.rdns);
   return walletConnector().connect(choice.api);
 };
 

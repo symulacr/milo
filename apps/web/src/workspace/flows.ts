@@ -232,10 +232,10 @@ async function startOrder(
         "The terms do not match their commitment. Do not continue. Contact the studio.",
       );
   });
-  // The hold and the deadlines query are independent, so start both now and
-  // await them where each is needed. The user pays one latency, not two.
-  const deadlinesNow =
-    detail.stage === "DEPLOYED" ? null : convex.query(api.order, { quoteId });
+  // The hold must settle before the deadlines are read: on a fresh QUOTE the
+  // hold is what freezes the quote and creates them, so a read issued alongside
+  // it is always empty. On every later stage `holdNow` is null, so awaiting
+  // it is instant and this is still one read.
   const holdNow =
     detail.stage !== "QUOTE"
       ? null
@@ -255,15 +255,10 @@ async function startOrder(
     report("deploy", "done");
     report("attach", "done");
   } else {
-    // Settle the hold first: it was started concurrently, so awaiting it costs
-    // nothing, and a declined card is the more actionable failure. It must also
-    // come before trusting the deadlines read, because on a fresh QUOTE the hold
-    // is what freezes the quote and creates the deadlines, so the read that ran
-    // alongside it can legitimately come back empty. Read again once it settled.
+    // A declined card is the more actionable failure, so it wins over a
+    // missing deadline row.
     await holdNow;
-    const deadlines =
-      (await deadlinesNow)?.deadlines ??
-      (await convex.query(api.order, { quoteId }))?.deadlines;
+    const deadlines = (await convex.query(api.order, { quoteId }))?.deadlines;
     if (!deadlines)
       throw new Error("The order has no deadlines yet. Reload the order.");
     const deployed = await run(report, "deploy", () =>

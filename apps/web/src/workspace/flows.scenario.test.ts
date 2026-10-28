@@ -638,17 +638,19 @@ describe("user path: wallet missing or the user rejects signing", () => {
   });
 });
 
-describe("the hold and the deadlines query overlap", () => {
-  // `openOrder` reads the order first, so counting queries alone proves nothing.
-  // What differs is WHEN the second (deadlines) read is issued: the fixed code
-  // asks while the hold is pending; the serial base asks only after it resolves.
-  test("the deadlines query is issued while the hold is pending", async () => {
+describe("the hold settles before the deadlines are read", () => {
+  // R-13: the deadlines do not exist until the hold freezes the quote, so a read
+  // issued while the hold is pending is guaranteed empty. The old test here
+  // asserted exactly that ordering ("the deadlines query is issued while the
+  // hold is pending") because it was written to prove an R19 overlap
+  // optimisation — and it therefore pinned the defect: any correct fix had to
+  // fail it. This asserts the property that matters instead.
+  test("no deadlines read is issued before the hold settles", async () => {
     const events: string[] = [];
     let release: (() => void) | undefined;
     const gate = new Promise<void>((r) => {
       release = r;
     });
-    let queries = 0;
     const convex = {
       action: async (ref: unknown) => {
         const name = getFunctionName(ref as FunctionReference<"query">);
@@ -667,8 +669,13 @@ describe("the hold and the deadlines query overlap", () => {
           ? { ok: true, reason: "" }
           : {},
       query: async () => {
-        queries += 1;
-        events.push(`query:${queries}`);
+        // `openOrder` reads the order once before the hold; that read is not a
+        // deadlines read and is expected. Only reads issued after the hold
+        // STARTS are the ones that used to race it.
+        if (events.includes("hold:start"))
+          events.push(
+            events.includes("hold:end") ? "query:after" : "query:raced",
+          );
         return detail();
       },
     } as never;
@@ -684,13 +691,14 @@ describe("the hold and the deadlines query overlap", () => {
     );
     await new Promise((r) => setTimeout(r, 0));
     expect(events).toContain("hold:start");
-    // The serial base has only openOrder's read here, so this is the assertion
-    // it cannot satisfy.
-    expect(events.filter((e) => e.startsWith("query"))).toHaveLength(2);
+    // The assertion: while the hold is still pending, no deadlines read has run.
     expect(events).not.toContain("hold:end");
+    expect(events).not.toContain("query:raced");
     release?.();
     await started.catch(() => {});
     expect(events).toContain("hold:end");
+    // And the read that does happen comes after it.
+    expect(events).toContain("query:after");
   });
 
   // The other half of the same race, found by the real-handler harness: the
@@ -698,6 +706,42 @@ describe("the hold and the deadlines query overlap", () => {
   // can throw. The old code threw on a missing deadlines row while the hold was
   // pending, so a declined card escaped as an unhandled rejection and the user
   // was told "no deadlines" instead of "the card was declined".
+  // R-13 regression: the deadlines do not EXIST until the hold resolves,
+  // because the hold is what freezes the quote. So any deadlines read issued
+  // before the hold settles legitimately comes back empty, and the flow must
+  // settle the hold and read again rather than trust the empty answer.
+  //
+  // The fake models that temporal condition directly (a flag flipped when
+  // `holdPayment` resolves), not a read count, so it cannot be satisfied by
+  // accident. On the pre-fix code the read happens while the hold is pending,
+  // sees no deadlines, and the flow throws "The order has no deadlines yet".
+  test("a fresh QUOTE whose first deadlines read is empty still deploys", async () => {
+    let frozen = false;
+    const convex = {
+      action: async (ref: unknown) => {
+        const name = getFunctionName(ref as FunctionReference<"query">);
+        if (name.includes("holdPayment")) {
+          frozen = true; // the freeze that creates the deadlines
+          return { state: "held" };
+        }
+        if (name.includes("attachContract")) return { ok: true };
+        return {};
+      },
+      mutation: async () => ({ ok: true }),
+      query: async () =>
+        frozen ? detail() : { ...(detail() as object), deadlines: null },
+    } as unknown as Parameters<typeof openOrder>[0];
+    await openOrder(
+      convex,
+      { connected: {} as never },
+      "user-1",
+      "q1",
+      "token-abc",
+      INVITE,
+      report,
+    );
+  });
+
   test("a declined card surfaces, and no rejection escapes", async () => {
     const escaped: unknown[] = [];
     const onEscape = (reason: unknown) => escaped.push(reason);

@@ -226,6 +226,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   const [steps, setSteps] = useState<Steps>({});
   const [plan, setPlan] = useState<readonly (readonly [string, string])[]>([]);
   const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState("");
   /** Synchronous double-click guard: `busy` is a render behind (lib/utils). */
   const inFlight = useGuard();
   const [error, setError] = useState("");
@@ -305,10 +306,24 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
     };
   }, [convex, manifest]);
 
+  // R-14: this used to discard the result. `refreshOrder` answers
+  // `{phase: null, revision: null}` *without reading the indexer* whenever
+  // `observedAt` is inside REFRESH_COOLDOWN_MS (30 s), and the 60 s cron also
+  // writes it — so the button was inert roughly half the time, with no feedback.
+  // The timestamp is already on the payload (`contract.observedAt`), so saying so
+  // costs no request.
   const check = () => {
     setBusy(true);
     void convex
       .action(api.refreshOrder, { quoteId: order.quoteId })
+      .then((result) => {
+        if (result.revision !== null) return setChecked("Checked just now.");
+        setChecked(
+          order.contract?.observedAt
+            ? `The network was read ${relativeTo(order.contract.observedAt, now)}. Try again in a moment.`
+            : "The network has not been read yet. Try again in a moment.",
+        );
+      })
       .catch((cause) => setError(errorText(cause)))
       .finally(() => setBusy(false));
   };
@@ -341,6 +356,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
       () => {
         inFlight.end();
         setBusy(false);
+        setChecked("");
         setPending({ from, at: Date.now() });
         // The note is spent once the action that used it succeeded, so the draft
         // does not outlive the reason it was written for.
@@ -643,6 +659,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                   {busy ? "Checking the network…" : "Check the network"}
                 </Button>
               </div>
+              {checked && <Note>{checked}</Note>}
             </div>
           )}
           {order.role !== "operator" && (

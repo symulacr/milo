@@ -36,6 +36,49 @@ const parse = <T>(schema: z.ZodType<T>, text: string): T | null => {
   }
 };
 
+/**
+ * One seam for every storage access in the client.
+ *
+ * Eleven call sites repeated the same three decisions — which `Storage`, what a
+ * missing value means, and what a *blocked* store means — and differed only in
+ * the answers. A blocked store (private mode, full quota, denied origin) must
+ * never crash a page: the fallback is always "as if the key were absent".
+ *
+ * `read` takes the fallback, so the caller says what absence means where it
+ * matters instead of remembering that `getItem` yields `null`.
+ */
+type Kind = "local" | "session";
+
+const storeFor = (kind: Kind) =>
+  kind === "local" ? localStorage : sessionStorage;
+
+export const storage = {
+  /** The stored string, or `absent` when the key is missing or unreadable. */
+  read(key: string, absent: string, kind: Kind = "local") {
+    try {
+      return storeFor(kind).getItem(key) ?? absent;
+    } catch {
+      return absent;
+    }
+  },
+  /** Store a string. False when the write was refused; never throws. */
+  write(key: string, value: string, kind: Kind = "local") {
+    try {
+      storeFor(kind).setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  clear(key: string, kind: Kind = "local") {
+    try {
+      storeFor(kind).removeItem(key);
+    } catch {
+      // Nothing to clear.
+    }
+  },
+};
+
 export const toHex = (bytes: Uint8Array) => bytes.toHex();
 
 /**
@@ -60,8 +103,7 @@ export async function sha256Hex(data: string | ArrayBuffer | Uint8Array) {
 export const readKeys = (subject: string): KeyRing => {
   // The legacy single-entry ring first, then every per-order entry, which wins
   // because it is the newer format.
-  const legacy =
-    parse(ringSchema, localStorage.getItem(ringKey(subject)) ?? "{}") ?? {};
+  const legacy = parse(ringSchema, storage.read(ringKey(subject), "{}")) ?? {};
   const prefix = `${ringKey(subject)}:`;
   const ring: KeyRing = { ...legacy };
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -111,12 +153,7 @@ const keyEntry = (subject: string, quoteId: string) =>
  * the only remedy is an immediate backup.
  */
 export function saveKey(subject: string, key: OrderKey): boolean {
-  try {
-    localStorage.setItem(keyEntry(subject, key.quoteId), JSON.stringify(key));
-    return true;
-  } catch {
-    return false;
-  }
+  return storage.write(keyEntry(subject, key.quoteId), JSON.stringify(key));
 }
 
 /**
@@ -146,29 +183,17 @@ export function saveKey(subject: string, key: OrderKey): boolean {
 const inviteStash = (quoteId: string) => `milo:invite:${quoteId}`;
 
 export const stashInvite = (quoteId: string, token: string) => {
-  try {
-    if (quoteId) localStorage.setItem(inviteStash(quoteId), token);
-  } catch {
-    // Storage disabled: the first hop, which the studio's email carries, still
-    // works. Only the resend path degrades.
-  }
+  // Storage disabled: the first hop, which the studio's email carries, still
+  // works. Only the resend path degrades.
+  if (quoteId) storage.write(inviteStash(quoteId), token);
 };
 
 /** The token stashed for *this* order, or null. Never another order's. */
-export const stashedInvite = (quoteId: string): string | null => {
-  try {
-    return localStorage.getItem(inviteStash(quoteId)) || null;
-  } catch {
-    return null;
-  }
-};
+export const stashedInvite = (quoteId: string): string | null =>
+  storage.read(inviteStash(quoteId), "") || null;
 
 export const clearInvite = (quoteId: string) => {
-  try {
-    localStorage.removeItem(inviteStash(quoteId));
-  } catch {
-    // Nothing to clear.
-  }
+  storage.clear(inviteStash(quoteId));
 };
 
 /**
@@ -185,22 +210,13 @@ export const clearInvite = (quoteId: string) => {
  */
 const draftKey = (quoteId: string) => `milo:draft:${quoteId}`;
 
-export const readDraft = (quoteId: string): string => {
-  try {
-    return sessionStorage.getItem(draftKey(quoteId)) ?? "";
-  } catch {
-    return "";
-  }
-};
+export const readDraft = (quoteId: string): string =>
+  storage.read(draftKey(quoteId), "", "session");
 
 export const writeDraft = (quoteId: string, note: string) => {
-  try {
-    // An empty note is a cleared draft, not a stored empty string.
-    if (note) sessionStorage.setItem(draftKey(quoteId), note);
-    else sessionStorage.removeItem(draftKey(quoteId));
-  } catch {
-    // Storage disabled: the note lives only in this render, as before.
-  }
+  // An empty note is a cleared draft, not a stored empty string.
+  if (note) storage.write(draftKey(quoteId), note, "session");
+  else storage.clear(draftKey(quoteId), "session");
 };
 
 /**
@@ -233,32 +249,29 @@ const EMPTY_DRAFT: QuoteDraft = {
   email: "",
 };
 
-export const readQuoteDraft = (): QuoteDraft => {
-  try {
-    const raw = sessionStorage.getItem(QUOTE_DRAFT);
-    if (!raw) return EMPTY_DRAFT;
-    const parsed = JSON.parse(raw) as Partial<QuoteDraft>;
-    return {
-      studio: String(parsed.studio ?? ""),
-      brief: String(parsed.brief ?? ""),
-      amount: String(parsed.amount ?? ""),
-      email: String(parsed.email ?? ""),
-    };
-  } catch {
-    // Unreadable or blocked storage is a blank form, never a crash.
-    return EMPTY_DRAFT;
-  }
-};
+/**
+ * The draft is state read back from storage, so it is validated like any other
+ * untrusted input. `.catch("")` per field is the whole coercion: a missing or
+ * non-string field becomes empty, which is what the hand-written
+ * `String(parsed.x ?? "")` loop did for all four.
+ */
+const quoteDraftSchema = z.object({
+  studio: z.string().catch(""),
+  brief: z.string().catch(""),
+  amount: z.string().catch(""),
+  email: z.string().catch(""),
+});
+
+export const readQuoteDraft = (): QuoteDraft =>
+  // Unreadable or blocked storage is a blank form, never a crash.
+  parse(quoteDraftSchema, storage.read(QUOTE_DRAFT, "", "session")) ??
+  EMPTY_DRAFT;
 
 export const writeQuoteDraft = (draft: QuoteDraft) => {
-  try {
-    // An all-empty draft is a cleared draft, not a stored empty object.
-    if (Object.values(draft).some(Boolean))
-      sessionStorage.setItem(QUOTE_DRAFT, JSON.stringify(draft));
-    else sessionStorage.removeItem(QUOTE_DRAFT);
-  } catch {
-    // Storage disabled: the draft lives only in this render, as before.
-  }
+  // An all-empty draft is a cleared draft, not a stored empty object.
+  if (Object.values(draft).some(Boolean))
+    storage.write(QUOTE_DRAFT, JSON.stringify(draft), "session");
+  else storage.clear(QUOTE_DRAFT, "session");
 };
 
 async function derive(password: string, salt: Uint8Array) {
