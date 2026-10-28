@@ -567,6 +567,49 @@ describe("a user-supplied heading sets its own direction (U-12)", () => {
   });
 });
 
+describe("the document has exactly one title (R39)", () => {
+  // React 19 hoists a rendered `<title>` into `<head>` and inserts it BEFORE
+  // the one the shell already has (`mountHoistable`), so a shell that ships a
+  // static title ends up with two. Measured on the live deploy 2026-10-28:
+  // `/orders`, `/account` and `/orders/new` each carried
+  // ["Milo · Sign in to Milo", "Milo · Orders"], and the 404 carried
+  // ["Milo · Page not found", "Milo"]. `document.title` reads the first, so the
+  // tab looked right and nothing failed — the duplicate was invisible to every
+  // existing test, which is why it shipped.
+  //
+  // The static title is kept on purpose: it is what a crawler, a no-JS visitor
+  // and the first paint get before the module runs. So the fix drops the stale
+  // copy after React's title is committed, and these tests pin both halves.
+  const SHELLS = ["apps/web/app.html", "apps/web/public-app.html"];
+  const source = readFileSync("apps/web/src/components/PageTitle.tsx", "utf8");
+  test("each shell still ships its own static title", () => {
+    for (const file of SHELLS)
+      expect(readFileSync(file, "utf8")).toMatch(/<title>[^<]+<\/title>/);
+  });
+  test("the stale copy is dropped after the title is committed", () => {
+    // The dedupe lives in the effect that already runs on every route, so it
+    // cannot be forgotten by a new page that renders `PageTitle`. The slice is
+    // what makes it safe: React inserts its title first, so index 0 is the
+    // fresh one and everything after it is stale.
+    expect(source).toMatch(/querySelectorAll\("title"\)/);
+    expect(source).toMatch(/slice\(1\)[\s\S]{0,40}?\.remove\(\)/);
+  });
+  test("a route renders one title, not one per shell", () => {
+    // The shell's title is not in this markup (it is not a React node), so the
+    // render itself is the React-owned half; the count is what the effect then
+    // trims. Two here would mean the component itself renders two.
+    for (const [name, markup] of [
+      ["/orders", render("/orders", <SignIn />)],
+      ["/privacy", publicMarkup("/privacy")],
+      ["/unknown", publicMarkup("/unknown")],
+    ] as const)
+      expect({ name, titles: markup.match(/<title\b/g)?.length ?? 0 }).toEqual({
+        name,
+        titles: 1,
+      });
+  });
+});
+
 describe("NotFound CTA (A3-01)", () => {
   test("public bundle 404 CTA is a cross-entry anchor to the landing", () => {
     const cta = publicMarkup("/unknown").match(

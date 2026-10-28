@@ -24,11 +24,21 @@ Preprod as final testing before mainnet, and Mainnet as production. Milo selects
 **Preprod** for connected testing; the upstream existence of other networks does
 not enable them in Milo.
 
-Official Preprod services currently include:
+Preprod services, re-checked 2026-10-28. The Midnight-hosted indexer and node RPC
+were retired on 2026-10-09 and Blockfrost now serves both; every request carries a
+`project_id` token:
 
-- Node RPC: `https://rpc.preprod.midnight.network`
-- Indexer: `https://indexer.preprod.midnight.network/api/v4/graphql`
-- Faucet: `https://midnight-tmnight-preprod.nethermind.dev/`
+- Node RPC: `https://rpc.midnight-preprod.blockfrost.io` — **HTTP 200**, `system_chain`
+  returns `"Midnight Preprod"`
+- Indexer: `https://midnight-preprod.blockfrost.io/api/v0` — **HTTP 200**, GraphQL v4
+- Faucet: `https://midnight-tmnight-preprod.nethermind.dev/` — **HTTP 200**
+
+The retired hosts, for reference only:
+
+- `https://indexer.preprod.midnight.network/api/v4/graphql` — **HTTP 410
+  `ENDPOINT_DECOMMISSIONED`**; unusable
+- `https://rpc.preprod.midnight.network` — still answers **HTTP 200** today, but the
+  operator has scheduled it to stop, so it is not a dependency Milo may keep
 
 These are reference endpoints, not a verified Milo deployment profile. Before
 submitting, establish the compatible SDK/ledger/service cohort, installed Lace

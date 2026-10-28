@@ -374,7 +374,9 @@ The gates, in CI order (`.github/workflows/local-checks.yml`):
 cleared, which is the point: Bun auto-loads `.env.local`, so a plain local build
 reads configuration CI does not have and the two can diverge silently.
 
-- `bun run test:unit`: 1,433 tests, run with `--parallel`.
+- `bun run test:unit`: 1,640 tests across 76 files (5,778 assertions), run with
+  `--parallel`. The count moves as tests are added; the number here is from a run on
+  2026-10-28, not a target.
 - `bun run test:integration`: provisions the pinned Node runtime and runs the
   `packages/integration` tests.
 - `bun run test:native-network`: local Midnight node lane (see the
