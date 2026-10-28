@@ -29,6 +29,7 @@ export const legacyRedirects = [
   ["/how-it-works", "/#how"],
   ["/pilot", "/#faq"],
   ["/sign-in", "/account"],
+  ["/signin", "/account"],
   ["/connections", "/account"],
   ["/merchant/orders", "/orders"],
   ["/merchant/quotes/new", "/orders/new"],

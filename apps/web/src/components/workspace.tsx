@@ -1,4 +1,3 @@
-import { Copy, Hourglass } from "lucide";
 import {
   type ComponentProps,
   type ReactNode,
@@ -8,6 +7,7 @@ import {
 } from "react";
 import { cn } from "../lib/utils";
 import type { StepState } from "../workspace/flows";
+import { CopyIcon, HourglassIcon } from "./icons";
 import { Button } from "./ui/button";
 import { Mark } from "./ui/status";
 
@@ -32,7 +32,7 @@ export function StepList({
           <li
             key={id}
             data-state={step.state}
-            className="grid min-h-6 grid-cols-[20px_1fr] items-start gap-x-3 transition-opacity duration-200 starting:opacity-0 data-[state=waiting]:opacity-50"
+            className="grid min-h-6 grid-cols-[20px_1fr] items-start gap-x-3 motion-safe:transition-opacity motion-safe:duration-200 motion-safe:starting:opacity-0 data-[state=waiting]:opacity-50"
           >
             <span className="mt-0.5 flex size-5 items-center justify-center">
               {step.state === "waiting" ? (
@@ -114,10 +114,10 @@ export const Verdict = ({
   state: 0 | 1 | 2;
   text: readonly [string, string, string];
 }) => (
-  <p className={cn("flex items-center gap-2 text-sm", STATE[state][1])}>
-    <Mark icon={Hourglass} status={STATE[state][0]} />
+  <span className={cn("flex items-center gap-2 text-sm", STATE[state][1])}>
+    <Mark icon={HourglassIcon} status={STATE[state][0]} />
     {text[state]}
-  </p>
+  </span>
 );
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
@@ -141,7 +141,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         );
       }}
     >
-      <Mark icon={Copy} status={status} />
+      <Mark icon={CopyIcon} status={status} />
       <span className="sr-only">
         {STATE[status === "done" ? 1 : status === "failed" ? 2 : 0][2]}
       </span>

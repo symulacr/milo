@@ -7,10 +7,10 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        neutral: "bg-muted text-[#3d3d3d]",
-        positive: "bg-positive-soft text-[#04250e]",
+        neutral: "bg-muted text-foreground/80",
+        positive: "bg-positive-soft text-positive",
         warning: "bg-warning-soft text-warning",
-        negative: "bg-negative-soft text-[#831c1e]",
+        negative: "bg-negative-soft text-destructive",
       },
     },
     defaultVariants: { variant: "neutral" },

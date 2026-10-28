@@ -1,5 +1,5 @@
 import { useQuery_experimental as useQuery } from "convex/react";
-import { CircleDot, Plus } from "lucide";
+import { CircleDashedIcon, PlusIcon } from "../components/icons";
 import { Link } from "react-router";
 import { api, type OrderSummary } from "../api";
 import { PageTitle } from "../components/PageTitle";
@@ -10,15 +10,7 @@ import { errorText } from "../components/workspace";
 import { badgeTone, usd, useAgo } from "../lib/format";
 import { StaleBuild, useMe } from "../workspace/backend";
 import { STAGE_LABEL, yourTurn } from "../workspace/stages";
-
-/**
- * A dynamic import that 404'd because the deploy replaced the chunk. Kept in
- * sync with `ServiceBoundary`'s copy by intent: both answer "is this a stale
- * tab or a real fault?". A query error is a value here rather than a throw, so
- * the boundary cannot classify it for us.
- */
-const CHUNK_LOAD =
-  /dynamically imported module|Importing a module script failed/i;
+import { CHUNK_LOAD } from "../shells/WorkspaceShell";
 
 const ROW =
   "grid grid-cols-[minmax(0,1fr)] items-center gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_130px_90px_90px] md:gap-y-1";
@@ -27,11 +19,22 @@ function OrderRow({ order }: { order: OrderSummary }) {
   const ago = useAgo(order.updatedAt);
   const turn = yourTurn(order.role, order.stage);
   return (
-    <Link to={`/orders/${order.quoteId}`} className={ROW}>
+    <Link
+      to={`/orders/${order.quoteId}`}
+      className={ROW}
+      aria-label={turn ? `${order.title}, your turn` : order.title}
+    >
       <span className="grid min-w-0">
         <span className="flex min-w-0 items-center gap-2 font-semibold">
           {turn && (
-            <Mark icon={CircleDot} className="size-3.5 shrink-0 text-brand" />
+            <>
+              <Mark
+                icon={CircleDashedIcon}
+                size={14}
+                className="shrink-0 text-brand"
+              />
+              <span className="sr-only">Your turn. </span>
+            </>
           )}
           <span className="truncate">{order.title}</span>
         </span>
@@ -102,7 +105,7 @@ export function Orders() {
         actions={
           <Button asChild>
             <Link to="/orders/new">
-              <Mark icon={Plus} />
+              <Mark icon={PlusIcon} />
               New quote
             </Link>
           </Button>
@@ -112,13 +115,24 @@ export function Orders() {
         {orders === undefined ? (
           <Loading label="Loading orders" />
         ) : orders.length === 0 ? (
-          <div className="grid gap-2 rounded-lg bg-card p-8">
-            <h2 className="text-lg font-semibold">No orders yet</h2>
-            <p className="text-sm text-muted-foreground">
-              {me?.studio
-                ? "Start with a quote."
-                : "Open the link a studio emailed you."}
-            </p>
+          <div className="grid gap-4 rounded-lg bg-card p-8 sm:grid-cols-[minmax(0,11rem)_1fr] sm:items-center">
+            <img
+              className="aspect-[4/5] w-full max-w-[11rem] object-cover"
+              src="/images/studio-bench.webp"
+              alt=""
+              width={352}
+              height={440}
+              loading="lazy"
+              decoding="async"
+            />
+            <div className="grid gap-2">
+              <h2 className="text-lg font-semibold">No orders yet</h2>
+              <p className="text-sm text-muted-foreground">
+                {me?.studio
+                  ? "Start with a quote."
+                  : "Open the link a studio emailed you."}
+              </p>
+            </div>
           </div>
         ) : (
           <ul className="grid overflow-hidden rounded-lg bg-card">

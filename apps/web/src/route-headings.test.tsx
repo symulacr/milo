@@ -644,14 +644,14 @@ const GUARDS: readonly (readonly [string, string, string, string])[] = [
   ],
   [
     "D-10 the invite card names no step count",
-    "apps/web/src/routes/OrderView.tsx",
-    "is authorized now and captured on approval",
+    "apps/web/src/routes/OrderInvite.tsx",
+    "publishes the contract, and reserves the",
     "SIGN_STEPS",
   ],
   [
     "D-08 an ended order states its payment result",
-    "apps/web/src/routes/OrderView.tsx",
-    "Payment: ${PAYMENT_LABEL",
+    "apps/web/src/components/ui/order-progress.tsx",
+    "PAYMENT_CAPTION",
     "captures the card payment next",
   ],
   [
@@ -697,8 +697,8 @@ const GUARDS: readonly (readonly [string, string, string, string])[] = [
   ],
   [
     "D-18 a disputed order claims no track position",
-    "apps/web/src/routes/OrderView.tsx",
-    'order.stage === "DISPUTED" ? undefined',
+    "apps/web/src/components/ui/order-progress.tsx",
+    'stage === "DISPUTED" ? undefined',
     "",
   ],
 ];
@@ -1576,7 +1576,7 @@ describe("G-07 an invite on the wrong account names the account", () => {
   // signed-in email is not the invited one. The old copy said "This link does
   // not work. Ask the studio for a new one." — which would fail identically.
   const source = () =>
-    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+    readFileSync("apps/web/src/routes/OrderInvite.tsx", "utf8");
 
   test("the refusal names the address the user is signed in as", () => {
     const text = source();
@@ -1683,7 +1683,7 @@ describe("M-01 the invite cannot be claimed twice", () => {
   // The FIRST claim rotates the invite token, so the second is refused — and the
   // buyer sees "This order link does not work." for an order just claimed.
   const source = () =>
-    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+    readFileSync("apps/web/src/routes/OrderInvite.tsx", "utf8");
 
   test("the claim is guarded before it does any work", () => {
     const text = source();
@@ -1707,6 +1707,7 @@ describe("U-01 every handler that starts work is guarded", () => {
   const HANDLERS = [
     "apps/web/src/routes/Account.tsx",
     "apps/web/src/routes/NewQuote.tsx",
+    "apps/web/src/routes/OrderInvite.tsx",
     "apps/web/src/routes/OrderView.tsx",
     "apps/web/src/routes/SignIn.tsx",
   ] as const;

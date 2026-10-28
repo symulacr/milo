@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
-import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ORDER_WINDOWS_MS } from "../../../packages/backend/src/order-windows";
 import { sampleFiles } from "./assets";
 import { InfoPage } from "./routes/InfoPage";
+import { Landing } from "./routes/Landing";
 import { PublicShell } from "./shells/PublicShell";
 
 type GlobalSlot = Record<string, unknown>;
@@ -17,14 +15,14 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const landing = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const landing = renderToStaticMarkup(<Landing />);
 const shell = renderToStaticMarkup(
   <MemoryRouter>
     <PublicShell />
   </MemoryRouter>,
 );
 
-/** Both surfaces that must agree: the rendered shell and the landing HTML. */
+/** Both surfaces that must agree: the legal shell and the landing page. */
 const SURFACES = [shell, landing];
 
 function navHrefs(source: string, label: string): string[] {
@@ -101,21 +99,33 @@ describe("sample image integrity", () => {
 
 describe("public skip link keeps focus on a cold load", () => {
   test("an info route does not move focus past the skip link", async () => {
-    const window = new Window({ url: "http://localhost/privacy" });
-    (globalThis as GlobalSlot).window = window;
-    // Everything the component tree touches comes from the window; copy every
-    // own key rather than naming a subset that drifts.
-    for (const key of Object.getOwnPropertyNames(window)) {
-      if (key in globalThis) continue;
-      const value = (window as unknown as GlobalSlot)[key];
-      if (value !== undefined) (globalThis as GlobalSlot)[key] = value;
+    // Never static-import react-dom/client: React latches canUseDOM at load,
+    // and a false latch (no window yet) disables onChange for the whole suite
+    // (route-headings fill tests). Install a window first, then import.
+    const g = globalThis as unknown as GlobalSlot;
+    const owned = !g.document;
+    const win = owned
+      ? new Window({ url: "https://milo.test/privacy" })
+      : (g.window as Window);
+    if (owned) {
+      Object.assign(g, {
+        window: win,
+        document: win.document,
+        HTMLElement: win.HTMLElement,
+        Text: win.Text,
+        Node: win.Node,
+        navigator: win.navigator,
+      });
     }
-    const document = window.document;
-    const container = document.createElement("div");
-    document.body.appendChild(container as never);
-    const root = createRoot(container as unknown as HTMLElement);
-    await act(async () => {
-      root.render(
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const doc = win.document;
+    const root = doc.createElement("div");
+    doc.body.append(root);
+    // happy-dom's HTMLDivElement is not assignable to React's Container typedef.
+    const app = createRoot(root as unknown as Element);
+    await act(() => {
+      app.render(
         <MemoryRouter initialEntries={["/privacy"]}>
           <Routes>
             <Route element={<PublicShell />}>
@@ -125,8 +135,11 @@ describe("public skip link keeps focus on a cold load", () => {
         </MemoryRouter>,
       );
     });
-    expect(document.activeElement?.tagName ?? "BODY").toBe("BODY");
-    await act(async () => root.unmount());
-    window.close();
+    const skip = doc.querySelector(".skip-link");
+    expect(skip).toBeTruthy();
+    expect(doc.activeElement).not.toBe(doc.querySelector("main"));
+    await act(() => app.unmount());
+    root.remove();
+    if (owned) win.close();
   });
 });

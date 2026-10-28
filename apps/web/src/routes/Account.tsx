@@ -1,10 +1,15 @@
-import { Download, KeyRound, LogOut, Upload } from "lucide";
+import {
+  DownloadIcon,
+  KeyIcon,
+  LogoutIcon,
+  UploadIcon,
+} from "../components/icons";
 import { useMemo, useState } from "react";
 import { signOut } from "../auth-client";
 import { PageTitle } from "../components/PageTitle";
 import { Button } from "../components/ui/button";
 import { Card, CardTitle, Facts } from "../components/ui/card";
-import { ForgetWallet } from "../components/ui/connect";
+import { ConnectWallet, ForgetWallet } from "../components/ui/connect";
 import { Field, Input } from "../components/ui/input";
 import { Mark } from "../components/ui/status";
 import { errorText, Outcome } from "../components/workspace";
@@ -47,24 +52,27 @@ export function Account() {
           <div className="flex items-center justify-between gap-4">
             <CardTitle>You</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => void signOut()}>
-              <Mark icon={LogOut} />
+              <Mark icon={LogoutIcon} />
               Sign out
             </Button>
           </div>
           <Facts
             rows={[
               ["Email", me.email ?? "Not set"],
-              [
-                "Wallet",
-                me.walletAddress
-                  ? shortAddress(me.walletAddress)
-                  : walletHint(wallet),
-              ],
               ["Studio", me.studio?.name ?? "None"],
               ...(me.operator ? [["Role", ROLE_NAME.operator] as const] : []),
+              [
+                "Lace",
+                wallet.status === "connected"
+                  ? `Signs order steps · ${shortAddress(wallet.account.unshieldedAddress)}`
+                  : me.walletAddress
+                    ? `Signs order steps · last used ${shortAddress(me.walletAddress)}`
+                    : `Signs order steps. ${walletHint(wallet)}`,
+              ],
             ]}
           />
           {wallet.status === "connected" && <ForgetWallet />}
+          {wallet.status !== "connected" && <ConnectWallet warm />}
         </Card>
         <Card>
           <CardTitle>Order keys</CardTitle>
@@ -72,10 +80,10 @@ export function Account() {
             Each order has a key that only this browser holds. Clear the browser
             and it is gone; Milo cannot make a new one. Download a backup.
           </p>
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <Mark icon={KeyRound} className="size-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Mark icon={KeyIcon} className="text-muted-foreground" />
             {count} order {count === 1 ? "key" : "keys"} in this browser
-          </p>
+          </div>
           <div className="grid gap-6 md:grid-cols-2">
             <form
               className="grid content-start gap-3"
@@ -113,7 +121,7 @@ export function Account() {
                 className="w-fit"
                 disabled={!count}
               >
-                <Mark icon={Download} />
+                <Mark icon={DownloadIcon} />
                 Download the backup
               </Button>
             </form>
@@ -168,7 +176,7 @@ export function Account() {
                 />
               </Field>
               <Button type="submit" variant="outline" className="w-fit">
-                <Mark icon={Upload} />
+                <Mark icon={UploadIcon} />
                 Restore the keys
               </Button>
             </form>

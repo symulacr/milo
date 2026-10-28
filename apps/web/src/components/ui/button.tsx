@@ -13,13 +13,15 @@ const Spinner = () => (
 );
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-semibold whitespace-nowrap transition-[color,background-color,transform] outline-none select-none focus-visible:ring-[3px] focus-visible:ring-ring/40 active:translate-y-px disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-semibold whitespace-nowrap transition-[color,background-color,transform] outline-none select-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-safe:active:translate-y-px disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-mint text-black hover:bg-mint/85",
+        default: "bg-foreground text-white hover:bg-foreground/90",
         outline: "border border-input bg-card hover:bg-muted",
         ghost: "hover:bg-muted",
+        danger:
+          "border border-destructive/40 bg-card text-destructive hover:bg-negative-soft",
       },
       size: {
         default: "h-9 px-4",

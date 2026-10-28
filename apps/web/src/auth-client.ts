@@ -108,7 +108,11 @@ export async function signInWithWallet(
   };
   try {
     const status = await connectedApi.getConnectionStatus();
-    if (status.status !== "connected" || status.networkId !== "preprod")
+    // Match assertSupportedNetwork: Lace may report PreProd / PREPROD.
+    if (
+      status.status !== "connected" ||
+      status.networkId.trim().toLowerCase() !== "preprod"
+    )
       return { ok: false, message: WALLET_FAILURE };
     const { unshieldedAddress } = await connectedApi.getUnshieldedAddress();
     if (!unshieldedAddress) return { ok: false, message: WALLET_FAILURE };

@@ -1,35 +1,41 @@
-import { Check, CircleAlert, LoaderCircle } from "lucide";
-import type { IconNode } from "morphicons";
-import { MorphIcon } from "morphicons/react";
-import { cn } from "../../lib/utils";
+import type { AppIcon } from "../icons";
+import {
+  BadgeAlertIcon,
+  CheckIcon,
+  LoaderCircleIcon,
+} from "../icons";
 import { PageTitle } from "../PageTitle";
+import { cn } from "../../lib/utils";
 
-const STATUS_ICON: Record<"working" | "done" | "failed", IconNode> = {
-  working: LoaderCircle,
-  done: Check,
-  failed: CircleAlert,
+const STATUS_ICON: Record<"working" | "done" | "failed", AppIcon> = {
+  working: LoaderCircleIcon,
+  done: CheckIcon,
+  failed: BadgeAlertIcon,
 };
 
 export function Mark({
-  icon,
+  icon: Icon,
   status = "idle",
   className,
+  size = 16,
 }: {
-  icon?: IconNode;
+  icon?: AppIcon;
   status?: "idle" | "working" | "done" | "failed";
   className?: string;
+  size?: number;
 }) {
-  const shown = status === "idle" ? icon : STATUS_ICON[status];
-  if (!shown) return null;
+  const Shown = status === "idle" ? Icon : STATUS_ICON[status];
+  if (!Shown) return null;
   return (
-    <MorphIcon
-      icon={shown}
-      reducedMotion="user"
+    <Shown
+      size={size}
       className={cn(
-        "size-4",
-        status === "working" && "animate-spin",
+        // app-icon: prefers-reduced-motion disables pointer so hover morphs stay off
+        "app-icon inline-flex shrink-0 text-current [&_svg]:block",
+        status === "working" && "motion-safe:animate-spin",
         className,
       )}
+      aria-hidden="true"
     />
   );
 }

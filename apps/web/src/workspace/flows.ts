@@ -44,9 +44,9 @@ export const warmChain = () =>
 export const PLAN: Record<string, readonly (readonly [string, string])[]> = {
   start: [
     ["terms", "Check the terms"],
-    ["hold", "Hold the card payment"],
+    ["hold", "Authorize the card"],
     ["deploy", "Publish the contract"],
-    ["attach", "Bind the contract"],
+    ["attach", "Attach the contract"],
     ["reserve", "Reserve the terms"],
   ],
   submitDelivery: [
@@ -141,9 +141,14 @@ export async function createQuote(
     ),
     terms,
   };
+  // `me.studio` is `{ scopeId, name }`; createQuote only accepts `scopeId`.
+  // Spreading `name` trips Convex ArgumentValidationError (extra field).
   const result =
     "scopeId" in studio
-      ? await convex.action(api.createQuote, { ...signed, ...studio })
+      ? await convex.action(api.createQuote, {
+          ...signed,
+          scopeId: studio.scopeId,
+        })
       : await convex.action(api.createStudioAndQuote, { ...signed, ...studio });
   saveKey(subject, {
     quoteId: result.quoteId,

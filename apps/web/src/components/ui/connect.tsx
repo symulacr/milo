@@ -1,4 +1,3 @@
-import { CircleCheck, Download, LogIn, Unplug, Wallet } from "lucide";
 import { useState } from "react";
 import { Link } from "react-router";
 import { signInWithWallet } from "../../auth-client";
@@ -12,6 +11,13 @@ import {
   walletHint,
   warmChain,
 } from "../../workspace/wallet";
+import {
+  CircleCheckIcon,
+  DownloadIcon,
+  LogInIcon,
+  PlugZapIcon,
+  WalletIcon,
+} from "../icons";
 import { Alert } from "../workspace";
 import { Button } from "./button";
 import { Mark } from "./status";
@@ -49,7 +55,7 @@ function WalletRow({
       {icon ? (
         <img src={icon} alt="" className="size-4 rounded-sm" />
       ) : (
-        <Mark icon={Wallet} />
+        <Mark icon={WalletIcon} />
       )}
       {name}
       {duplicate && (
@@ -76,13 +82,49 @@ export function ConnectWallet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const signAfterConnect = () => {
+    const api = walletConnector().connectedApi();
+    if (!api) return;
+    setBusy(true);
+    setError("");
+    void signInWithWallet(api)
+      .then((result) => {
+        if (!result.ok) setError(result.message);
+      })
+      .finally(() => setBusy(false));
+  };
+
   if (wallet.status === "connected") {
+    // On the sign-in sheet the address is not a finished session — Lace still
+    // has to sign. Keep the chip neutral and one control that finishes it.
+    if (signIn) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span
+            className="inline-flex h-8 items-center gap-2 rounded-md bg-muted px-3 text-[13px] font-medium"
+            title={wallet.account.unshieldedAddress}
+          >
+            {shortAddress(wallet.account.unshieldedAddress)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            pending={busy}
+            onClick={signAfterConnect}
+          >
+            <Mark icon={LogInIcon} />
+            Sign in with this wallet
+          </Button>
+          {error && <Alert>{error}</Alert>}
+        </span>
+      );
+    }
     const chip = (
       <span
         className="inline-flex h-8 items-center gap-2 rounded-full bg-card px-3 text-[13px] font-medium"
         title={wallet.account.unshieldedAddress}
       >
-        <Mark icon={CircleCheck} className="size-3.5 text-positive" />
+        <Mark icon={CircleCheckIcon} size={14} className="text-positive" />
         <span className="sr-only">Wallet connected: </span>
         {shortAddress(wallet.account.unshieldedAddress)}
       </span>
@@ -96,27 +138,6 @@ export function ConnectWallet({
         ) : (
           chip
         )}
-        {signIn && (
-          <Button
-            variant="outline"
-            pending={busy}
-            onClick={() => {
-              const api = walletConnector().connectedApi();
-              if (!api) return;
-              setBusy(true);
-              setError("");
-              void signInWithWallet(api)
-                .then((result) => {
-                  if (!result.ok) setError(result.message);
-                })
-                .finally(() => setBusy(false));
-            }}
-          >
-            <Mark icon={LogIn} />
-            Sign in with a wallet
-          </Button>
-        )}
-        {error && <Alert>{error}</Alert>}
       </span>
     );
   }
@@ -135,7 +156,7 @@ export function ConnectWallet({
             if (wallet) void connectWallet(wallet);
           }}
         >
-          <Mark icon={Wallet} />
+          <Mark icon={WalletIcon} />
         </Button>
       </span>
     );
@@ -146,29 +167,37 @@ export function ConnectWallet({
         <a
           href={INSTALL[0][1]}
           rel="noopener"
-          aria-label="Get a wallet: install a Midnight wallet to sign"
-          title="Get a wallet: install a Midnight wallet to sign"
+          aria-label="Get Lace: install a Midnight wallet to sign"
+          title="Get Lace: install a Midnight wallet to sign"
         >
-          <Mark icon={Download} />
-          <span className="hidden sm:inline">Get a wallet</span>
+          <Mark icon={DownloadIcon} />
+          <span className="hidden sm:inline">Get Lace</span>
         </a>
       </Button>
     );
 
-  const connecting = wallet.status === "connecting";
+  const connecting = wallet.status === "connecting" || busy;
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {wallets.map((found) => (
         <WalletRow
           key={found.rdns}
-          name={found.name}
+          name={signIn ? `Sign in with ${found.name}` : found.name}
           icon={found.icon}
           duplicate={found.duplicate}
           busy={connecting}
           warm={warm}
-          onPick={() => void connectWallet(found)}
+          onPick={() => {
+            // Connect must stay in the click turn for the wallet popup. Sign-in
+            // follows once the connector reports connected.
+            void connectWallet(found).then(() => {
+              if (!signIn) return;
+              signAfterConnect();
+            });
+          }}
         />
       ))}
+      {error && <Alert>{error}</Alert>}
     </span>
   );
 }
@@ -182,7 +211,7 @@ export function ForgetWallet() {
       title="Forget the wallet connection"
       onClick={() => walletConnector().disconnect()}
     >
-      <Mark icon={Unplug} />
+      <Mark icon={PlugZapIcon} />
     </Button>
   );
 }

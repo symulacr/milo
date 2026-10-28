@@ -158,7 +158,10 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
     secret: required(ctx, "BETTER_AUTH_SECRET", "unconfigured-probe", 32),
     // One env var, a list of origins. A second Vercel domain (a preview, or a
     // custom domain during cutover) is a comma in SITE_URL, not a code change.
-    trustedOrigins: required(ctx, "SITE_URL", "http://localhost:5173")
+    // Dev default matches scripts/dev.ts (PORT||3000). Production SITE_URL is
+    // a comma list; keep the canonical public origin first so magic-link
+    // callbacks do not land on localhost.
+    trustedOrigins: required(ctx, "SITE_URL", "http://localhost:3000")
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),

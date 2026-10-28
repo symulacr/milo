@@ -50,9 +50,12 @@ export function NewQuote() {
   return (
     <>
       <PageTitle title="New quote">
-        <p className="text-muted-foreground">Milo emails the link.</p>
+        <p className="max-w-[52ch] text-muted-foreground">
+          Milo emails the link. The client needs Lace: opening it authorizes the
+          card and reserves the terms.
+        </p>
       </PageTitle>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid max-w-xl items-start gap-6">
         <form
           className="grid gap-4 rounded-lg bg-card p-5"
           // One listener for the whole form rather than one per field: the

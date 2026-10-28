@@ -32,6 +32,11 @@
       "permanent": true
     },
     {
+      "source": "/signin",
+      "destination": "/account",
+      "permanent": true
+    },
+    {
       "source": "/connections",
       "destination": "/account",
       "permanent": true

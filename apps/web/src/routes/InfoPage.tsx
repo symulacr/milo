@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { ORDER_WINDOWS_MS as W } from "../../../../packages/backend/src/order-windows";
 import { PublicTitle } from "../components/PageTitle";
 
@@ -29,9 +28,9 @@ export const PAGES = {
   },
   terms: {
     title: "Terms",
-    intro: `Effective ${EFFECTIVE}. What one Milo order is, and what you agree to.`,
+    intro: `Effective ${EFFECTIVE}. The rules for a Milo order on Midnight Preprod.`,
     items: {
-      "One order":
+      Orders:
         "One fixed price for one delivery of three final images. No revision rounds and no partial payments.",
       Payment:
         "Milo authorizes your card when you accept the quote. Milo captures it only when you approve the delivery. If the order does not reach approval, the authorization is released. The pilot runs in Stripe test mode, so no real money moves.",
@@ -55,46 +54,38 @@ const RETENTION = [
   ["On-chain commitments", "Permanent; not deletable"],
 ] as const;
 
-const STUDIO = [
-  ["/images/studio-shelf.webp", "Finished vessels on a studio shelf"],
-  ["/images/studio-set.webp", "An olive vessel on a plaster plinth"],
-  ["/images/studio-bench.webp", "Three vessels on an oak workbench"],
-  ["/images/agree.webp", "Two people agree a printed brief"],
-] as const;
-
 export function InfoPage({ kind }: { kind: keyof typeof PAGES }) {
   const page = PAGES[kind];
+  const rows = [
+    ...Object.entries(page.items),
+    ...(kind === "privacy" ? RETENTION : []),
+  ];
+  const slug = (heading: string) =>
+    heading.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
-    <article className="grid gap-16 lg:gap-24">
+    <article className="grid gap-12 lg:gap-16">
       <PublicTitle title={page.title} />
-      <p className="rise lead max-w-[52ch]">{page.intro}</p>
-      <ul
-        className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3"
-        aria-label="The studio"
-      >
-        {STUDIO.map(([src, alt], i) => (
-          <li key={src} className="rise" style={{ "--i": i } as CSSProperties}>
-            <img
-              className="aspect-[4/3] w-full rounded-md object-cover"
-              src={src}
-              alt={alt}
-              width="1200"
-              height="900"
-              loading="lazy"
-              decoding="async"
-            />
-          </li>
-        ))}
-      </ul>
+      <p className="lead max-w-[52ch]">{page.intro}</p>
+      <nav aria-label="On this page" className="text-sm text-muted-foreground">
+        <ol className="flex flex-wrap gap-x-4 gap-y-1">
+          {rows.map(([heading]) => (
+            <li key={heading}>
+              <a
+                className="underline underline-offset-4"
+                href={`#${slug(heading)}`}
+              >
+                {heading}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </nav>
       <dl className="grid gap-y-10">
-        {[
-          ...Object.entries(page.items),
-          ...(kind === "privacy" ? RETENTION : []),
-        ].map(([heading, body], i) => (
+        {rows.map(([heading, body]) => (
           <div
             key={heading}
-            className="rise grid gap-2 lg:col-span-4"
-            style={{ "--i": i } as CSSProperties}
+            id={slug(heading)}
+            className="grid gap-2 scroll-mt-24"
           >
             <dt className="heading">{heading}</dt>
             <dd className="max-w-[52ch] text-[17px] leading-relaxed">{body}</dd>

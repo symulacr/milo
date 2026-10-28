@@ -106,7 +106,7 @@ export const badgeTone = (stage: Stage) =>
   stage === "APPROVED"
     ? "positive"
     : stage === "DISPUTED"
-      ? "warning"
+      ? "negative"
       : stage === "CANCELLED"
-        ? "negative"
+        ? "neutral"
         : "neutral";

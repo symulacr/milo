@@ -124,13 +124,18 @@ export function connectFailureMessage(error: unknown): string {
     case "Disconnected":
       return WALLET_DISCONNECTED;
     case "InternalError":
-      return WALLET_INTERNAL;
     case "InvalidRequest":
-      return WALLET_BAD_REQUEST;
-    default:
-      // Not a connector error: a thrown Error from the wallet, or something
-      // else. Say what is true without inventing a cause.
-      return CONNECT_FAILED;
+    default: {
+      // Lace#2243: Preprod post-connect "unavailable" / "api denied" (ext OOM).
+      const reason = String(failure.reason ?? (error as Error)?.message ?? "");
+      if (/unavailable|api denied/i.test(reason))
+        return "Lace Preprod is stuck. Update Lace to 2.4.2+, finish sync, restart the extension, then reconnect.";
+      return code === "InternalError"
+        ? WALLET_INTERNAL
+        : code === "InvalidRequest"
+          ? WALLET_BAD_REQUEST
+          : CONNECT_FAILED;
+    }
   }
 }
 

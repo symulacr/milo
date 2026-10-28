@@ -1,3 +1,4 @@
+import { ArrowRightIcon } from "../components/icons";
 import { PublicTitle } from "../components/PageTitle";
 
 export function NotFound() {
@@ -9,9 +10,7 @@ export function NotFound() {
       </p>
       <a className="cta lg:col-span-5 lg:col-start-8" href="/">
         Go to the Milo home page{" "}
-        <span className="arrow" aria-hidden="true">
-          →
-        </span>
+        <ArrowRightIcon size={20} className="arrow" aria-hidden="true" />
       </a>
     </article>
   );

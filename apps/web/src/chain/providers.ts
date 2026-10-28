@@ -143,6 +143,16 @@ export async function readWalletConfig(
       "WALLET_UNAVAILABLE",
       "The wallet returned no indexer endpoints; public chain data cannot be read.",
     );
+  // Lace 2.4.3 still ships blockfrost.lw.iog.io / retired Midnight hosts (410).
+  if (
+    /blockfrost\.lw\.iog\.io|indexer\.preprod\.midnight\.network|rpc\.preprod\.midnight\.network/i.test(
+      `${configuration.indexerUri}\n${configuration.indexerWsUri}`,
+    )
+  )
+    throw new ChainError(
+      "WALLET_UNAVAILABLE",
+      "Lace returned a retired Preprod indexer. Update Lace (2.4.2+) and set Midnight Preprod indexer to midnight-preprod.blockfrost.io with your project id.",
+    );
   return {
     indexerUri: configuration.indexerUri,
     indexerWsUri: configuration.indexerWsUri,

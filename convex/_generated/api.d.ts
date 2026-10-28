@@ -18,6 +18,7 @@ import type * as auth_walletPlugin from "../auth/walletPlugin.js";
 import type * as canonicalAdmission from "../canonicalAdmission.js";
 import type * as chainObserver from "../chainObserver.js";
 import type * as crons from "../crons.js";
+import type * as deployWatch from "../deployWatch.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as disputeNotes from "../disputeNotes.js";
 import type * as files from "../files.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   canonicalAdmission: typeof canonicalAdmission;
   chainObserver: typeof chainObserver;
   crons: typeof crons;
+  deployWatch: typeof deployWatch;
   diagnostics: typeof diagnostics;
   disputeNotes: typeof disputeNotes;
   files: typeof files;

@@ -8,7 +8,6 @@ import {
 } from "react";
 import { NavLink, Outlet } from "react-router";
 import { Button } from "../components/ui/button";
-import { ConnectWallet } from "../components/ui/connect";
 import { Loading } from "../components/ui/status";
 import { Wordmark } from "../components/Wordmark";
 import { errorText } from "../components/workspace";
@@ -44,7 +43,7 @@ const isOnline = () => navigator.onLine;
  * message is the only signal a bundler-less build gets: Chrome and Firefox say
  * "Failed to fetch dynamically imported module", Safari "Importing a module
  * script failed". Anything else is a real fault and keeps the generic sentence. */
-const CHUNK_LOAD =
+export const CHUNK_LOAD =
   /dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
 
 export class ServiceBoundary extends Component<
@@ -153,7 +152,6 @@ export function WorkspaceShell() {
                 {me.email ?? shortAddress(me.walletAddress ?? me.subject)}
               </span>
             )}
-            {me && <ConnectWallet to="/account" />}
           </div>
         </div>
       </header>

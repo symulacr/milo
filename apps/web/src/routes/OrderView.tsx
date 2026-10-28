@@ -1,7 +1,5 @@
 import { useConvex, useQuery } from "convex/react";
-import { Check, Clock } from "lucide";
-import { MorphIcon } from "morphicons/react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import {
   ACCEPTED_IMAGE_TYPES,
@@ -9,11 +7,14 @@ import {
 } from "../../../../packages/backend/src/delivery-policy";
 import { DIFFERENT_ACCOUNT } from "../../../../packages/midnight-client/src";
 import { api, type Me, type OrderDetail } from "../api";
+import { ClockIcon } from "../components/icons";
 import { PageTitle } from "../components/PageTitle";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardTitle, type Fact, Facts } from "../components/ui/card";
 import { Textarea } from "../components/ui/input";
+import { OrderProgress } from "../components/ui/order-progress";
+import { SealSheet } from "../components/ui/seal-sheet";
 import { Loading, Mark } from "../components/ui/status";
 import {
   Alert,
@@ -29,7 +30,6 @@ import { cn, useGuard } from "../lib/utils";
 import { useMe, usePublicConfig } from "../workspace/backend";
 import {
   type DeliveryReview,
-  openOrder,
   PLAN,
   type Report,
   readDisputeNote,
@@ -38,7 +38,6 @@ import {
   warmChain,
 } from "../workspace/flows";
 import {
-  clearInvite,
   keyFor,
   readDraft,
   stashedInvite,
@@ -51,18 +50,17 @@ import {
   type OrderAction,
   PAYMENT_LABEL,
   STAGE_LABEL,
-  TRACK,
-  trackIndex,
   turnOf,
   useNow,
 } from "../workspace/stages";
 import {
-  connectWallet,
-  differentAccount,
-  preferredWallet,
-  useWallet,
-  walletConnector,
-} from "../workspace/wallet";
+  connectPreferred,
+  WALLET_MISSING,
+  TEST_CARD,
+  useConnected,
+} from "../workspace/order-wallet";
+import { differentAccount, useWallet } from "../workspace/wallet";
+import { OrderInvite } from "./OrderInvite";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
 
 const MUTED = "text-sm text-muted-foreground";
@@ -70,23 +68,10 @@ const STACK = "grid gap-2";
 const FIT = "w-fit";
 const MONO = "font-mono text-xs break-all"; // taste-skill-ignore digests are literal hex
 const ALERT = "text-sm text-destructive";
-const TEST_CARD =
-  "Stripe test mode: Milo uses a test card. No real money moves.";
-
-/** Connect the remembered wallet, or the first one found. */
-const connectPreferred = () => {
-  const choice = preferredWallet();
-  if (choice) void connectWallet(choice);
-};
 
 /** The server's own delivery rules, so a file it would reject is refused here. */
 const acceptable = (file: File) =>
   ACCEPTED_IMAGE_TYPES.includes(file.type) && file.size <= MAX_BYTES;
-
-const useConnected = () =>
-  useWallet().status === "connected"
-    ? walletConnector().connectedApi()
-    : undefined;
 
 export function OrderView() {
   const { quoteId = "" } = useParams();
@@ -112,105 +97,9 @@ export function OrderView() {
   if (order === undefined || !me) return <Loading label="Loading the order…" />;
   if (order) return <Order order={order} me={me} />;
   return token ? (
-    <Invite quoteId={quoteId} token={token} me={me} />
+    <OrderInvite quoteId={quoteId} token={token} me={me} />
   ) : (
     <WorkspaceNotFound />
-  );
-}
-
-function Invite(props: { quoteId: string; token: string; me: Me }) {
-  const { quoteId, token, me } = props;
-  const convex = useConvex();
-  const wallet = useWallet();
-  const connected = useConnected();
-  const config = usePublicConfig();
-  const preview = useQuery(api.invite, { quoteId, token });
-  const [busy, startBusy] = useTransition();
-  // M-01: `startTransition` runs the callback synchronously and marks the update
-  // non-urgent, so `busy` is not set before a second click in the same frame.
-  // Both clicks then reach `openOrder` → `acceptInvite`, and the FIRST claim
-  // rotates the invite token, so the second is refused with "This order link
-  // does not work." — an error shown for an order that was just claimed
-  // successfully. `useGuard` is the shared synchronous ref (lib/utils).
-  const claiming = useGuard();
-  const [error, setError] = useState("");
-  const isConnected = Boolean(connected);
-  useEffect(() => {
-    if (isConnected) void warmChain();
-  }, [isConnected]);
-  if (preview === undefined) return <Loading label="Loading the invitation…" />;
-  if (!preview || preview.claimed) {
-    // G-07: a null preview has two very different causes, and the old copy named
-    // only one of them. The token was accepted (we got this far), so the refusal
-    // is either "another account already claimed it" or "you are signed in as
-    // someone else". `me.email` is already here — the shell only renders this
-    // page for a signed-in user — so naming the account costs no request and no
-    // new state. Saying "this link does not work" sent the buyer to the studio
-    // for a new link that would have failed the same way.
-    const [title, body] = preview
-      ? [
-          "Order already accepted",
-          "Another account opened this order. Sign in as that account, or ask for a new link.",
-        ]
-      : [
-          "Sign in as the invited account",
-          `This link is for another address. You are signed in as ${me.email ?? "a different account"}. Sign out and open the link again with the address the studio emailed.`,
-        ];
-    return (
-      <PageTitle title={title}>
-        <p className="max-w-[52ch] text-muted-foreground">{body}</p>
-      </PageTitle>
-    );
-  }
-  return (
-    <>
-      <PageTitle title={preview.title}>
-        <p className="text-muted-foreground">
-          {preview.studioName} · {usd(preview.amountUsd)}, fixed
-        </p>
-      </PageTitle>
-      <Card>
-        <CardTitle>The brief</CardTitle>
-        <p className="text-sm leading-relaxed whitespace-pre-line">
-          {preview.brief}
-        </p>
-        <Note>
-          {usd(preview.amountUsd)} is authorized now and captured on approval.
-          {config?.paymentsMode === "test" ? ` ${TEST_CARD}` : ""}
-        </Note>
-        <Button
-          className={FIT}
-          disabled={wallet.status === "connecting"}
-          pending={busy}
-          onClick={() => {
-            if (!connected) return connectPreferred();
-            if (!claiming.start()) return;
-            setError("");
-            startBusy(() =>
-              openOrder(
-                convex,
-                { connected },
-                me.subject,
-                quoteId,
-                token,
-                preview,
-                () => {},
-              )
-                // The token is spent once the claim succeeds, so the tab stops
-                // carrying a credential it can never use again.
-                .then(() => clearInvite(quoteId))
-                .catch((cause) => setError(errorText(cause)))
-                // Released on both paths, or a failed claim locks the button.
-                .finally(claiming.end),
-            );
-          }}
-        >
-          <MorphIcon icon={Check} reducedMotion="user" />
-          {connected ? "Open the order" : "Connect a wallet"}
-        </Button>
-        {error && <Alert>{error}</Alert>}
-      </Card>
-    </>
   );
 }
 
@@ -235,6 +124,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   /** Synchronous double-click guard: `busy` is a render behind (lib/utils). */
   const inFlight = useGuard();
   const [error, setError] = useState("");
+  const [seal, setSeal] = useState<OrderAction | null>(null);
   // G-09: a session that expires mid-flow re-renders this page signed out and
   // then back in, which threw away the note the user had typed. The note is a
   // string, so keeping it costs one storage entry and no new machinery. The
@@ -271,8 +161,6 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   const revision = order.contract?.revision ?? -1;
   const waiting = pending !== null && revision <= pending.from;
   const timedOut = waiting && now - (pending?.at ?? now) > 90_000;
-  // A disputed order is off the happy-path track, so it claims no position.
-  const at = order.stage === "DISPUTED" ? undefined : trackIndex(order.stage);
   const matches = review.manifest !== null && review.manifest === manifest;
   // A different account than the one this session signed in with must not act:
   // the order key it would sign with belongs to the original account, so the
@@ -348,7 +236,13 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   };
 
   const run = (action: OrderAction) => {
-    if (!connected) return connectPreferred();
+    if (!connected) {
+      if (!connectPreferred())
+        setError(
+          WALLET_MISSING,
+        );
+      return;
+    }
     // `busy` only disables the button after a re-render, so two clicks in the
     // same frame both reach here and start two chain actions at one revision.
     // `useGuard` is synchronous, so the second click is refused.
@@ -428,25 +322,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
           </Badge>
         </p>
       </PageTitle>
-      <div
-        role="progressbar"
-        aria-label="Order progress"
-        aria-valuemin={0}
-        aria-valuemax={at === undefined ? undefined : TRACK.length - 1}
-        aria-valuenow={at}
-        aria-valuetext={STAGE_LABEL[order.stage]}
-        className="h-1.5 overflow-hidden rounded-full bg-muted"
-      >
-        <div
-          className={cn(
-            "h-full",
-            order.stage === "DISPUTED" ? "bg-pink" : "bg-brand",
-          )}
-          style={{
-            width: `${(Math.max(at ?? 0, 0) / (TRACK.length - 1)) * 100}%`,
-          }}
-        />
-      </div>
+      <OrderProgress stage={order.stage} payment={order.payment.state} />
       <div className="grid min-w-0 gap-6">
         <Card>
           <CardTitle className={cn(turn.mine && "text-brand")}>
@@ -463,10 +339,16 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 <Button
                   key={action.label}
                   className={FIT}
-                  variant={action.weight === "primary" ? "default" : "outline"}
+                  variant={
+                    action.weight === "primary"
+                      ? "default"
+                      : action.weight === "danger"
+                        ? "danger"
+                        : "outline"
+                  }
                   disabled={blocked(action)}
                   pending={busy}
-                  onClick={() => run(action)}
+                  onClick={() => setSeal(action)}
                 >
                   <Mark icon={action.icon} />
                   {action.label}
@@ -474,15 +356,30 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               ))}
             </div>
           )}
-          <Note>
-            {turn.body}
-            {order.stage === "APPROVED" || order.stage === "CANCELLED"
-              ? ` Payment: ${PAYMENT_LABEL[order.payment.state]}.`
-              : ""}
-          </Note>
+          <SealSheet
+            open={seal !== null}
+            title={seal?.label ?? ""}
+            body={
+              <>
+                <p>{turn.body}</p>
+                <p>Signs with Lace on Midnight Preprod. This step cannot be undone.</p>
+              </>
+            }
+            confirmLabel={seal?.label ?? "Confirm"}
+            danger={seal?.weight === "danger"}
+            pending={busy}
+            onCancel={() => setSeal(null)}
+            onConfirm={() => {
+              if (!seal) return;
+              const next = seal;
+              setSeal(null);
+              run(next);
+            }}
+          />
+          <Note>{turn.body}</Note>
           {deadline && (
-            <p className={cn(MUTED, "flex items-center gap-2")}>
-              <MorphIcon icon={Clock} reducedMotion="user" />
+            <div className={cn(MUTED, "flex items-center gap-2")}>
+              <Mark icon={ClockIcon} size={14} className="shrink-0" />
               {deadline.label} {shortDate(deadline.at)} ·{" "}
               <span
                 // Z-05: the countdown changes every 30 s, and a screen reader
@@ -500,7 +397,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               >
                 {relativeTo(deadline.at, now)}
               </span>
-            </p>
+            </div>
           )}
           {actions.length > 0 && !ready && (
             <div className="flex flex-wrap items-center gap-3">
@@ -509,7 +406,16 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                   <Link to="/account">Restore your key backup</Link>
                 </Button>
               ) : (
-                <Button onClick={connectPreferred}>Connect a wallet</Button>
+                <Button
+                  onClick={() => {
+                    if (!connectPreferred())
+                      setError(
+                        WALLET_MISSING,
+                      );
+                  }}
+                >
+                  Connect a wallet
+                </Button>
               )}
               <Note>
                 {wrongAccount
@@ -526,7 +432,9 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               </Note>
             </div>
           )}
-          {ready && order.inviteUrl && (
+          {/* Invite is share-only: do not gate on Lace `ready` or the merchant
+              cannot copy the link while waiting for the client. */}
+          {order.inviteUrl && (
             <div className={STACK}>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-3 py-2 font-mono text-xs">
@@ -596,30 +504,30 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
             </div>
           )}
           {needs("note") && (
-            <details className="grid gap-2">
-              <summary className="w-fit cursor-pointer text-sm font-semibold">
-                Add a note
-              </summary>
+            <div className="grid gap-2">
+              <label
+                htmlFor={`dispute-note-${order.quoteId}`}
+                className="text-sm font-semibold"
+              >
+                Reason for the dispute
+              </label>
               {/* R37: the server says whether a dispute would actually be
                   resolvable. Shown BEFORE the note is written and the
                   transaction signed, because that is the only moment the user
                   can still decide not to. The action stays available — the
                   circuit is on the chain and the buyer is entitled to it. */}
               {order.disputes && (
-                <p role="alert" className="mt-2 text-sm text-warning">
+                <p role="alert" className="text-sm text-warning">
                   {order.disputes}
                 </p>
               )}
               <Textarea
-                className="mt-2"
+                id={`dispute-note-${order.quoteId}`}
                 aria-label="Reason"
-                // R38: this said "The other party reads this", which is false.
-                // The note is hashed in the browser (`flows.ts` evidenceOf) and
-                // only the digest is signed, so no screen can show the text —
-                // not the studio's, not the operator's, not even this one after
-                // the draft is cleared. The note's real job is to be the thing
-                // the buyer hashed, which is what makes the digest repeatable.
-                placeholder="Give at least 10 characters. Only its SHA-256 digest is recorded, so keep your own copy — no one can read the text back."
+                // R38: sealed to the operator in the browser; InfoPage and the
+                // operator card both say the operator can read it. The digest
+                // still lands on chain so the sealed text can be checked.
+                placeholder="Give at least 10 characters. The operator can read this reason; the studio and Milo's servers cannot."
                 minLength={10}
                 value={note}
                 onChange={(event) => {
@@ -629,7 +537,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                   writeDraft(order.quoteId, event.target.value);
                 }}
               />
-            </details>
+            </div>
           )}
           {needs("files") && picked.length < 3 && (
             <Note>
@@ -657,6 +565,22 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                   ? "Not on the network yet. Check again in a minute."
                   : "Waiting for the network…"
                 : "The network shows it."}
+              {!waiting && order.stage === "APPROVED" && (
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-positive"
+                  title="Approved"
+                />
+              )}
+            </p>
+          )}
+          {!pending && order.stage === "APPROVED" && (
+            <p className={cn(MUTED, "flex items-center gap-2")}>
+              <span
+                aria-hidden="true"
+                className="size-1.5 shrink-0 rounded-full bg-positive"
+              />
+              Approved
             </p>
           )}
           {error && <Alert>{error}</Alert>}

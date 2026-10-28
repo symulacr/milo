@@ -139,11 +139,13 @@ e2e/**/out/
 /apps/web/public/samples/
 
 # Unreferenced design stills: the seven images the app actually uses live in
-# apps/web/src/assets.ts and InfoPage.tsx; these 21 are not among them.
+# apps/web/src/assets.ts and InfoPage.tsx; these remain ignored. packing /
+# proof-review / shoot are used by field-canvas + StageGallery and stay tracked.
 /apps/web/public/images/sc-*.webp
-/apps/web/public/images/packing.webp
-/apps/web/public/images/proof-review.webp
-/apps/web/public/images/shoot.webp
+
+# Local QA captures and verify dumps — not ship artifacts.
+/evidence/qa-*.png
+/evidence/reel-verified/
 
 # Derived deck output. _build_deck.sh regenerates every slide from the tracked
 # SVGs with rsvg-convert + pdfunite, and the result is nondeterministic (cairo

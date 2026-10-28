@@ -1,20 +1,20 @@
-import type { IconNode } from "lucide";
-import {
-  BadgeCheck,
-  Ban,
-  Check,
-  Flag,
-  Gavel,
-  Lock,
-  TimerOff,
-  Undo2,
-  Upload,
-  X,
-} from "lucide";
 import { useEffect, useRef } from "react";
 import { EXPIRY_GRACE_MS } from "../../../../packages/backend/src/order-windows";
 import type { OrderDetail, Role, Stage } from "../api";
 import type { OrderCircuitName } from "../chain";
+import type { AppIcon } from "../components/icons";
+import {
+  BadgeAlertIcon,
+  BanIcon,
+  CheckIcon,
+  CircleCheckIcon,
+  GavelIcon,
+  LockIcon,
+  TimerIcon,
+  UndoIcon,
+  UploadIcon,
+  XIcon,
+} from "../components/icons";
 
 import { ROLE_NAME, tickClock, useClock } from "../lib/format";
 
@@ -41,13 +41,24 @@ export const TRACK = [
 ] as const satisfies readonly Stage[];
 
 export const PAYMENT_LABEL: Record<OrderDetail["payment"]["state"], string> = {
-  none: "No payment hold",
-  pending: "Hold pending",
-  held: "Hold in place",
+  none: "No payment",
+  pending: "Authorized",
+  held: "Authorized",
   captured: "Captured",
-  released: "Released",
+  released: "Voided",
   failed: "Failed",
   "needs-card": "Card needed",
+};
+
+/** Phase-bar caption: payment as words, not a chip. */
+export const PAYMENT_CAPTION: Record<OrderDetail["payment"]["state"], string> = {
+  none: "No card on this order yet.",
+  pending: "Card authorized. Capture waits for approval.",
+  held: "Card authorized. Capture waits for approval.",
+  captured: "Card captured.",
+  released: "Authorization voided.",
+  failed: "Card payment failed.",
+  "needs-card": "A card is still needed to continue.",
 };
 
 export const trackIndex = (stage: Stage) =>
@@ -59,7 +70,7 @@ export type Deadlines = NonNullable<OrderDetail["deadlines"]>;
 
 export type OrderAction = {
   readonly circuit: OrderCircuitName | "start";
-  readonly icon: IconNode;
+  readonly icon: AppIcon;
   readonly label: string;
   readonly weight: "primary" | "danger";
   readonly needs?: "note" | "files" | "delivery";
@@ -69,7 +80,7 @@ export type OrderAction = {
 
 type Spec = readonly [
   OrderCircuitName | "start",
-  IconNode,
+  AppIcon,
   string,
   danger?: boolean,
   approveOrder?: boolean,
@@ -93,46 +104,46 @@ const ROWS: Record<Stage, Row> = {
     "buyer",
     "start the order",
     null,
-    { buyer: [["start", Lock, "Accept and hold payment"]] },
+    { buyer: [["start", LockIcon, "Authorize and reserve"]] },
   ],
   PAYMENT_HELD: [
     "buyer",
     "publish the contract",
     null,
-    { buyer: [["start", Lock, "Publish the contract"]] },
+    { buyer: [["start", LockIcon, "Finish authorize and reserve"]] },
   ],
   DEPLOYED: [
     "buyer",
     "reserve the terms",
     ACCEPTANCE,
-    { buyer: [["start", Lock, "Reserve the terms"]] },
-    ["expireBootstrap", TimerOff, "Expire the order", true],
+    { buyer: [["start", LockIcon, "Finish authorize and reserve"]] },
+    ["expireBootstrap", TimerIcon, "Expire the order", true],
   ],
   RESERVED: [
     "merchant",
     "accept or decline the order",
     ACCEPTANCE,
     {
-      buyer: [["cancelReserved", Undo2, "Cancel the reservation", true]],
+      buyer: [["cancelReserved", UndoIcon, "Cancel the reservation", true]],
       merchant: [
-        ["accept", Check, "Accept the order"],
-        ["decline", X, "Decline the order", true],
+        ["accept", CheckIcon, "Accept the order"],
+        ["decline", XIcon, "Decline the order", true],
       ],
     },
-    ["expireReserved", TimerOff, "Expire the order", true],
+    ["expireReserved", TimerIcon, "Expire the order", true],
   ],
   ACCEPTED: [
     "merchant",
     "deliver three images",
     DELIVERY,
     {
-      buyer: [["disputeBuyer", Flag, "Open a dispute", true]],
+      buyer: [["disputeBuyer", BadgeAlertIcon, "Open a dispute", true]],
       merchant: [
-        ["submitDelivery", Upload, "Deliver three files"],
-        ["disputeMerchant", Flag, "Open a dispute", true],
+        ["submitDelivery", UploadIcon, "Deliver three files"],
+        ["disputeMerchant", BadgeAlertIcon, "Open a dispute", true],
       ],
     },
-    ["expireUndelivered", TimerOff, "Expire the order", true],
+    ["expireUndelivered", TimerIcon, "Expire the order", true],
   ],
   SUBMITTED: [
     "buyer",
@@ -140,11 +151,11 @@ const ROWS: Record<Stage, Row> = {
     REVIEW,
     {
       buyer: [
-        ["approve", BadgeCheck, "Approve the delivery"],
-        ["disputeBuyer", Flag, "Open a dispute", true],
+        ["approve", CircleCheckIcon, "Approve and capture"],
+        ["disputeBuyer", BadgeAlertIcon, "Open a dispute", true],
       ],
     },
-    ["escalateUnreviewed", Flag, "Escalate to the operator", true],
+    ["escalateUnreviewed", BadgeAlertIcon, "Escalate to the operator", true],
   ],
   DISPUTED: [
     "operator",
@@ -152,11 +163,11 @@ const ROWS: Record<Stage, Row> = {
     RESOLUTION,
     {
       operator: [
-        ["resolve", Gavel, "Approve the delivery", false, true],
-        ["resolve", Ban, "Cancel the order", true, false],
+        ["resolve", GavelIcon, "Approve the delivery", false, true],
+        ["resolve", BanIcon, "Cancel the order", true, false],
       ],
     },
-    ["expireDispute", TimerOff, "Expire the dispute", true],
+    ["expireDispute", TimerIcon, "Expire the dispute", true],
   ],
   APPROVED: [null, "", null, {}],
   CANCELLED: [null, "", null, {}],

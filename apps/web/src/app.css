@@ -21,8 +21,6 @@
   --color-warning-soft: #fffbeb;
   --color-negative-soft: #ffedea;
   --color-yellow: #f7dd47;
-  --color-pink: #e9479f;
-  --color-mint: #1fc27a;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -43,12 +41,16 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-    scroll-behavior: smooth;
     scroll-padding-top: 80px;
   }
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+  }
+  /* White ring only on the brand field — elsewhere the brand ring stays. */
+  .bg-brand :focus-visible,
+  body.bg-brand :focus-visible {
+    outline-color: #fff;
   }
   h1,
   h2,
@@ -121,13 +123,84 @@
     height: 3rem;
     width: fit-content;
     border-radius: 6px;
-    background: var(--color-mint);
+    background: #0a0a0a;
     padding: 0 1.5rem;
     font-weight: 600;
-    color: #000;
+    color: #fff;
+  }
+  /* Yellow is a ≤4px hold mark, never a section fill. */
+  .mark-yellow {
+    box-shadow: inset 0 4px 0 0 var(--color-yellow);
+  }
+  .registration-sheet {
+    position: relative;
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 0.75rem;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #fff;
+    color: #0a0a0a;
+    padding: 1rem;
+    box-shadow:
+      inset 0 0 0 1px #e6e6e6,
+      inset 0 4px 0 0 var(--color-yellow);
+  }
+  .field-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+  .registration-sheet ol {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    min-height: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .registration-sheet li {
+    position: relative;
+    display: grid;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px dashed #d4d4d4;
+    background: #f2f4f7;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .registration-sheet li img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .registration-sheet li span {
+    position: absolute;
+    left: 0.5rem;
+    bottom: 0.5rem;
+    padding: 0.15rem 0.35rem;
+    background: rgb(255 255 255 / 0.88);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .field-canvas {
+      display: none;
+    }
+    .app-icon {
+      pointer-events: none;
+    }
   }
   .arrow {
-    display: inline-block;
+    display: inline-flex;
+    vertical-align: middle;
   }
   :is(a, button):hover > .arrow {
     translate: 4px 0;
@@ -139,7 +212,8 @@
    this uses the utility it does generate: pointer-coarse applies only on touch.
    It must beat the header's h-9 (36 px), hence !important on the one property. */
 @media (pointer: coarse) {
-  .cta {
+  .cta,
+  [data-slot="button"] {
     min-height: 2.75rem !important;
     height: auto;
   }
@@ -158,6 +232,9 @@ main > section:not(:first-of-type) {
 @media (prefers-reduced-motion: no-preference) {
   /* Every transition lives here: a user who asked for reduced motion gets the
      finished state, not a slide. */
+  html {
+    scroll-behavior: smooth;
+  }
   .skip-link {
     transition: top 0.15s;
   }

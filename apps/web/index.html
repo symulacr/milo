@@ -7,9 +7,8 @@
     <meta name="description" content="Milo is a private order between a studio and its client. Your browser checks the three final images, then you approve in your Lace wallet on Midnight Preprod." />
     <title>Milo · Approve the exact files</title>
     <style>@font-face{font-family:"Schibsted Grotesk";src:url("/fonts/schibsted-grotesk.woff2") format("woff2");font-weight:400 900;font-display:swap;ascent-override:97.66%;descent-override:25.78%;line-gap-override:0%}</style>
-    <noscript><style>[data-check],[data-check-status]{display:none}</style></noscript>
     <link rel="stylesheet" href="./src/app.css" />
-    <script type="module" src="./src/landing.ts"></script>
+    <script type="module" src="./src/landing-main.tsx"></script>
     <meta property="og:title" content="Milo · Approve the exact files" />
     <meta property="og:description" content="A private order for three final images. Your browser checks each file. You approve in your Lace wallet on Midnight Preprod." />
     <meta property="og:type" content="website" />
@@ -25,132 +24,8 @@
     <link rel="alternate icon" type="image/png" sizes="32x32" href="./public/favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./public/apple-touch-icon.png" />
   </head>
-  <body class="bg-brand text-white">
-    <a class="skip-link" href="#main">Skip to content</a>
-    <header class="sticky top-0 z-40 flex flex-wrap items-center gap-x-6 gap-y-3 bg-brand px-4 py-4 sm:px-8">
-      <a href="/" class="wordmark" aria-label="Milo home">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a>
-      <nav aria-label="Main navigation" class="ml-auto flex flex-wrap items-center gap-5 text-sm font-semibold">
-        <a class="hidden hover:text-yellow sm:inline" href="/#how">How it works</a>
-        <a class="cta h-9 px-4 text-sm" href="/orders">Sign in</a>
-      </nav>
-    </header>
-    <main id="main">
-      <section aria-labelledby="hero-title" class="px-4 pt-8 pb-16 sm:px-8 lg:pt-12 lg:pb-20">
-        <div class="grid gap-8 lg:grid-cols-12 lg:gap-12">
-          <div class="grid content-start gap-6 lg:col-span-7 lg:row-start-1">
-            <h1 id="hero-title" class="display-xl rise" style="--i:0">Approve the exact files.</h1>
-            <p class="lead rise max-w-[38ch]" style="--i:1">A private order between a studio and its client. Your browser checks the images before you approve.</p>
-            <a class="cta rise" href="/orders/new" style="--i:2">Start an order <span class="arrow" aria-hidden="true">→</span></a>
-          </div>
-          <ul class="rise grid grid-cols-3 gap-2 self-start sm:gap-3 lg:col-span-5 lg:col-start-8 lg:row-start-1" aria-label="The three final images">
-            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/hero.webp" alt="A sculptural ceramic vessel on a warm studio plinth" width="600" height="720" fetchpriority="high" decoding="async" /></li>
-            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/detail.webp" alt="A close study of the olive glaze on the vessel" width="600" height="720" decoding="async" /></li>
-            <li><img class="aspect-[3/4] w-full object-cover" src="./public/images/collection.webp" alt="Three finished vessels of the collection on a plaster shelf" width="600" height="720" decoding="async" /></li>
-          </ul>
-        </div>
-        <div class="mt-24 grid gap-6 lg:grid-cols-12 lg:gap-12">
-          <h2 class="heading lg:col-span-3">Time limits</h2>
-          <dl class="rise grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:col-span-8 lg:col-start-5 lg:grid-cols-4" style="--i:3">
-            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">images per order</dt><dd class="display">3</dd></div>
-            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to accept</dt><dd class="display">1 h</dd></div>
-            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to deliver</dt><dd class="display">24 h</dd></div>
-            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">to review</dt><dd class="display">48 h</dd></div>
-            <div class="grid gap-1"><dt class="order-2 max-w-[18ch] text-[17px] text-white/80">terms on the public ledger</dt><dd class="display">0</dd></div>
-          </dl>
-        </div>
-      </section>
-
-      <section id="how" class="bg-yellow px-4 py-20 text-black sm:px-8 lg:py-28" aria-labelledby="how-title">
-        <div class="grid gap-6 lg:grid-cols-12">
-          <h2 id="how-title" class="display lg:col-span-7">One order, four steps</h2>
-        </div>
-        <ol class="mt-14 grid gap-10">
-          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:0">
-            <h3 class="heading sm:col-span-3">Agree</h3>
-            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">One fixed price, one deadline. You authorize the card within 1 hour.</p>
-            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">1 hour</p>
-          </li>
-          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:1">
-            <h3 class="heading sm:col-span-3">Deliver</h3>
-            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">Three images, locked with each SHA-256 digest.</p>
-            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">24 hours</p>
-          </li>
-          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:2">
-            <h3 class="heading sm:col-span-3">Check</h3>
-            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">Your browser hashes each file. Approve or dispute.</p>
-            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">48 hours</p>
-          </li>
-          <li class="rise grid items-baseline gap-x-8 gap-y-2 sm:grid-cols-12" style="--i:3">
-            <h3 class="heading sm:col-span-3">Settle</h3>
-            <p class="max-w-[52ch] text-[17px] leading-relaxed sm:col-span-6">You sign in Lace. Milo captures the card separately.</p>
-            <p class="text-[17px] font-semibold sm:col-span-3 sm:text-right">on approval</p>
-          </li>
-        </ol>
-      </section>
-
-      <section class="grid bg-white text-black lg:grid-cols-2" aria-labelledby="check-title">
-        <div class="flex flex-col justify-center gap-8 px-4 py-16 sm:px-8 lg:py-24">
-          <h2 id="check-title" class="display max-w-[12ch]">Check the files yourself</h2>
-          <p class="lead max-w-[34ch]">The same check runs before every approval: your browser hashes each file and compares the three digests with the locked list.</p>
-          <div class="grid gap-4">
-            <button type="button" class="cta cursor-pointer disabled:cursor-progress disabled:opacity-60" data-check>
-              <span class="size-5"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
-              <span>Check the files</span>
-            </button>
-            <noscript>
-              <p class="max-w-[40ch] text-[15px]">The in-browser check needs JavaScript, which is off in this browser. <a class="underline underline-offset-4 hover:text-yellow" href="/orders/new">Start an order</a> and the check runs in the approval step.</p>
-            </noscript>
-            <p class="max-w-[40ch] text-[15px] empty:hidden" role="status" data-check-status>Hashes three example files in your browser.</p>
-          </div>
-        </div>
-        <div class="flex items-center px-4 pb-16 sm:px-8 lg:py-24">
-          <article class="w-full max-w-[520px] rounded-md bg-muted p-6" data-ui>
-            <h3 class="text-[17px] font-bold">An example delivery</h3>
-            <ul class="mt-5 grid gap-4" aria-label="Files and SHA-256 digests">
-              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
-                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/hero.webp" alt="" width="44" height="55" loading="lazy" />
-                <span class="grid"><span class="font-semibold">The hero</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
-                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
-              </li>
-              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
-                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/detail.webp" alt="" width="44" height="55" loading="lazy" />
-                <span class="grid"><span class="font-semibold">The details</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
-                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
-              </li>
-              <li class="grid grid-cols-[44px_1fr_auto] items-center gap-x-3" data-row>
-                <img class="aspect-[4/5] w-11 rounded object-cover" src="./public/images/collection.webp" alt="" width="44" height="55" loading="lazy" />
-                <span class="grid"><span class="font-semibold">The collection</span><code class="font-mono text-sm break-all text-muted-foreground" data-digest>not checked</code></span>
-                <span class="state grid size-5 place-items-center [li[data-state=match]_&]:text-positive [li[data-state=mismatch]_&]:text-destructive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg></span>
-              </li>
-            </ul>
-            <p class="mt-5 grid gap-1 text-sm text-muted-foreground"><span>One commitment</span><code class="font-mono text-sm break-all text-foreground" data-manifest>not checked</code></p>
-          </article>
-        </div>
-      </section>
-
-      <section id="faq" class="px-4 py-20 sm:px-8 lg:py-28" aria-labelledby="faq-title">
-        <h2 id="faq-title" class="display">Plain answers</h2>
-        <dl class="mt-14 grid gap-y-12 lg:gap-y-16">
-          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">What does “private” mean?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">The ledger hides the price, brief and files. Not anonymous, and a proof does not judge the work.</dd></div>
-          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Is approval payment?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">No. Capture is separate and can fail.</dd></div>
-          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Wrong delivery?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">Do not approve. Open a dispute: the operator has 48 hours and cannot change the terms.</dd></div>
-          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">Lost your key?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">It lives in this browser; Milo cannot replace it. Keep the encrypted backup safe.</dd></div>
-          <div class="grid gap-3 lg:grid-cols-12 lg:gap-8"><dt class="heading lg:col-span-6">What do I need?</dt><dd class="max-w-[44ch] text-[17px] leading-relaxed text-white/85 lg:col-span-5 lg:col-start-8">Chromium and the <a class="underline underline-offset-4 hover:text-yellow" href="https://www.lace.io" rel="noopener">Lace wallet</a> on Preprod, with tDUST for fees. <a class="underline underline-offset-4 hover:text-yellow" href="https://docs.midnight.network/guides/networks-and-environments" rel="noopener">Get tNIGHT</a>, then “Generate tDUST”.</dd></div>
-        </dl>
-      </section>
-
-      <section aria-labelledby="close-title" class="grid lg:grid-cols-2">
-        <img class="aspect-[4/3] w-full object-cover lg:aspect-auto lg:h-full" src="./public/images/studio-shelf.webp" alt="A shelf of finished handmade vessels in a ceramics studio" width="1200" height="900" loading="lazy" />
-        <div class="grid content-end gap-6 bg-yellow px-4 py-16 text-black sm:px-8 lg:py-20">
-          <h2 id="close-title" class="display"><a class="inline-flex flex-wrap items-baseline gap-x-4 underline decoration-4 underline-offset-[6px] hover:text-brand" href="/orders/new">Start an order <span class="arrow" aria-hidden="true">→</span></a></h2>
-          <p class="lead max-w-[34ch]">Email link or Lace.</p>
-        </div>
-      </section>
-    </main>
-    <footer class="grid gap-10 overflow-hidden bg-pink px-4 pt-16 pb-10 text-black sm:px-8">
-      <nav aria-label="Footer" class="flex flex-wrap gap-5 text-sm font-semibold"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
-      <a href="/" class="wordmark text-[clamp(5rem,22vw,20rem)] leading-[0.8]">milo<svg class="wordmark-star" viewBox="0 0 32 32" aria-hidden="true"><g fill="currentColor"><rect x="14.2" y="6" width="3.6" height="20" rx="1.8"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(60 16 16)"/><rect x="14.2" y="6" width="3.6" height="20" rx="1.8" transform="rotate(120 16 16)"/></g></svg></a>
-      <p class="text-sm" data-notice>Midnight Preprod. Cards run in Stripe test mode.</p>
-    </footer>
+  <body>
+    <div id="root"></div>
+    <noscript>Milo needs JavaScript. <a href="/orders">Sign in</a>.</noscript>
   </body>
 </html>
