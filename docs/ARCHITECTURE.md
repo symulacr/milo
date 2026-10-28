@@ -27,6 +27,12 @@ Status: test mode (Stripe) and Midnight Preprod only. No real money has moved.
 
 Four windows, each counted from the previous step: 1 hour to accept, 24 hours to deliver, 48 hours to review, 48 hours to resolve a dispute. Together they are 121 hours, inside the 7-day card authorization window. The values live in `packages/backend/src/order-windows.ts`.
 
+## Operator
+
+An operator resolves disputes across studios. Rights come from the `MILO_OPERATOR_EMAILS` allowlist and nothing else: removing an email removes the access on the next read, and there is no stored operator row to drift from it. `operatorConfig()` in `packages/backend/src/session-identity.ts` is the single source for whether one exists; `diagnostics.read`, the daily digest and `orders.order` all read it.
+
+**If `MILO_OPERATOR_EMAILS` is unset, no dispute can be resolved and no operator key can be issued.** The deployment says so rather than failing quietly: the digest logs `operator-unconfigured` and `digest-skipped` with the consequence, `diagnostics.read` returns it as `operator.disputes`, and `orders.order` carries the same sentence so the order page warns before a buyer commits a dispute. Opening a dispute still works — the circuit is on the chain — but nothing will resolve it.
+
 ## Out of scope
 
 Live Stripe mode, Stripe Connect and merchant payout, and a separate production Convex deployment are not built: the live site runs on the dev deployment in test mode. Milo is not an escrow service.

@@ -26,7 +26,7 @@ import {
   publicConstructorFingerprints,
 } from "../packages/backend/src/public-constructor.ts";
 import {
-  operatorEmails,
+  operatorConfig,
   requireSessionSubject,
 } from "../packages/backend/src/session-identity";
 import {
@@ -691,7 +691,9 @@ export const operatorAccess = internalQueryGeneric({
     if (!draft)
       return { allowed: false, orderNonce: null, operatorSecret: null };
     const secret = draft.operatorSecret ?? null;
-    if (operatorEmails().length === 0)
+    // R37: `operatorConfig()` is the one source, so this cannot disagree with
+    // `diagnostics.read` or the digest about whether an operator exists.
+    if (!operatorConfig().configured)
       return {
         allowed: false,
         orderNonce: draft.orderNonce,

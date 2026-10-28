@@ -551,6 +551,26 @@ export async function runPoll(deps: PollDeps): Promise<PollSummary> {
   return summary;
 }
 
+/**
+ * R37: one line, only when the tick did something or went wrong.
+ *
+ * The cron was invisible: `runPoll` logs nothing on success, so "running with an
+ * empty queue" and "broken" looked identical in `convex logs`. Logging every
+ * tick would be 1,440 lines/day of "nothing happened", which is how a real
+ * failure gets scrolled past — so this fires only when `projected` or `failed`
+ * is non-zero. Silence then means "empty or unchanged", which is honest.
+ */
+export function pollLogLine(summary: PollSummary): string | null {
+  if (summary.projected === 0 && summary.failed === 0) return null;
+  return JSON.stringify({
+    polled: summary.polled,
+    projected: summary.projected,
+    skipped: summary.skipped,
+    failed: summary.failed,
+    deferred: summary.deferred,
+  });
+}
+
 export const poll = internalActionGeneric({
   args: {},
   returns: v.object({
@@ -560,8 +580,8 @@ export const poll = internalActionGeneric({
     failed: v.number(),
     deferred: v.number(),
   }),
-  handler: async (ctx) =>
-    runPoll({
+  handler: async (ctx) => {
+    const summary = await runPoll({
       runQuery: () => ctx.runQuery(pendingOrdersRef, {}),
       runMutation: (ref, args) =>
         ctx.runMutation(ref as never, args as never) as Promise<unknown>,
@@ -569,7 +589,11 @@ export const poll = internalActionGeneric({
       config: indexerConfig,
       fetchImpl: fetch,
       now: Date.now,
-    }),
+    });
+    const line = pollLogLine(summary);
+    if (line) console.log("chain-poll", line);
+    return summary;
+  },
 });
 
 export const chainObserver = { pendingOrders, markObserved, poll };

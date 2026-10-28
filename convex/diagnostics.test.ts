@@ -535,7 +535,10 @@ describe("R35 (b): operatorConfig is the single source for operator presence", (
         db: { query: () => ({ withIndex: () => ({ take: async () => [] }) }) },
       } as never;
       const out = await handler(ctx, {});
-      expect(out.operator).toEqual({ configured: true, count: 1 });
+      // R37: `operator` also carries the consequence sentence now, so this
+      // asserts the two facts it always asserted rather than pinning the whole
+      // object shape — the address check below is the one that matters.
+      expect(out.operator).toMatchObject({ configured: true, count: 1 });
       // The address itself is never part of the payload.
       expect(JSON.stringify(out)).not.toContain("secret-operator@example.com");
     });
@@ -552,11 +555,33 @@ describe("R35 (b): operatorConfig is the single source for operator presence", (
     );
     const auth = await readFile(new URL("./auth.ts", import.meta.url), "utf8");
     expect(diagnostics).toContain("operatorConfig().configured");
-    expect(diagnostics).toContain("operator: operatorConfig()");
+    // R37: the read spreads `operatorConfig()` and adds the consequence, so the
+    // assertion follows the new form rather than the old one-line call.
+    expect(diagnostics).toContain("...operatorConfig()");
+    expect(diagnostics).toContain("disputes: disputesBlockedNotice()");
     expect(auth).toContain("operatorConfig().configured");
     // And the old re-derivations are gone.
     expect(auth).not.toContain("operatorEmails().length === 0");
     expect(diagnostics).not.toContain("recipients.length === 0");
+  });
+
+  test("R37: the two remaining re-derivations now delegate to operatorConfig", async () => {
+    // r35 fixed `auth.isOperator` and the digest but missed these two, so
+    // `orders.order` could still disagree with `diagnostics.read` about whether
+    // an operator exists. This pins the fix; deleting either delegation fails it.
+    const { readFile } = await import("node:fs/promises");
+    const orders = await readFile(
+      new URL("./orders.ts", import.meta.url),
+      "utf8",
+    );
+    const trusted = await readFile(
+      new URL("./trustedProvisioning.ts", import.meta.url),
+      "utf8",
+    );
+    expect(orders).not.toContain("operatorEmails().length === 0");
+    expect(trusted).not.toContain("operatorEmails().length === 0");
+    expect(orders).toContain("operatorIsOperator");
+    expect(trusted).toContain("operatorConfig().configured");
   });
 
   test("an unconfigured deployment warns once, not once per call", async () => {
@@ -700,5 +725,100 @@ describe("R35 (c): diagnostics derives the release flags from stored evidence", 
     );
     expect(source).toContain("release: releaseFlags(evidence)");
     expect(source).toContain('from "../packages/backend/src/release-flags"');
+  });
+});
+
+/**
+ * R37: with `MILO_OPERATOR_EMAILS` unset on the live deployment, no dispute can
+ * be resolved — and nothing said so. `configured: false` is a fact, but a fact
+ * an operator has to already understand. These tests pin that the deployment
+ * states the CONSEQUENCE in words, in the one sentence both surfaces share.
+ */
+describe("R37: an unconfigured operator is stated, not implied", () => {
+  const withOperatorEnv = async (
+    value: string | undefined,
+    run: () => Promise<void>,
+  ) => {
+    const previous = process.env.MILO_OPERATOR_EMAILS;
+    if (value === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+    else process.env.MILO_OPERATOR_EMAILS = value;
+    try {
+      await run();
+    } finally {
+      if (previous === undefined) delete process.env.MILO_OPERATOR_EMAILS;
+      else process.env.MILO_OPERATOR_EMAILS = previous;
+    }
+  };
+
+  const readOperator = async () => {
+    const handler = (
+      read as unknown as {
+        _handler: (
+          ctx: never,
+          args: Record<string, never>,
+        ) => Promise<{ operator: { configured: boolean; disputes: unknown } }>;
+      }
+    )._handler;
+    const ctx = {
+      auth: {
+        getUserIdentity: async () => ({
+          issuer: process.env.CONVEX_SITE_URL ?? "privy.io",
+          subject: "did:privy:buyer",
+        }),
+      },
+      db: { query: () => ({ withIndex: () => ({ take: async () => [] }) }) },
+    } as never;
+    return (await handler(ctx, {})).operator;
+  };
+
+  test("unset: the read names the consequence in words", async () => {
+    await withOperatorEnv(undefined, async () => {
+      const operator = await readOperator();
+      expect(operator.configured).toBe(false);
+      // The sentence a human reads, not a config key.
+      expect(String(operator.disputes)).toContain(
+        "Disputes cannot be resolved",
+      );
+      expect(String(operator.disputes)).toContain("no operator is configured");
+    });
+  });
+
+  test("configured: there is nothing to warn about, so the field is null", async () => {
+    await withOperatorEnv("ops@studio.example", async () => {
+      const operator = await readOperator();
+      expect(operator.configured).toBe(true);
+      expect(operator.disputes).toBeNull();
+    });
+  });
+
+  test("the notice is one shared sentence, not two hand-written ones", async () => {
+    // The diagnostic and the order payload must not word this differently: a
+    // softer sentence on the order page is how a user commits a transaction
+    // believing a dispute will be handled.
+    const { readFile } = await import("node:fs/promises");
+    const diagnostics = await readFile(
+      new URL("./diagnostics.ts", import.meta.url),
+      "utf8",
+    );
+    const orders = await readFile(
+      new URL("./orders.ts", import.meta.url),
+      "utf8",
+    );
+    expect(diagnostics).toContain("disputesBlockedNotice()");
+    expect(orders).toContain("disputesBlockedNotice()");
+    // Neither inlines its own copy of the wording.
+    expect(diagnostics).not.toContain("Disputes cannot be resolved");
+    expect(orders).not.toContain("Disputes cannot be resolved");
+  });
+
+  test("the digest's daily skip line carries the consequence too", async () => {
+    // This is the one place a deployment with no operator says so every day in
+    // `convex logs`; `effect` is what makes the line actionable.
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./diagnostics.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("effect: disputesBlockedNotice()");
   });
 });

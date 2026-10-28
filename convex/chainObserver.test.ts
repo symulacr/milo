@@ -19,7 +19,9 @@ import {
   type DecodedState,
   indexerEndpoint,
   isRetryableStatus,
+  type PollSummary,
   planObservation,
+  pollLogLine,
   redactIndexerUrl,
   requireDecoder,
   runPoll,
@@ -678,5 +680,70 @@ describe("R28 O-01: the plan carries the ledger's evidence commitment", () => {
     if (plan.kind !== "project") throw new Error("expected a projection");
     // Absent, so the record omits the key and the read path reports null.
     expect(plan.evidenceCommitment).toBeUndefined();
+  });
+});
+
+/**
+ * R37: the cron was invisible in `convex logs`.
+ *
+ * `runPoll` logs nothing on success, so "the poll is running and the queue is
+ * empty" and "the poll is broken" produced the same silence — which is exactly
+ * the question round 36 could not answer. The fix is one line, but logging
+ * every tick would be 1,440 lines/day of "nothing happened", and a real failure
+ * would scroll past. So the line is conditional, and these tests pin the
+ * condition rather than the formatting.
+ */
+describe("R37: the poll logs only when it did something or went wrong", () => {
+  const summary = (over: Partial<PollSummary> = {}): PollSummary => ({
+    polled: 0,
+    projected: 0,
+    skipped: 0,
+    failed: 0,
+    deferred: 0,
+    ...over,
+  });
+
+  test("an empty queue logs nothing", async () => {
+    // The common case, 1,440 times a day. Silence here is correct and now also
+    // unambiguous, because every other outcome is logged.
+    expect(pollLogLine(summary())).toBeNull();
+  });
+
+  test("a tick that observed nothing new logs nothing", async () => {
+    // Skipped-but-not-failed is the normal steady state: the chain has not
+    // moved. Logging it would drown the line that matters.
+    expect(pollLogLine(summary({ polled: 5, skipped: 5 }))).toBeNull();
+  });
+
+  test("a projection is logged, with the counts", async () => {
+    const line = pollLogLine(summary({ polled: 5, projected: 2, skipped: 3 }));
+    expect(line).not.toBeNull();
+    expect(JSON.parse(line as string)).toEqual({
+      polled: 5,
+      projected: 2,
+      skipped: 3,
+      failed: 0,
+      deferred: 0,
+    });
+  });
+
+  test("a failure is logged even when nothing projected", async () => {
+    // The case that must never be silent: the tick ran and something broke.
+    const line = pollLogLine(summary({ polled: 3, failed: 1, deferred: 2 }));
+    expect(line).not.toBeNull();
+    expect(JSON.parse(line as string)).toMatchObject({
+      failed: 1,
+      deferred: 2,
+    });
+  });
+
+  test("the action calls pollLogLine and logs under a searchable tag", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(
+      new URL("./chainObserver.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("const line = pollLogLine(summary)");
+    expect(source).toContain('console.log("chain-poll", line)');
   });
 });

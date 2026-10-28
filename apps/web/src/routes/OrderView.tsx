@@ -550,6 +550,16 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               <summary className="w-fit cursor-pointer text-sm font-semibold">
                 Add a note
               </summary>
+              {/* R37: the server says whether a dispute would actually be
+                  resolvable. Shown BEFORE the note is written and the
+                  transaction signed, because that is the only moment the user
+                  can still decide not to. The action stays available — the
+                  circuit is on the chain and the buyer is entitled to it. */}
+              {order.disputes && (
+                <p role="alert" className="mt-2 text-sm text-warning">
+                  {order.disputes}
+                </p>
+              )}
               <Textarea
                 className="mt-2"
                 aria-label="Reason"

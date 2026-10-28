@@ -13,7 +13,7 @@ import { timingSafeEqualHex } from "../packages/backend/src/encoding";
 import { inviteUrl } from "../packages/backend/src/invite-link";
 import { deadlineStrings } from "../packages/backend/src/order-windows";
 import {
-  operatorEmails,
+  disputesBlockedNotice,
   requireSessionSubject,
 } from "../packages/backend/src/session-identity";
 import { fail, type ReadContext } from "./admissionContext";
@@ -23,7 +23,7 @@ import {
   quoteTermsValidator,
   stageValidator,
 } from "./admissionValidators";
-import { authComponent, operatorAllowed } from "./auth";
+import { authComponent, isOperator as operatorIsOperator } from "./auth";
 import { isQuoteBuyer } from "./auth/identity";
 import {
   applyChainObservation,
@@ -335,14 +335,11 @@ export const paymentStateOf = (
 };
 
 /**
- * An operator resolves disputes across studios. The allowlist is the only
- * source, so removing an email removes the access on the next read.
+ * R37: delegates to `auth.ts`. It used to be a second copy that tested the
+ * allowlist length itself, so `orders.order` could disagree with
+ * `diagnostics.read` about whether an operator exists.
  */
-async function isOperator(ctx: ReadContext): Promise<boolean> {
-  if (operatorEmails().length === 0) return false;
-  const user = await authComponent.safeGetAuthUser(ctx);
-  return operatorAllowed(user?.email);
-}
+const isOperator = (ctx: ReadContext) => operatorIsOperator(ctx);
 
 const orderDetailValidator = v.object({
   quoteId: v.string(),
@@ -371,6 +368,12 @@ const orderDetailValidator = v.object({
    */
   serverNow: v.number(),
   deadlines: v.union(deadlineStringsValidator, v.null()),
+  /**
+   * R37: what a dispute would actually do here, or `null` when it would work.
+   * The page renders the button either way — the circuit is on the chain — but
+   * it can now warn before the buyer commits a note and a transaction.
+   */
+  disputes: v.union(v.string(), v.null()),
   chain: v.object({
     network: v.string(),
     orderNonce: v.string(),
@@ -522,6 +525,7 @@ export const order = queryGeneric({
       // and applies it to its own ticker.
       serverNow: Date.now(),
       deadlines: frozen ? deadlineStrings(frozen) : null,
+      disputes: disputesBlockedNotice(),
       chain: {
         network: NETWORK_HEX,
         orderNonce: draft.orderNonce,

@@ -12,6 +12,7 @@ import {
   releaseFlags,
 } from "../packages/backend/src/release-flags";
 import {
+  disputesBlockedNotice,
   operatorConfig,
   operatorEmails,
   requireSessionSubject,
@@ -110,6 +111,8 @@ export const read = internalQueryGeneric({
     operator: v.object({
       configured: v.boolean(),
       count: v.number(),
+      /** R37: the consequence in one sentence, or `null` when configured. */
+      disputes: v.union(v.string(), v.null()),
     }),
     /**
      * R35 (c): the release flags, derived from what is actually stored rather
@@ -213,7 +216,10 @@ export const read = internalQueryGeneric({
         processed: row.processedAt !== undefined,
       })),
       mail: mailConfig(),
-      operator: operatorConfig(),
+      operator: {
+        ...operatorConfig(),
+        disputes: disputesBlockedNotice(),
+      },
       release: releaseFlags(evidence),
     };
   },
@@ -353,6 +359,10 @@ export const digest = internalActionGeneric({
         JSON.stringify({
           reason: "no-operator",
           unprocessed: counts.unprocessed,
+          // R37: the consequence, so the daily log line states the actual
+          // problem rather than a config detail. This is the one place a
+          // deployment with no operator says so every day.
+          effect: disputesBlockedNotice(),
         }),
       );
       return {

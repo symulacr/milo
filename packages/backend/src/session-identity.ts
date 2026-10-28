@@ -119,3 +119,17 @@ export function warnIfNoOperator(): void {
     "MILO_OPERATOR_EMAILS is empty: no dispute can be resolved and no operator key can be issued.",
   );
 }
+
+/**
+ * R37: the same fact as one sentence a user can act on, or `null` when there is
+ * nothing wrong. Two surfaces say this — the diagnostics read and the order
+ * payload — and a warning worded two ways is how one ends up softer than the
+ * truth. It names the consequence, not the variable: the reader is not the
+ * person who can set it.
+ */
+export const NO_OPERATOR_NOTICE =
+  "Disputes cannot be resolved: no operator is configured for this deployment.";
+
+export function disputesBlockedNotice(): string | null {
+  return operatorConfig().configured ? null : NO_OPERATOR_NOTICE;
+}
