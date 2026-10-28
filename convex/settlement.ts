@@ -146,8 +146,18 @@ export const reconcile = internalMutationGeneric({
     provider: v.literal("stripe"),
     accountId: v.string(),
     eventId: v.string(),
+    /**
+     * R39 D5: the amount and currency the event asserts, when the event carries
+     * them. Optional so an event type without money fields (a dispute) still
+     * reconciles; when present, a disagreement with the bound payment is a
+     * refusal, not a silent accept.
+     */
+    amountMinor: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    /** R39 D5: the session id, so a `cs_pending:` row can be resolved. */
+    checkoutSessionId: v.optional(v.string()),
   },
-  returns: v.null(),
+  returns: v.union(v.null(), v.object({ refused: v.string() })),
   handler: async (ctx: AdmissionContext, args) => {
     const row = await inboxExists(
       ctx.db,
@@ -166,12 +176,69 @@ export const reconcile = internalMutationGeneric({
         q.eq("stripePaymentIntentId", piRef),
       )
       .take(8);
+    // R39 D1/D5: a live Checkout hold binds a row keyed by the session id,
+    // because the intent does not exist until the buyer pays. This is where the
+    // two are joined: the first event carrying the real intent id adopts the
+    // pending row, so the rest of the chain (settlementOps, capture, void) has a
+    // payment to work with.
+    if (payments.length === 0 && args.checkoutSessionId) {
+      const pending = await ctx.db
+        .query("paymentIntents")
+        .withIndex("by_provider_intent", (q) =>
+          q.eq("stripePaymentIntentId", `cs_pending:${args.checkoutSessionId}`),
+        )
+        .take(1);
+      const rowToAdopt = pending[0];
+      if (rowToAdopt) {
+        // D5: the money must agree before the row is adopted. A session whose
+        // amount drifted from the frozen quote is refused here rather than
+        // captured later against the wrong total.
+        if (
+          args.amountMinor !== undefined &&
+          args.amountMinor !== rowToAdopt.amountMinor
+        )
+          return { refused: "Authorized amount does not match the order." };
+        if (
+          args.currency !== undefined &&
+          args.currency.toLowerCase() !== rowToAdopt.currency.toLowerCase()
+        )
+          return { refused: "Authorized currency does not match the order." };
+        await ctx.db.patch(rowToAdopt._id, {
+          stripePaymentIntentId: piRef,
+        });
+        payments.push({ ...rowToAdopt, stripePaymentIntentId: piRef });
+      }
+    }
     for (const payment of payments) {
       for (const op of await opsForIntent(ctx.db, payment._id)) {
         if (op.state !== "reconciliation") continue;
         await ctx.db.patch(op._id, { state: "pending", nextAt: now });
         await scheduleSettle(ctx, op);
       }
+      // R39 D4: a hold that landed on an order which is no longer payable must
+      // be released. This lives here rather than as a third mutation on the
+      // webhook path because `reconcile` already has the payment and the chain
+      // row open, and the webhook's contract is one record plus one reconcile
+      // per delivery.
+      //
+      // `openSettlement` is idempotent on (orderId, action, contractRevision),
+      // so a retried delivery finds the existing void instead of opening a
+      // second one.
+      const chain = await ctx.db
+        .query("chainOrders")
+        .withIndex("by_quote", (q) => q.eq("quoteId", payment.quoteId))
+        .unique();
+      if (chain?.phase === "CANCELLED")
+        await openSettlement(ctx, {
+          orderId: chain.orderId,
+          contractRevision: chain.revision,
+          phase: chain.phase,
+          paymentIntentId: payment._id,
+          quoteId: payment.quoteId,
+          quoteVersion: payment.quoteVersion,
+          amountMinor: payment.amountMinor,
+          currency: payment.currency,
+        });
     }
     return null;
   },

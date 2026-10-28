@@ -34,7 +34,12 @@ import {
   type Provenance,
   validateProvenance,
 } from "../packages/backend/src/trusted-provisioning-policy";
-import { type AdmissionContext, fail, readEnv } from "./admissionContext";
+import {
+  type AdmissionContext,
+  fail,
+  readEnv,
+  requiredEnv,
+} from "./admissionContext";
 import {
   deadlineStringsValidator,
   frozenQuoteFields,
@@ -964,6 +969,75 @@ export const bindCheckoutSession = internalMutationGeneric({
       updatedAt: Date.now(),
     });
     return null;
+  },
+});
+
+/**
+ * R39 D1/D2: create the payment row for a live Checkout hold.
+ *
+ * Two jobs, both load-bearing:
+ *
+ * 1. **The row must exist before the webhook arrives.** `settlement:reconcile`
+ *    looks a payment up by `paymentIntents.by_provider_intent`; with no row the
+ *    authorization is recorded in the inbox and silently dropped.
+ * 2. **The amount must equal the frozen quote's.** The action passes the amount
+ *    it built the session from; this reads the frozen row and refuses a
+ *    disagreement rather than binding a payment that `bindingDrift` will later
+ *    reject at settlement — which would leave real money held on a stuck order.
+ *
+ * The intent id is unknown until the buyer pays, so the row is keyed by the
+ * session id and `stripePaymentIntentId` is filled in by the webhook.
+ */
+export const bindCheckoutPayment = internalMutationGeneric({
+  args: {
+    quoteId: v.string(),
+    quoteVersion: v.number(),
+    buyerAccountId: v.string(),
+    amountMinor: v.number(),
+    currency: v.string(),
+    stripeCustomerId: v.string(),
+    checkoutSessionId: v.string(),
+  },
+  returns: v.union(
+    v.object({ ok: v.literal(true), paymentIntentId: v.id("paymentIntents") }),
+    v.object({ ok: v.literal(false), reason: v.string() }),
+  ),
+  handler: async (ctx: AdmissionContext, args) => {
+    const reject = rejectWith;
+    const frozen = await ctx.db
+      .query("frozenQuotes")
+      .withIndex("by_quote", (q) => q.eq("id", args.quoteId))
+      .unique();
+    if (!frozen) return reject("The order is not frozen.");
+    if (frozen.buyerAccountId !== args.buyerAccountId)
+      return reject("Only the client can hold the payment.");
+    // D2: the money must match what was frozen. A session built from a stale
+    // snapshot would otherwise authorize a different amount.
+    if (
+      frozen.amountMinor !== args.amountMinor ||
+      frozen.currency !== args.currency
+    )
+      return reject("The amount changed. Reload the order.");
+    const existing = await ctx.db
+      .query("paymentIntents")
+      .withIndex("by_quote", (q) => q.eq("quoteId", args.quoteId))
+      .unique();
+    if (existing) return { ok: true as const, paymentIntentId: existing._id };
+    const paymentIntentId = await ctx.db.insert("paymentIntents", {
+      quoteId: args.quoteId,
+      quoteVersion: args.quoteVersion,
+      buyerAccountId: args.buyerAccountId,
+      amountMinor: args.amountMinor,
+      currency: args.currency,
+      network: "preprod",
+      environment: "live",
+      stripeAccountId: requiredEnv("STRIPE_ACCOUNT_ID"),
+      stripeCustomerId: args.stripeCustomerId,
+      // Filled by the webhook once the buyer pays; the session id is the only
+      // identifier that exists at this point.
+      stripePaymentIntentId: `cs_pending:${args.checkoutSessionId}`,
+    });
+    return { ok: true as const, paymentIntentId };
   },
 });
 

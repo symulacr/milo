@@ -528,19 +528,44 @@ async function holdViaCheckout(
         success_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?held=1`,
         cancel_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?cancelled=1`,
         metadata: { quoteId, quoteVersion: String(finalized.version) },
+        // R39 D3: Stripe defaults a Checkout Session to 24 h, but the acceptance
+        // window is 1 h. Without this a buyer could pay for a quote that had
+        // already expired, and with manual capture that money is held against a
+        // dead order. Stripe requires >= 30 min and <= 24 h, so the floor keeps
+        // a nearly-expired quote from producing an invalid request.
+        expires_at: Math.max(
+          Math.floor(Date.now() / 1000) + 30 * 60,
+          Number(finalized.deadlines?.acceptance ?? 0) ||
+            Math.floor(Date.now() / 1000) + 60 * 60,
+        ),
       },
-      { idempotencyKey: `milo-checkout:${quoteId}:v${finalized.version}` },
+      // R39 D6: the amount is part of the key. A re-freeze at the same version
+      // with different money would otherwise replay the old session, and Stripe
+      // would authorize the old amount.
+      {
+        idempotencyKey: `milo-checkout:${quoteId}:v${finalized.version}:${finalized.amountMinor}`,
+      },
     );
     if (!session.url)
       return { state: "failed", reason: "Stripe returned no checkout URL." };
-    // The session id is recorded so the webhook can be tied back to this quote
-    // even before the PaymentIntent exists.
+    // R39 D1: bind the payment row NOW, not when the webhook arrives.
+    //
+    // `settlement:reconcile` finds a payment by
+    // `paymentIntents.by_provider_intent`, and only `bindHeldPayment` ever
+    // created those rows. The Checkout path never called it, so the
+    // `amount_capturable_updated` event landed in the inbox and was then
+    // dropped: no row to reconcile, no `held`, and nothing to capture or void.
+    // The intent does not exist yet (the buyer has not paid), so the row is
+    // keyed by the session id and carries the amount the session was created
+    // for; the webhook fills in the intent id.
     await ctx.runMutation(
-      BIND_CHECKOUT as never,
+      BIND_CHECKOUT_PAYMENT as never,
       {
         quoteId,
         quoteVersion: finalized.version,
         buyerAccountId: finalized.buyerAccountId,
+        amountMinor: finalized.amountMinor,
+        currency: finalized.currency,
         stripeCustomerId: customerId,
         checkoutSessionId: session.id,
       } as never,
@@ -561,8 +586,12 @@ async function holdViaCheckout(
   }
 }
 
-const BIND_CHECKOUT = makeFunctionReference<"mutation">(
-  "trustedProvisioning:bindCheckoutSession",
+/**
+ * R39 D1: create the `paymentIntents` row for a live Checkout hold, before the
+ * buyer has paid. Keyed by the session id until the webhook supplies the intent.
+ */
+const BIND_CHECKOUT_PAYMENT = makeFunctionReference<"mutation">(
+  "trustedProvisioning:bindCheckoutPayment",
 );
 
 const OPERATOR_EMAILS = makeFunctionReference<

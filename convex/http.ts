@@ -212,6 +212,16 @@ type StripeEventEnvelope = {
        * PaymentIntent itself. Stripe added `expired` in API `2025-03-31.basil`.
        */
       cancellation_reason?: string | null;
+      /**
+       * R39 D5: the money the event asserts. `amount_capturable` is the held
+       * total once authorized; `amount` is the requested total. Either is
+       * compared against the bound payment before the event is accepted.
+       */
+      amount?: number;
+      amount_capturable?: number;
+      currency?: string;
+      /** R39 D1: set on the intent by Checkout, so the pending row can be joined. */
+      metadata?: { checkoutSessionId?: string; quoteId?: string };
     };
   };
 };
@@ -296,6 +306,51 @@ function paymentIntentRef(envelope: StripeEventEnvelope): string | null {
   return typeof object.id === "string" && object.id.startsWith("pi_")
     ? object.id
     : null;
+}
+
+/**
+ * R39 D5: the authorized total the event asserts, if it asserts one.
+ *
+ * `amount_capturable` is the amount actually held once authorized, which is the
+ * number that matters for a manual-capture hold; `amount` is the requested
+ * total. Preferring the former means the check compares held money to the
+ * frozen quote, not the request to it.
+ */
+function eventAmountMinor(envelope: StripeEventEnvelope): number | undefined {
+  const object = envelope.data?.object;
+  if (!object) return undefined;
+  const capturable = object.amount_capturable;
+  if (typeof capturable === "number" && Number.isSafeInteger(capturable))
+    return capturable;
+  const amount = object.amount;
+  if (typeof amount === "number" && Number.isSafeInteger(amount)) return amount;
+  return undefined;
+}
+
+function eventCurrency(envelope: StripeEventEnvelope): string | undefined {
+  const currency = envelope.data?.object?.currency;
+  return typeof currency === "string" ? currency : undefined;
+}
+
+/**
+ * R39 D1: the Checkout Session id, when the event names one.
+ *
+ * `payment_intent.amount_capturable_updated` carries a PaymentIntent whose
+ * `metadata.quoteId` we set, but not the session id. The session id reaches us
+ * on the intent itself once Checkout created it, so it is read from there; a
+ * session-scoped event carries it directly.
+ */
+function eventCheckoutSessionId(
+  envelope: StripeEventEnvelope,
+): string | undefined {
+  const object = envelope.data?.object;
+  if (!object) return undefined;
+  if (typeof object.id === "string" && object.id.startsWith("cs_"))
+    return object.id;
+  const metadata = object.metadata;
+  if (metadata && typeof metadata.checkoutSessionId === "string")
+    return metadata.checkoutSessionId;
+  return undefined;
 }
 
 type RecordEventArgs = {
@@ -393,6 +448,17 @@ export async function stripeWebhookHandler(
     provider: "stripe",
     eventId: envelope.id,
     accountId,
+    // R39 D5: pass the money the event asserts, so `reconcile` can refuse a
+    // disagreement instead of accepting it. Stripe reports `amount` on a
+    // PaymentIntent and `amount_capturable` once authorized; either is the
+    // authorized total. Absent on event types that carry no money (a dispute),
+    // which is why both fields are optional.
+    amountMinor: eventAmountMinor(envelope),
+    currency: eventCurrency(envelope),
+    // R39 D1: a live Checkout hold binds its row by session id, because the
+    // intent does not exist until the buyer pays. This is what lets `reconcile`
+    // join the two.
+    checkoutSessionId: eventCheckoutSessionId(envelope),
   };
   const runMutation =
     (actionCtx as { runMutation?: Runner } | undefined)?.runMutation ??
@@ -417,7 +483,19 @@ export async function stripeWebhookHandler(
       // committed but whose reconcile did not leaves the row unprocessed, and
       // Stripe's retry must finish that work. `reconcile` is itself a no-op for
       // a row that is already processed.
-      await runMutation(RECONCILE, reconcileArgs);
+      const reconciled = (await runMutation(RECONCILE, reconcileArgs)) as {
+        refused?: string;
+      } | null;
+      // R39 D5: the money in the event disagrees with the bound payment. This is
+      // a caller-side disagreement, not a transient fault, so 4xx and no retry —
+      // a retried delivery would carry the same wrong amount.
+      if (reconciled?.refused)
+        return codedRefusal("WRONG_STATE", reconciled.refused);
+      // R39 D4: releasing a hold that landed on a dead order happens INSIDE
+      // `reconcile`, not as a third mutation. The webhook's contract is one
+      // record plus one reconcile per delivery, and a test pins that sequence;
+      // adding a call here would break it for no benefit, since reconcile
+      // already has both the payment and the chain row open.
     } else if (schedule) {
       await schedule(RECORD_EVENT, args);
       await schedule(RECONCILE, reconcileArgs);

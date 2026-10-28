@@ -26,6 +26,62 @@ a function the backend does not have yet. A missing query shows as an endless
 Two deploys: stop calling, then delete. An open tab from before the deploy is
 otherwise calling a function that no longer exists.
 
+## Mail provider
+
+The deployment currently sends through **AgentMail**: `MAIL_PROVIDER=agentmail`,
+`MAIL_FROM=mi.lo@agentmail.to`, key `AGENTMAIL_API_KEY`. This section is the
+switch to Resend, and what happens if the selector is lost.
+
+### What the code actually does
+
+`mailProvider()` in `packages/backend/src/email.ts` lowercases `MAIL_PROVIDER`
+and looks it up in `PROVIDERS`. **An unrecognised or unset value falls back to
+`resend`** — it does not fail, and it does not stay on the previous provider.
+Each provider needs its own key variable and a `MAIL_FROM`:
+
+| `MAIL_PROVIDER` | key variable | notes |
+| --- | --- | --- |
+| `resend` (default) | `RESEND_API_KEY` | `MAIL_FROM` must be a verified-domain sender |
+| `agentmail` | `AGENTMAIL_API_KEY` | the inbox id **is** the sending address |
+| `brevo` | `BREVO_API_KEY` | `MAIL_FROM` becomes `sender.email` |
+
+`sendEmail()` fails closed naming the variable the **selected** provider needs,
+so a misconfigured switch tells you which one is missing rather than naming
+Resend when you run AgentMail.
+
+### Switching to Resend
+
+1. **Verify the domain at Resend first.** Add the sending subdomain, publish the
+   DKIM TXT and the SPF records it shows, wait for verification (usually under
+   15 minutes), then add DMARC. Do not proxy the DKIM CNAME. A `MAIL_FROM` on an
+   unverified domain fails at send time, not at config time.
+2. Set the sender: `npx convex env set MAIL_FROM "noreply@<your-verified-domain>"`.
+3. Set the key: `npx convex env set RESEND_API_KEY` (prompted, so it is not in
+   shell history).
+4. Switch the selector: `npx convex env set MAIL_PROVIDER resend`.
+5. **Leave `MAIL_BASE_URL` and `RESEND_BASE_URL` unset.** They are a test seam;
+   set, they redirect mail to a test host.
+6. Smoke: one magic-link sign-in to an address you control. One send, not a batch.
+7. Confirm with `npx convex env list --names-only` (no `--deployment` flag) that
+   `MAIL_PROVIDER`, `MAIL_FROM` and `RESEND_API_KEY` are all present.
+
+### What breaks if `MAIL_PROVIDER` is unset
+
+Nothing errors, which is the hazard. The selector silently becomes `resend`, so:
+
+- **Every send fails closed** with "Email is not configured for resend. Set
+  RESEND_API_KEY and MAIL_FROM" — because the AgentMail key is present but the
+  Resend one is not.
+- **`MAIL_FROM` is still `mi.lo@agentmail.to`**, which is not a verified Resend
+  sender, so even with a Resend key the send would be rejected.
+- The failure surfaces as `emailed: false` plus a reason on the quote action, and
+  as `mail.keyEnv` / `mail.keyPresent` in `diagnostics.read`. A magic-link
+  sign-in simply never arrives.
+
+Removing the variable is therefore a **provider switch**, not a reset. To stop
+mail deliberately, unset `MAIL_FROM` instead: the send fails closed with a
+message naming `MAIL_FROM`, and the selector is untouched.
+
 ## Rollback
 1. `npx convex deploy` the previous git SHA (backend first, same reason).
 2. Revert the host to the previous `dist/` **after** the backend is back.
