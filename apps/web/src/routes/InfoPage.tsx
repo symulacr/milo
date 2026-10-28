@@ -9,7 +9,7 @@ const EFFECTIVE = "2026-10-26";
 const H = (ms: number) => ms / 3_600_000;
 const TOTAL = H(W.acceptance + W.delivery + W.review + W.resolution);
 
-const PAGES = {
+export const PAGES = {
   privacy: {
     title: "Privacy",
     intro: `Effective ${EFFECTIVE}. What Milo collects, who else sees it, and how long it stays.`,

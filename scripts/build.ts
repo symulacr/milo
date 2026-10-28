@@ -8,6 +8,7 @@ import {
   workspaceAppRoutes,
   zkVersion,
 } from "../apps/web/src/route-table";
+import { PAGES } from "../apps/web/src/routes/InfoPage";
 import {
   cloudflareHeaders,
   cloudflareRedirects,
@@ -156,15 +157,12 @@ for (const route of publicAppRoutes) {
   // Keep the head (CSS, meta, manifest) and drop every module script and
   // preload: the page is complete HTML, so nothing needs to boot.
   const shell = await Bun.file(`${outdir}/public-app.html`).text();
-  // React 19 hoists a rendered `<title>` to the front of the markup, so the
-  // prerendered body carries the page's real title. The shell has no static
-  // title of its own (React owns it), so this inserts rather than replaces;
-  // without it the page would ship with no title at all.
-  const hoisted = body.match(/^<title>[^<]*<\/title>/)?.[0] ?? "";
+  // The title comes from the same `PAGES` entry that renders the page, so the
+  // head and the body cannot disagree. The shell's own `<title>Milo</title>` is
+  // replaced, not appended to: the page must ship exactly one.
+  const title = `<title>Milo · ${PAGES[route.slice(1) as keyof typeof PAGES].title}</title>`;
   const shellHead = shell.slice(0, shell.indexOf("<body"));
-  const head = /<title>[^<]*<\/title>/.test(shellHead)
-    ? shellHead.replace(/<title>[^<]*<\/title>/, hoisted)
-    : shellHead.replace("</head>", `  ${hoisted}\n  </head>`);
+  const head = shellHead.replace(/<title>[^<]*<\/title>/, title);
   await Bun.$`mkdir -p ${outdir}${route}`;
   await Bun.write(
     `${outdir}${route}/index.html`,
@@ -173,7 +171,7 @@ for (const route of publicAppRoutes) {
       .replace(
         /<link rel="modulepreload"[^>]*>/g,
         "",
-      )}<body>${body.slice(hoisted.length)}</body></html>\n`,
+      )}<body>${body}</body></html>\n`,
   );
 }
 for (const route of workspaceAppRoutes) await copyRoute(route, "app");

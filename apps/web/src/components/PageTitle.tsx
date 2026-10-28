@@ -1,36 +1,31 @@
 import { type ReactNode, useEffect, useRef } from "react";
 
 /**
- * Focus the heading when the route changes, and let React own the title.
+ * Focus the heading when the route changes, and set the document title.
  *
- * The title used to be set here with `document.title`, which only works when the
- * page runs JavaScript. `/privacy` and `/terms` are prerendered with no script
- * at all (`scripts/build.ts`), so both shipped `<title>Milo</title>` — measured
- * on the live deploy. A `<title>` element is hoisted into `<head>` by React 19
- * in both the client and the prerender path, so the same component now titles
- * the page either way.
+ * The shell ships a static `<title>`. That is what a crawler, a no-JS visitor and
+ * the first paint get, and it is the only `<title>` element the document ever
+ * has. React must not render a second one: React 19 hoists a rendered `<title>`
+ * into `<head>` *before* the existing one (`mountHoistable`), so rendering one
+ * leaves two elements and the stale second keeps whatever the shell shipped.
+ * Writing `document.title` mutates the single existing element, so the count is
+ * one at every moment and no cleanup pass is needed.
+ *
+ * `/privacy` and `/terms` are prerendered with no script at all
+ * (`scripts/build.ts`), so they never run this; the build writes their title
+ * into the head from the same `PAGES` entry that renders the page.
  *
  * `mounted` keeps the first render from stealing focus: a cold load should leave
  * focus at the top of the document, where the skip link is.
- *
- * React 19 hoists this `<title>` into `<head>` and inserts it *before* the
- * shell's own static title (`mountHoistable`), so the document ends up with two
- * and the stale second one keeps whatever the shell shipped. `document.title`
- * reads the first, so the tab is right and the duplicate is invisible; it is
- * still invalid, and a reader that takes the last title sees the stale one.
- * The static title stays in the shell on purpose — it is what a crawler, a
- * no-JS visitor and the first paint get — so the stale copy is dropped here,
- * after React's own title has been committed.
  */
-function useRouteHeading() {
+function useRouteHeading(title: string) {
   const ref = useRef<HTMLHeadingElement>(null);
   const mounted = useRef(false);
   useEffect(() => {
+    document.title = `Milo · ${title}`;
     if (mounted.current) ref.current?.focus();
     mounted.current = true;
-    const titles = document.head.querySelectorAll("title");
-    for (const stale of [...titles].slice(1)) stale.remove();
-  }, []);
+  }, [title]);
   return ref;
 }
 
@@ -43,10 +38,9 @@ export function PageTitle({
   actions?: ReactNode;
   children?: ReactNode;
 }) {
-  const ref = useRouteHeading();
+  const ref = useRouteHeading(title);
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
-      <title>{`Milo · ${title}`}</title>
       <div className="grid gap-1">
         <h1
           tabIndex={-1}
@@ -66,10 +60,9 @@ export function PageTitle({
 }
 
 export function PublicTitle({ title }: { title: string }) {
-  const ref = useRouteHeading();
+  const ref = useRouteHeading(title);
   return (
     <>
-      <title>{`Milo · ${title}`}</title>
       <h1
         tabIndex={-1}
         ref={ref}
