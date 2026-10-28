@@ -31,7 +31,12 @@ env:
   # The REAL origins, not placeholders: this job's `dist/` is what gets deployed
   # to Cloudflare below, and a build with `ci.invalid` would ship a CSP that
   # points at a host which does not exist.
-  SITE_URL: https://milo.k2jodz91zi.workers.dev
+  #
+  # SITE_URL is deliberately NOT here. It is the one variable that changes test
+  # behaviour: `auth.ts` builds `trustedOrigins` from it, and this suite sets
+  # `CONVEX_SITE_URL ??= "privy.io"` (a bare host), so a job-wide SITE_URL makes
+  # `betterAuth` validate that bare host and 12 authorization-matrix cases throw
+  # `Invalid base URL: privy.io`. It is scoped to the build step instead.
   BETTER_AUTH_URL: https://tremendous-rooster-473.convex.site
   CONVEX_URL: https://tremendous-rooster-473.convex.cloud
   MIDNIGHT_NETWORK: preprod
@@ -97,6 +102,9 @@ jobs:
           npm run test:integration
 
       - name: Build web app
+        env:
+          # Only the build needs the canonical origin (sitemap, og:url, canonical).
+          SITE_URL: https://milo.k2jodz91zi.workers.dev
         run: npm run build
 
       # A build that silently skipped CSP narrowing would pass every other gate.
