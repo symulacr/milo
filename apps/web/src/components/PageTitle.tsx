@@ -27,6 +27,9 @@ export function PageTitle({
         <h1
           tabIndex={-1}
           ref={ref}
+          // The title can be the brief the user typed, so it sets its own
+          // direction; a Latin title is unaffected.
+          dir="auto"
           className="max-w-3xl text-2xl leading-tight font-extrabold tracking-[-0.03em] outline-none"
         >
           {title}
@@ -41,7 +44,7 @@ export function PageTitle({
 export function PublicTitle({ title }: { title: string }) {
   const ref = useRouteHeading(title);
   return (
-    <h1 tabIndex={-1} ref={ref} className="display-xl outline-none">
+    <h1 tabIndex={-1} ref={ref} dir="auto" className="display-xl outline-none">
       {title}
     </h1>
   );

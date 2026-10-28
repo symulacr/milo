@@ -185,11 +185,42 @@ if (siteOrigin)
     [
       '<?xml version="1.0" encoding="UTF-8"?>',
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      `  <url><loc>${siteOrigin}/</loc></url>`,
+      // `/` plus every prerendered public route. `publicAppRoutes` is the same
+      // array the prerender loop above uses, so the sitemap cannot list a page
+      // that is not built, or miss one that is.
+      ...[...new Set(["/", ...publicAppRoutes])].map(
+        (route) => `  <url><loc>${siteOrigin}${route}</loc></url>`,
+      ),
       "</urlset>",
       "",
     ].join("\n"),
   );
+
+// RFC 9116. `Contact` and `Expires` are the only required fields; the RFC wants
+// an ISO 8601 datetime with a timezone and recommends at most a year out. Both
+// are computed here, so the file can never ship already stale.
+const securityContact = (await Bun.file("SECURITY.md").text())
+  .match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0]
+  // The address sits inside a sentence, so strip the full stop: a `mailto:` with
+  // a trailing period is a different, wrong address.
+  .replace(/\.$/, "");
+if (securityContact) {
+  const expires = new Date();
+  expires.setUTCFullYear(expires.getUTCFullYear() + 1);
+  await Bun.$`mkdir -p ${outdir}/.well-known`;
+  await Bun.write(
+    `${outdir}/.well-known/security.txt`,
+    [
+      `Contact: mailto:${securityContact}`,
+      `Expires: ${expires.toISOString().replace(/\.\d{3}Z$/, "z")}`,
+      ...(siteOrigin
+        ? [`Canonical: ${siteOrigin}/.well-known/security.txt`]
+        : []),
+      "Preferred-Languages: en",
+      "",
+    ].join("\n"),
+  );
+}
 
 const publicDirectory = "apps/web/public";
 const QA_ONLY = [/^qa-/];
@@ -247,6 +278,8 @@ const referenced = new Set(
   ),
 );
 
+const pruned: string[] = [];
+
 for (const output of result.outputs) {
   // A wasm nothing references is dead weight; so is the 0-byte JS chunk Bun's
   // splitter emits for a fully tree-shaken module. Same loop, one condition.
@@ -255,4 +288,43 @@ for (const output of result.outputs) {
   if (!empty && !output.path.endsWith(".wasm")) continue;
   if (!empty && referenced.has(name)) continue;
   await Bun.$`rm -f ${output.path}`;
+  if (empty) pruned.push(name);
+}
+
+/**
+ * Bun injects a `<script src>` into an HTML entrypoint even when that entry
+ * imports nothing, and emits a 0-byte chunk for it. The prune above deletes the
+ * chunk, so the tag would point at a file that is not there: a 404 and a
+ * console error on every load. Proven with a two-line repro — a script-less
+ * HTML entry yields `plain-7tsh300k.js` at 0 bytes and the HTML still names it.
+ *
+ * Drop the tag with the file. This is what lets an entry with no script of its
+ * own build correctly, which a no-JS landing needs.
+ */
+const dead = pruned.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+if (dead.length) {
+  const tag = new RegExp(
+    `<script\\b[^>]*src="/[^"]*(?:${dead.join("|")})"[^>]*></script>`,
+    "g",
+  );
+  for (const name of HTML_NAMES) {
+    const path = `${outdir}/${name}.html`;
+    await Bun.write(path, (await Bun.file(path).text()).replace(tag, ""));
+  }
+}
+
+/**
+ * Every script an emitted page names must exist. A missing one is a 404 and a
+ * console error on every load, and nothing else in the build notices: the tag
+ * is valid HTML, the chunk was real when it was written, and only the pairing
+ * is broken. This is the check that would have caught the dangling reference
+ * above, so it is a build failure rather than a comment.
+ */
+for (const path of new Bun.Glob("**/*.html").scanSync(outdir)) {
+  const html = await Bun.file(`${outdir}/${path}`).text();
+  for (const [, src] of html.matchAll(/<script\b[^>]*\ssrc="(\/[^"]+)"/g))
+    if (!(await Bun.file(`${outdir}${src}`).exists()))
+      throw new Error(
+        `${path} references ${src}, which the build did not emit.`,
+      );
 }

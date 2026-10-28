@@ -58,18 +58,52 @@ describe("shipped cache policy", () => {
    * precedence at all — which is exactly how K-07 happened. This resolves a real
    * path against every rule in order and keeps the last match.
    *
-   * The matcher is written out rather than pulled from `path-to-regexp`: the
-   * shipped rules use only three forms, and spelling them out keeps the test
-   * honest about what it does and does not model.
+   * The matcher compiles `source` the way Vercel does, for the two rules that
+   * have actually bitten this repo:
+   *   - `.` outside a group is literal (Vercel docs: "the `.` is not a special
+   *     character");
+   *   - a regex must sit inside a capture group, so `{8}` outside `(...)` is text.
+   *
+   * Verified against path-to-regexp 6.3.0: `/(.*)-[a-z0-9]{8}.x` compiles to
+   * `\[a-z0-9\](?:8)` and matches nothing. Deliberately STRICTER than the real
+   * package — it never allows a bare `{n}` — so the broken r25 pattern fails
+   * here exactly as it failed on Vercel.
+   *
+   * Not imported: `path-to-regexp` is not a dependency of this repo; it resolves
+   * only through a stray `/home/eya/node_modules` above it, which a clean clone
+   * does not have.
    */
-  const ruleMatches = (source: string, path: string): boolean => {
-    if (source === "/(.*)") return true;
-    const wildcardSuffix = source.match(/^\/\(\.\*\)(\.[a-z]+)$/);
-    if (wildcardSuffix) return path.endsWith(wildcardSuffix[1]);
-    if (source === "/zk/([0-9a-f]{16})/(.*)")
-      return /^\/zk\/[0-9a-f]{16}\//.test(path);
-    return source === path;
+  const sourceToRegExp = (source: string): RegExp => {
+    let out = "";
+    let depth = 0;
+    for (let i = 0; i < source.length; i++) {
+      const ch = source[i];
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+      if (ch === "\\") {
+        out += source[i + 1]?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") ?? "";
+        i++;
+        continue;
+      }
+      if (ch === "." && depth === 0) {
+        out += "\\.";
+        continue;
+      }
+      if (ch === "{" && depth === 0) {
+        out += "\\{";
+        continue;
+      }
+      if (ch === "}" && depth === 0) {
+        out += "\\}";
+        continue;
+      }
+      out += ch;
+    }
+    return new RegExp(`^${out}[\\/#\\?]?$`);
   };
+
+  const ruleMatches = (source: string, path: string): boolean =>
+    sourceToRegExp(source).test(path);
 
   const cacheForPath = (path: string): string => {
     let value = "";
@@ -96,6 +130,113 @@ describe("shipped cache policy", () => {
     const versioned = sources.indexOf("/zk/([0-9a-f]{16})/(.*)");
     expect(catchAll).toBeGreaterThan(-1);
     expect(versioned).toBeGreaterThan(catchAll);
+  });
+
+  // ---- effect tests: what the rules do to real emitted paths ----
+  // W4's matcher was a whitelist of three forms, so the hashed-image rule below
+  // was invisible to it. These run against the general matcher.
+  const HASHED_JS = "/index-2e714m9a.js";
+  const HASHED_WEBP = "/hero-w13rwcca.webp";
+  const HASHED_PNG = "/studio-shelf-qne70bfz.webp";
+  const UNHASHED_PNG = "/og-card.png";
+  const UNHASHED_WEBP = "/images/hero.webp";
+
+  test("a content-hashed image is immutable, an unhashed one is not", () => {
+    // The assertion that would have failed for the r25 `{8}` rule.
+    for (const path of [HASHED_WEBP, HASHED_PNG])
+      expect({ path, cache: cacheForPath(path) }).toEqual({
+        path,
+        cache: "public, max-age=31536000, immutable",
+      });
+    // Stable names can be replaced by the owner, so they must revalidate.
+    for (const path of [UNHASHED_PNG, UNHASHED_WEBP])
+      expect(cacheForPath(path)).toContain("must-revalidate");
+  });
+
+  test("no rule is dead: every source matches at least one real path", () => {
+    // A rule that matches nothing is the exact failure mode of V-03.
+    const emitted = [
+      "/",
+      "/index.html",
+      HASHED_JS,
+      "/index-s3tnes0g.css",
+      HASHED_WEBP,
+      HASHED_PNG,
+      UNHASHED_PNG,
+      UNHASHED_WEBP,
+      "/midnight_ledger_wasm_bg-v6pd9qn5.wasm",
+      "/api/public-config",
+      "/robots.txt",
+      "/sitemap.xml",
+      "/zk/453af640523557a4/keys/accept.prover",
+      "/zk/keys/accept.prover",
+    ];
+    const dead = manifest.headers
+      .filter((rule) => !emitted.some((p) => ruleMatches(rule.source, p)))
+      .map((rule) => rule.source);
+    expect(dead).toEqual([]);
+  });
+
+  test("the matcher itself rejects the broken r25 pattern", () => {
+    // Guard the guard: if this ever passes, the matcher has been loosened and
+    // the tests above stop proving anything.
+    const broken = "/(.*)-[a-z0-9]{8}.(webp|png|avif|jpg)";
+    expect(ruleMatches(broken, HASHED_WEBP)).toBe(false);
+    expect(
+      ruleMatches("/(.*)-([a-z0-9]{8})\\.(webp|png|avif|jpg)", HASHED_WEBP),
+    ).toBe(true);
+    expect(
+      ruleMatches("/(.*)-([a-z0-9]{8})\\.(webp|png|avif|jpg)", UNHASHED_WEBP),
+    ).toBe(false);
+  });
+
+  test("the zk guard cannot go vacuous", () => {
+    // W4's rule is hex-only, so the unhashed path must not be immutable. If a
+    // future edit widens the group to [a-z0-9], `keys` would match and the
+    // unhashed keys would be cached forever.
+    expect(
+      ruleMatches("/zk/([0-9a-f]{16})/(.*)", "/zk/keys/accept.prover"),
+    ).toBe(false);
+    expect(ruleMatches("/zk/([a-z0-9]+)/(.*)", "/zk/keys/accept.prover")).toBe(
+      true,
+    );
+  });
+});
+
+describe("crawler files", () => {
+  // Y-01: the live sitemap listed only `/` while /privacy and /terms were built
+  // and indexable. Y-02: /.well-known/security.txt was 404. Both are build
+  // outputs, so these assert the inputs they derive from rather than running a
+  // build inside the test suite.
+  const build = readFileSync("scripts/build.ts", "utf8");
+
+  test("the sitemap names every indexable page", () => {
+    // Built from publicAppRoutes, not a hand-typed list, or it drifts the moment
+    // a public route is added.
+    expect(build).toContain('...new Set(["/", ...publicAppRoutes])');
+  });
+
+  test("security.txt carries the two fields RFC 9116 requires", () => {
+    // Contact and Expires are the only required fields; the RFC wants a timezone
+    // on Expires and recommends at most a year out.
+    expect(build).toContain("Contact: mailto:${securityContact}");
+    expect(build).toContain("Expires: ${expires.toISOString()");
+    expect(build).toContain("setUTCFullYear(expires.getUTCFullYear() + 1)");
+    expect(build).toContain(".well-known/security.txt");
+  });
+
+  test("the contact address is read from SECURITY.md, not copied", () => {
+    // Two copies of an address is how they drift apart.
+    expect(build).toContain('Bun.file("SECURITY.md")');
+    expect(readFileSync("SECURITY.md", "utf8")).toMatch(
+      /[\w.+-]+@[\w-]+\.[\w.-]+/,
+    );
+  });
+
+  test("the contact address loses the sentence's full stop", () => {
+    // The address sits inside a sentence, so the match ends in "." unless it is
+    // stripped — and a mailto: with a trailing period is a different address.
+    expect(build).toContain(String.raw`.replace(/\.$/, "")`);
   });
 });
 

@@ -7,6 +7,7 @@
     <meta name="description" content="Milo is a private order between a studio and its client. Your browser checks the three final images, then you approve in your Lace wallet on Midnight Preprod." />
     <title>Milo · Approve the exact files</title>
     <style>@font-face{font-family:"Schibsted Grotesk";src:url("/fonts/schibsted-grotesk.woff2") format("woff2");font-weight:400 900;font-display:swap;ascent-override:97.66%;descent-override:25.78%;line-gap-override:0%}</style>
+    <noscript><style>[data-check],[data-check-status]{display:none}</style></noscript>
     <link rel="stylesheet" href="./src/app.css" />
     <script type="module" src="./src/landing.ts"></script>
     <meta property="og:title" content="Milo · Approve the exact files" />
@@ -96,6 +97,9 @@
               <span class="size-5"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
               <span>Check the files</span>
             </button>
+            <noscript>
+              <p class="max-w-[40ch] text-[15px]">The in-browser check needs JavaScript, which is off in this browser. <a class="underline underline-offset-4 hover:text-yellow" href="/orders/new">Start an order</a> and the check runs in the approval step.</p>
+            </noscript>
             <p class="max-w-[40ch] text-[15px] empty:hidden" role="status" data-check-status>Hashes three example files in your browser.</p>
           </div>
         </div>

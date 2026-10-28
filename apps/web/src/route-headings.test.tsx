@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ORDER_WINDOWS_MS } from "../../../packages/backend/src/order-windows";
 import * as authClient from "./auth-client";
+import { PageTitle } from "./components/PageTitle";
 import { Button } from "./components/ui/button";
 import { Alert, CODE_TEXT, errorText } from "./components/workspace";
 import { Account } from "./routes/Account";
@@ -513,6 +514,26 @@ describe("no inline script or handler (CSP report-only goal)", () => {
       expect(readFileSync(file, "utf8")).not.toMatch(
         /\son(click|load|error|submit)=/i,
       );
+  });
+});
+
+describe("a user-supplied heading sets its own direction (U-12)", () => {
+  // `PageTitle` renders the brief the user typed as the order title, so a brief
+  // in Hebrew or Arabic would otherwise inherit the page's `ltr` and put its
+  // punctuation on the wrong side. `dir="auto"` is the native fix.
+  const source = readFileSync("apps/web/src/components/PageTitle.tsx", "utf8");
+  test("both headings carry dir=auto", () => {
+    expect(source.match(/dir="auto"/g) ?? []).toHaveLength(2);
+  });
+  test("a Latin heading is unaffected by dir=auto", () => {
+    // The English UI must render identically; dir=auto on Latin resolves ltr.
+    const markup = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/orders"]}>
+        <PageTitle title="Orders" />
+      </MemoryRouter>,
+    );
+    expect(markup).toContain('dir="auto"');
+    expect(markup).toContain(">Orders</h1>");
   });
 });
 
