@@ -21,6 +21,14 @@ export function env(name: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * The canonical origin: the first entry of the comma list SITE_URL becomes
+ * during a host cutover. `trustedOrigins` gets every entry; links and wallet
+ * audiences must name exactly one.
+ */
+export const canonicalSiteUrl = (fallback: string): string =>
+  (env("SITE_URL") ?? fallback).split(",")[0].trim();
+
 /** Bytes from the platform CSPRNG. Never `Math.random()` for a secret. */
 export function randomBytes(length: number): Uint8Array {
   const bytes = new Uint8Array(length);

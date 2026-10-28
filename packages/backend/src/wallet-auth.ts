@@ -1,5 +1,10 @@
 import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex, env, hexToBytes, timingSafeEqualHex } from "./encoding.ts";
+import {
+  bytesToHex,
+  canonicalSiteUrl,
+  hexToBytes,
+  timingSafeEqualHex,
+} from "./encoding.ts";
 
 export const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
 /**
@@ -16,7 +21,7 @@ export const WALLET_MESSAGE_DOMAIN = "milo";
 
 /** The host a wallet should see, e.g. `milo-nine-delta.vercel.app`. */
 export const walletMessageDomain = (): string => {
-  const site = env("SITE_URL");
+  const site = canonicalSiteUrl("");
   if (!site) return WALLET_MESSAGE_DOMAIN;
   try {
     return new URL(site).host;

@@ -535,6 +535,8 @@ export async function readDisputeNote(
   note: string;
   digestMatches: boolean;
   chainMatches: boolean;
+  /** The row exists but this key cannot open it. */
+  unreadable?: boolean;
 } | null> {
   const box = await convex.query(api.disputeNote, { quoteId: detail.quoteId });
   if (!box) return null;
@@ -555,8 +557,18 @@ export async function readDisputeNote(
       detail.quoteId,
     );
   } catch {
-    // A ciphertext that does not open is not a message the operator can act on.
-    return null;
+    // R41: a ciphertext that does not open is NOT the same as no ciphertext. It
+    // means the operator's key for this order no longer matches the one the note
+    // was sealed to (a lost or rotated secret, or a pre-R22 order whose legacy
+    // derivation changed). Returning null made that indistinguishable from "the
+    // buyer gave no reason", so the operator silently decided a dispute with no
+    // idea a reason existed. Say which it is.
+    return {
+      note: "",
+      digestMatches: false,
+      chainMatches: false,
+      unreadable: true,
+    };
   }
   const digest = await sha256Hex(note.trim());
   return {
@@ -644,8 +656,14 @@ export async function runAction(input: {
   // This runs BEFORE the signature on purpose. A signature commits to the digest;
   // if the sealed copy then failed to store, the operator would hold a hash with
   // no readable counterpart, which is the state this round exists to end.
-  if (action.needs === "note" && evidence && detail.operatorPublicKey)
-    await convex.mutation(api.putDisputeNote, {
+  if (action.needs === "note" && evidence && detail.operatorPublicKey) {
+    // R41: `put` answers {ok:false} for its expected refusals instead of
+    // throwing, so this has to read the result. Ignoring it let a refused write
+    // proceed to the signature, which left the chain holding a digest with no
+    // readable counterpart — and on a second dispute, a NEW digest beside an OLD
+    // stored note, so the operator would read a reason that provably does not
+    // match the chain. Stopping here is the whole point of sealing first.
+    const sealed = await convex.mutation(api.putDisputeNote, {
       quoteId: detail.quoteId,
       ...(await sealNote(
         note,
@@ -654,6 +672,11 @@ export async function runAction(input: {
       )),
       digest: toHex(evidence),
     });
+    if (!sealed.ok)
+      throw new Error(
+        `${sealed.reason} The dispute was not signed, so nothing is recorded on chain.`,
+      );
+  }
   if (circuit === "resolve" && !evidence)
     // An escalated order recorded no evidence, so `resolve` can never satisfy
     // its own non-default check. Retrying cannot help; the order has to expire.

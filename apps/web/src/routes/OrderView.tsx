@@ -571,14 +571,28 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               <CardTitle className="text-sm">
                 The client&apos;s reason
               </CardTitle>
-              <p className="text-sm leading-relaxed whitespace-pre-line">
-                {disputeNote.note}
-              </p>
-              <Note>
-                {disputeNote.digestMatches && disputeNote.chainMatches
-                  ? "This text hashes to the digest the chain holds, so it is the reason that was signed."
-                  : "This text does not match the digest on chain. Do not decide on it; ask the client to re-file."}
-              </Note>
+              {disputeNote.unreadable ? (
+                // R41: the row exists but this key cannot open it. Rendering an
+                // empty reason would read as "the client said nothing", which is
+                // a different and misleading fact.
+                <Note>
+                  The client did give a reason, but this browser cannot open it:
+                  the key for this order no longer matches the one it was sealed
+                  to. The digest on chain is still the client&apos;s, so decide
+                  on the delivery itself.
+                </Note>
+              ) : (
+                <>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                    {disputeNote.note}
+                  </p>
+                  <Note>
+                    {disputeNote.digestMatches && disputeNote.chainMatches
+                      ? "This text hashes to the digest the chain holds, so it is the reason that was signed."
+                      : "This text does not match the digest on chain. Do not decide on it; ask the client to re-file."}
+                  </Note>
+                </>
+              )}
             </div>
           )}
           {needs("note") && (

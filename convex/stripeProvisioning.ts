@@ -15,6 +15,7 @@ import type {
 import { inviteFailureReason } from "../packages/backend/src/email";
 import {
   bytesToHex,
+  canonicalSiteUrl,
   env,
   HEX64,
   hexToBytes,
@@ -534,8 +535,8 @@ async function holdViaCheckout(
             quoteVersion: String(finalized.version),
           },
         },
-        success_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?held=1`,
-        cancel_url: `${env("SITE_URL") ?? "https://milo.app"}/orders/${quoteId}?cancelled=1`,
+        success_url: `${canonicalSiteUrl("https://milo.app")}/orders/${quoteId}?held=1`,
+        cancel_url: `${canonicalSiteUrl("https://milo.app")}/orders/${quoteId}?cancelled=1`,
         metadata: { quoteId, quoteVersion: String(finalized.version) },
         // R39 D3: Stripe defaults a Checkout Session to 24 h, but the acceptance
         // window is 1 h. Without this a buyer could pay for a quote that had

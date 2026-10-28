@@ -6,7 +6,7 @@ import {
 } from "convex/server";
 import { type GenericId, v } from "convex/values";
 import { mailConfig, sendEmail } from "../packages/backend/src/email";
-import { env } from "../packages/backend/src/encoding";
+import { canonicalSiteUrl } from "../packages/backend/src/encoding";
 import {
   type ReleaseEvidence,
   releaseFlags,
@@ -383,7 +383,7 @@ export const digest = internalActionGeneric({
       try {
         await sendEmail({
           to,
-          url: env("SITE_URL") ?? "https://milo.app",
+          url: canonicalSiteUrl("https://milo.app"),
           subject: `${counts.unprocessed} unprocessed Stripe event(s)`,
           text,
         });

@@ -273,8 +273,14 @@ export const realBackend = (
   };
 };
 
-const { createQuote, evidenceBytes, openOrder, reviewDelivery, runAction } =
-  await import("./flows");
+const {
+  createQuote,
+  evidenceBytes,
+  openOrder,
+  readDisputeNote,
+  reviewDelivery,
+  runAction,
+} = await import("./flows");
 
 const CHAIN = {
   network: hex32(0x00),
@@ -615,6 +621,121 @@ describe("user path: dispute and resolve", () => {
       | undefined;
     expect(extra?.approveOrder).toBe(true);
     expect(extra?.evidence).toEqual(bytes32(0xcd));
+  });
+});
+
+describe("R41 an unreadable note is not an absent note", () => {
+  // A ciphertext that will not open means the operator's key no longer matches
+  // the one the note was sealed to (a lost or rotated secret, or a pre-R22 order
+  // whose legacy derivation changed). Returning null made that indistinguishable
+  // from "the buyer gave no reason", so the operator silently decided a dispute
+  // with no idea a reason existed.
+  test("a note that will not open reports unreadable, not null", async () => {
+    const convex = {
+      action: async () => ({ secret: hex32(0xbb) }),
+      mutation: async () => ({ ok: true }),
+      query: async (ref: unknown) => {
+        const name = getFunctionName(ref as FunctionReference<"query">);
+        if (name.includes("disputeNote")) {
+          // A row that exists but was sealed to a different key.
+          return {
+            epk: "prm9sVt/mRldRb9yx39Pb2OgVNZj9pjlT7rD9f6EiQM=",
+            iv: "8hoGEZs6Zgte4nOK",
+            sealed: "AAAAAAAAAAAAAAAAAAAAAA==",
+            digest: hex32(0x11),
+          };
+        }
+        return detail();
+      },
+    } as never;
+    const result = await readDisputeNote(convex, detail());
+    expect(result).not.toBeNull();
+    expect(result?.unreadable).toBe(true);
+    expect(result?.note).toBe("");
+  });
+
+  test("no row at all still reports null", async () => {
+    const convex = {
+      action: async () => ({ secret: hex32(0xbb) }),
+      mutation: async () => ({ ok: true }),
+      query: async () => null,
+    } as never;
+    expect(await readDisputeNote(convex, detail())).toBeNull();
+  });
+});
+
+describe("R41 a refused dispute note stops the dispute", () => {
+  // `put` answers {ok:false, reason} for its expected refusals (a second write,
+  // bad base64, too large) instead of throwing. The seal path awaited the
+  // mutation but never read the result, so a refusal was invisible and the flow
+  // signed the digest anyway. Consequences:
+  //   (a) the chain holds a digest with no readable ciphertext beside it, and
+  //   (c) on a second dispute the chain gets a NEW digest while the stored row
+  //       keeps the OLD one — the operator would read a reason that provably
+  //       does not match the chain.
+  const disputeAction = { circuit: "disputeBuyer", needs: "note" } as never;
+  const detailWithContract = () =>
+    detail({
+      operatorPublicKey: hex32(0xcc),
+      contract: CONTRACT("ACCEPTED", 3),
+    });
+  const buyerKey = {
+    quoteId: "q1",
+    actor: "buyer",
+    secret: hex32(0xdd),
+    nonce: hex32(0xee),
+  } as never;
+
+  test("a put that refuses stops the flow before the chain", async () => {
+    const convex = {
+      action: async () => ({}),
+      mutation: async (ref: unknown) =>
+        getFunctionName(ref as FunctionReference<"query">).includes(
+          "disputeNotes:put",
+        )
+          ? { ok: false, reason: "This order already has a dispute reason." }
+          : { ok: true },
+      query: async () => detailWithContract(),
+    } as never;
+
+    // The chain fake accepts everything, so a resolved promise means the flow
+    // reached `callOrder` — i.e. it signed despite the refusal.
+    await expect(
+      runAction({
+        convex,
+        wallet: { connected: {} as never },
+        subject: "user-1",
+        detail: detailWithContract(),
+        key: buyerKey,
+        action: disputeAction,
+        note: "the third image duplicates the first",
+        files: [],
+        report,
+      }),
+    ).rejects.toThrow(/dispute reason/i);
+  });
+
+  test("a put that succeeds reaches the chain", async () => {
+    const convex = {
+      action: async () => ({}),
+      mutation: async () => ({ ok: true }),
+      query: async () => detailWithContract(),
+    } as never;
+    // Resolving proves the flow got past the seal; the refusal test above proves
+    // it does not when the write is refused.
+    await expect(
+      runAction({
+        convex,
+        wallet: { connected: {} as never },
+        subject: "user-1",
+        detail: detailWithContract(),
+        key: buyerKey,
+        action: disputeAction,
+        note: "the third image duplicates the first",
+        files: [],
+        report,
+      }),
+    ).resolves.toBeDefined();
   });
 });
 
