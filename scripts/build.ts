@@ -6,6 +6,7 @@ import { PublicApp } from "../apps/web/src/public-main";
 import {
   publicAppRoutes,
   workspaceAppRoutes,
+  zkVersion,
 } from "../apps/web/src/route-table";
 import { narrowCsp, publicConfig } from "../packages/backend/src/public-config";
 import { wasmBindings } from "./wasm-bindings-plugin";
@@ -45,16 +46,7 @@ await Bun.$`mkdir -p ${buildEntrypoints}`;
 
 await Promise.all(HTML_NAMES.map(prepareHtmlEntrypoint));
 
-// The artifact version has to be known before the bundle is built, because the
-// client's key URL is a build-time constant. Emitting the versioned copy and
-// telling the client which copy to ask for must happen in the same build, or a
-// deploy could ship a client pointing at a directory it did not write.
 const zkSource = "packages/contract/generated";
-const zkVersion = (
-  (await Bun.file(`${zkSource}/compile-receipt.json`).json()) as {
-    sourceSha256: string;
-  }
-).sourceSha256.slice(0, 16);
 
 const result = await Bun.build({
   entrypoints: HTML_NAMES.map((name) => `${buildEntrypoints}/${name}.html`),
@@ -246,22 +238,61 @@ if (securityContact) {
   );
 }
 
-// Every production deployment so far was uploaded from a dirty working tree
-// (gitDirty: "1" on all eight, per the Vercel API), so nothing tied a live
-// artifact to a commit. This records the commit the build saw, and whether the
-// tree was clean, into a file the CDN serves.
+// Which commit a live artifact came from. A git-connected build gets the commit
+// from Vercel; a local CLI upload has no such variable and falls back to the
+// checkout. Only TRACKED changes count as dirty: an untracked scratch file cannot
+// alter the build, and counting it made every deploy look unreproducible.
 const git = (args: string[]) => {
   const run = Bun.spawnSync(["git", ...args]);
   return run.exitCode === 0 ? run.stdout.toString().trim() : "";
 };
+const env = process.env;
 await Bun.write(
   `${outdir}/deploy.json`,
   `${JSON.stringify(
     {
-      commit: git(["rev-parse", "HEAD"]) || null,
-      branch: git(["rev-parse", "--abbrev-ref", "HEAD"]) || null,
-      dirty: git(["status", "--porcelain"]).length > 0,
+      commit: env.VERCEL_GIT_COMMIT_SHA || git(["rev-parse", "HEAD"]) || null,
+      branch:
+        env.VERCEL_GIT_COMMIT_REF || git(["branch", "--show-current"]) || null,
+      dirty: git(["status", "--porcelain", "--untracked-files=no"]) !== "",
       builtAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  )}\n`,
+);
+
+// CycloneDX for the shipped dependency tree. `npm sbom` needs a
+// package-lock.json and this repo has none, `bun pm licenses` lists licences but
+// emits no document, and the lockfile already carries name, version and sha512
+// for every package, so the SBOM is a projection of a file we ship.
+const lock = Bun.JSONC.parse(await Bun.file("bun.lock").text()) as {
+  packages: Record<string, [string, string, Record<string, unknown>, string?]>;
+};
+await Bun.write(
+  `${outdir}/sbom.cdx.json`,
+  `${JSON.stringify(
+    {
+      bomFormat: "CycloneDX",
+      specVersion: "1.5",
+      version: 1,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        component: { type: "application", name: "milo" },
+      },
+      components: Object.entries(lock.packages).map(([name, entry]) => {
+        const [ref, , , integrity] = entry;
+        const version = ref.slice(ref.lastIndexOf("@") + 1);
+        return {
+          type: "library",
+          name,
+          version,
+          purl: `pkg:npm/${name.replace("@", "%40")}@${version}`,
+          ...(integrity?.startsWith("sha512-")
+            ? { hashes: [{ alg: "SHA-512", content: integrity.slice(7) }] }
+            : {}),
+        };
+      }),
     },
     null,
     2,

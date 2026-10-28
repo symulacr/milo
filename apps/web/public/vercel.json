@@ -93,7 +93,7 @@
         },
         {
           "key": "Reporting-Endpoints",
-          "value": "csp-endpoint=\"https://placeholder.convex.site/csp-report\""
+          "value": "default=\"https://placeholder.convex.site/csp-report\", csp-endpoint=\"https://placeholder.convex.site/csp-report\""
         },
         {
           "key": "Report-To",

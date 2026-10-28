@@ -7,6 +7,7 @@ import {
   publicAppRoutes,
   workspaceAppPrefixes,
   workspaceAppRoutes,
+  zkVersion,
 } from "../apps/web/src/route-table";
 import {
   publicConfig,
@@ -25,12 +26,6 @@ const publicRoutes = Object.fromEntries(
     Bun.file(`${publicDirectory}/${path}`),
   ]),
 );
-
-const zkVersion = (
-  (await Bun.file(`${zkDirectory}/compile-receipt.json`).json()) as {
-    sourceSha256: string;
-  }
-).sourceSha256.slice(0, 16);
 
 const zkRoutes = Object.fromEntries(
   (["keys", "zkir"] as const).flatMap((directory) =>

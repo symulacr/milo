@@ -444,6 +444,75 @@ describe("CSP narrowing", () => {
     expect(policy).not.toContain("placeholder");
   });
 
+  // Deploy provenance. `build` read the gitignored compile receipt to name the
+  // artifact version, so a clean checkout could not build and every deploy was a
+  // dirty CLI upload. The version now comes from the tracked contract source.
+  test("the artifact version comes from the tracked source", () => {
+    const table = readFileSync("apps/web/src/route-table.ts", "utf8");
+    expect(table).toContain("packages/contract/src/order.compact");
+    for (const file of [
+      "apps/web/src/route-table.ts",
+      "scripts/build.ts",
+      "scripts/dev.ts",
+    ])
+      expect(readFileSync(file, "utf8")).not.toContain("compile-receipt.json");
+  });
+
+  // `dirty` must mean "the build inputs differ from the commit". Counting
+  // untracked files made it true on every deploy, so `gitDirty: "1"` on all
+  // eight historical deployments said nothing about the artifact.
+  test("deploy.json counts tracked dirt and trusts Vercel's commit", () => {
+    const build = readFileSync("scripts/build.ts", "utf8");
+    expect(build).toContain(`"--untracked-files=no"`);
+    expect(build).toContain("VERCEL_GIT_COMMIT_SHA");
+  });
+
+  // MDN (2026-04-20): `default` receives reports with no header of their own
+  // (deprecations, crashes). Safari does not support it, so `csp-endpoint` stays.
+  test("the default reporting endpoint survives narrowing", () => {
+    const manifest = JSON.parse(
+      readFileSync("apps/web/public/vercel.json", "utf8"),
+    ) as ReturnType<typeof shipped>;
+    expect(header(manifest, "Reporting-Endpoints")).toContain(
+      `default="${CSP_REPORT_PLACEHOLDER}`,
+    );
+    narrowCsp(manifest, config, false);
+    const value = header(manifest, "Reporting-Endpoints");
+    expect(value).toContain(`default="https://deploy.convex.site`);
+    expect(value).not.toContain("placeholder");
+  });
+
+  // `npm sbom` needs a package-lock.json and this repo has none, so the SBOM is
+  // derived from bun.lock, which carries name, version and sha512 already.
+  test("the SBOM is derived from the shipped lockfile", () => {
+    const build = readFileSync("scripts/build.ts", "utf8");
+    expect(build).toContain("Bun.JSONC.parse");
+    expect(build).toContain('bomFormat: "CycloneDX"');
+    const lock = Bun.JSONC.parse(readFileSync("bun.lock", "utf8")) as {
+      packages: Record<string, [string, string, unknown, string?]>;
+    };
+    const names = Object.keys(lock.packages);
+    expect(names.length).toBeGreaterThan(100);
+    // No hash means an SBOM component with no verifiable identity.
+    expect(
+      names.filter((n) => lock.packages[n][3]?.startsWith("sha512-")).length,
+    ).toBe(names.length);
+  });
+
+  // The uptime job is skipped on every push, so the cron is its only trigger. It
+  // shared a concurrency group with pushes (`github.ref` is refs/heads/main for
+  // both), so `cancel-in-progress` killed each scheduled run.
+  test("a scheduled run cannot be cancelled by a push", () => {
+    const workflow = readFileSync(".github/workflows/local-checks.yml", "utf8");
+    expect(workflow.match(/^\s+group: (.+)$/m)?.[1] ?? "").toContain(
+      "github.event_name",
+    );
+    expect(workflow).toContain("cron: '*/15 * * * *'");
+    expect(workflow).toContain(
+      "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+    );
+  });
+
   test("refuses to ship a policy that still points at the placeholder", () => {
     // With no auth origin there is no real host for the report endpoint, so
     // the emitted policy would send reports to a host that does not exist.

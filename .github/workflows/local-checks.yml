@@ -13,8 +13,13 @@ on:
 permissions:
   contents: read
 
+# A scheduled run and a push run share `github.ref` (both are refs/heads/main),
+# so one group meant every scheduled uptime check was cancelled by the next
+# push. The event name is part of the key, so a schedule can only cancel a
+# schedule. Measured: 9 pushes in the three hours after the cron landed and 0
+# scheduled runs, while every push run reported the uptime job as "skipped".
 concurrency:
-  group: local-checks-${{ github.workflow }}-${{ github.ref }}
+  group: local-checks-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 # The build reads deployment config, and Bun auto-loads `.env.local` on a dev

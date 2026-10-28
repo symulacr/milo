@@ -51,7 +51,25 @@ otherwise calling a function that no longer exists.
 | prod | not provisioned: the live site runs on the dev row above, in test mode | preprod | tremendous-rooster-473 |
 
 ## SBOM
-`npm sbom --sbom-format cyclonedx` (npm 10+) in the repo root and in `packages/integration` (dual lockfiles).
+`bun run build` writes `dist/sbom.cdx.json` (CycloneDX 1.5, one component per
+`bun.lock` entry with its sha512). `npm sbom` does NOT work in the repo root:
+there is no `package-lock.json` there, only `bun.lock`, so npm fails with
+`ESBOMPROBLEMS`. It does work in `packages/integration`, which has its own
+`package-lock.json` (356 components).
+
+## Deploy provenance
+`dist/deploy.json` records the commit a deployment was built from. A
+git-connected build takes it from `VERCEL_GIT_COMMIT_SHA`; a CLI upload falls
+back to the checkout. `dirty` counts only TRACKED changes, so an untracked
+scratch file cannot make a reproducible build look unreproducible.
+
+All eight deployments before 2026-10-28 carried `gitDirty: "1"` and
+`source: "cli"`, because `build` read the gitignored
+`packages/contract/generated/compile-receipt.json` to name the artifact
+version. A clean checkout has no receipt, so the build failed and every deploy
+had to be uploaded from a dirty laptop tree. The version now comes from the
+tracked `packages/contract/src/order.compact`, which is the file the receipt
+hashes.
 
 ## PR3/PR4 addendum (Reliability + Chain ops)
 
