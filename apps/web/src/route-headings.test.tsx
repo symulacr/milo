@@ -167,7 +167,13 @@ describe("a tab open across a deploy", () => {
   // which returns `{status:"error", error}` instead of throwing. The cache
   // holds the raw value (an `Error` here) and the mock turns it into the state
   // the real hook would return, so this still drives the route, not the mock.
-  test("a failed orders query says to reload instead of throwing", async () => {
+  // R38: this test used to assert the DEFECT. Its fixture is a server error
+  // ("Server Error: not found"), not a replaced chunk, yet it demanded
+  // "Milo may have been updated while this tab was open" — telling a user their
+  // tab was stale when the server had actually failed, and offering a reload as
+  // the only remedy. The stated intent (do not throw a TypeError from
+  // `orders.map`) is kept; the copy assertion is corrected.
+  test("a server error says what failed, not that the tab is stale", async () => {
     const { Orders } = await import("./routes/Orders");
     const key = JSON.stringify([getFunctionName(api.orders), {}]);
     const previous = QUERIES.get(key);
@@ -177,10 +183,34 @@ describe("a tab open across a deploy", () => {
     );
     try {
       const markup = render("/orders", <Orders />);
-      expect(markup).toContain("Reload");
-      expect(markup).toMatch(/updated while this tab was open/i);
+      expect(markup).toContain("Orders did not load");
+      expect(markup).toContain("Try again");
+      // The wrong diagnosis must not come back.
+      expect(markup).not.toMatch(/updated while this tab was open/i);
       // The old failure mode: a TypeError from `orders.map` inside the boundary.
       expect(markup).not.toContain("The order service is not available");
+    } finally {
+      if (previous === undefined) QUERIES.delete(key);
+      else QUERIES.set(key, previous);
+    }
+  });
+
+  // The other half: a genuinely replaced chunk still gets the stale-tab copy,
+  // because for that failure a reload IS the fix.
+  test("a replaced chunk still says the tab is old", async () => {
+    const { Orders } = await import("./routes/Orders");
+    const key = JSON.stringify([getFunctionName(api.orders), {}]);
+    const previous = QUERIES.get(key);
+    QUERIES.set(
+      key,
+      new Error(
+        "Failed to fetch dynamically imported module: /assets/Orders-abc.js",
+      ),
+    );
+    try {
+      const markup = render("/orders", <Orders />);
+      expect(markup).toMatch(/older than the current version/i);
+      expect(markup).toContain("Reload");
     } finally {
       if (previous === undefined) QUERIES.delete(key);
       else QUERIES.set(key, previous);

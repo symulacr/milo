@@ -6,9 +6,19 @@ import { PageTitle } from "../components/PageTitle";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Loading, Mark } from "../components/ui/status";
+import { errorText } from "../components/workspace";
 import { badgeTone, usd, useAgo } from "../lib/format";
 import { StaleBuild, useMe } from "../workspace/backend";
 import { STAGE_LABEL, yourTurn } from "../workspace/stages";
+
+/**
+ * A dynamic import that 404'd because the deploy replaced the chunk. Kept in
+ * sync with `ServiceBoundary`'s copy by intent: both answer "is this a stale
+ * tab or a real fault?". A query error is a value here rather than a throw, so
+ * the boundary cannot classify it for us.
+ */
+const CHUNK_LOAD =
+  /dynamically imported module|Importing a module script failed/i;
 
 const ROW =
   "grid grid-cols-[minmax(0,1fr)] items-center gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_130px_90px_90px] md:gap-y-1";
@@ -54,13 +64,36 @@ export function Orders() {
   // the branch reachable. It is the installed client's own API — no new
   // dependency, no wrapper.
   const state = useQuery({ query: api.orders, args: {} });
-  if (state.status === "error")
+  if (state.status === "error") {
+    // R38: this used to say "Milo may have been updated" for EVERY error, so a
+    // dropped connection or an expired session was reported as a stale tab and
+    // the only offered remedy was a reload that could not help. The boundary
+    // (`ServiceBoundary`) already separates the two cases; this is the same
+    // distinction at the query level, where the error is a value not a throw.
+    const message = errorText(state.error);
+    if (CHUNK_LOAD.test(message))
+      return (
+        <StaleBuild
+          title="Milo was updated"
+          body="This tab is older than the current version. Reload to get it."
+        />
+      );
     return (
-      <StaleBuild
-        title="Orders did not load"
-        body="Milo may have been updated while this tab was open. Reload to get the current version."
-      />
+      <div className="grid gap-2 rounded-lg bg-card p-8">
+        <h2 className="text-lg font-semibold">Orders did not load</h2>
+        <p role="alert" className="text-sm text-destructive">
+          {message}
+        </p>
+        <Button
+          variant="outline"
+          className="w-fit"
+          onClick={() => location.reload()}
+        >
+          Try again
+        </Button>
+      </div>
     );
+  }
   const orders = state.status === "success" ? state.data : undefined;
   return (
     <>

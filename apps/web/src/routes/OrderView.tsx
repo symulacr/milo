@@ -563,7 +563,13 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               <Textarea
                 className="mt-2"
                 aria-label="Reason"
-                placeholder="Give at least 10 characters. The other party reads this."
+                // R38: this said "The other party reads this", which is false.
+                // The note is hashed in the browser (`flows.ts` evidenceOf) and
+                // only the digest is signed, so no screen can show the text —
+                // not the studio's, not the operator's, not even this one after
+                // the draft is cleared. The note's real job is to be the thing
+                // the buyer hashed, which is what makes the digest repeatable.
+                placeholder="Give at least 10 characters. Only its SHA-256 digest is recorded, so keep your own copy — no one can read the text back."
                 minLength={10}
                 value={note}
                 onChange={(event) => {
