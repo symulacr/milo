@@ -450,6 +450,14 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               <MorphIcon icon={Clock} reducedMotion="user" />
               {deadline.label} {shortDate(deadline.at)} ·{" "}
               <span
+                // Z-05: the countdown changes every 30 s, and a screen reader
+                // user was told the deadline once and then nothing. `aria-live`
+                // announces the change; `polite` because it is not urgent and
+                // must not interrupt the action buttons. The absolute time is
+                // already in the sentence, so the live region only needs the
+                // relative part — that is what actually changes.
+                aria-live="polite"
+                aria-atomic="true"
                 className={cn(
                   "tabular-nums",
                   deadline.at <= now && "font-semibold text-destructive",
@@ -648,6 +656,19 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 </Link>
               </Button>
             </div>
+          )}
+          {key && order.role !== "operator" && (
+            // U-13: the key lives in ONE browser's storage, and the backup is
+            // already the honest cross-device carrier — PBKDF2 + AES-GCM, made
+            // on the device and never sent to the server. The gap was that
+            // nothing told a buyer to make one at the moment they got a key, so
+            // the first time they learned it mattered was when the mail app
+            // opened the order in a webview that had none (U-02). One sentence,
+            // next to the badge, at the only moment it is cheap to act on.
+            <Note>
+              This key lives only in this browser. Download a backup if you
+              might open the order on another device.
+            </Note>
           )}
         </Card>
       </div>

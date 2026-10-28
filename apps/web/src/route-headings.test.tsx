@@ -1631,3 +1631,57 @@ describe("U-02 a browser without the key is told why", () => {
     expect(source().includes("Restore your key backup")).toBe(true);
   });
 });
+
+describe("U-13 the buyer is told to back up the key while it is cheap", () => {
+  // The key lives in one browser. The backup is already the honest cross-device
+  // carrier (PBKDF2 + AES-GCM, made locally, never sent to the server), but
+  // nothing told a buyer to make one when they got a key — so the first time
+  // they learned it mattered was when a webview had none (U-02).
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("the warning sits next to the key badge", () => {
+    const text = source();
+    expect(text.includes("This key lives only in this browser")).toBe(true);
+    // It must be conditional on having a key, or it nags a buyer who has none.
+    expect(text.includes('key && order.role !== "operator" &&')).toBe(true);
+  });
+
+  test("it points at the backup, which is the cross-device path", () => {
+    expect(source().includes("Download a backup if you")).toBe(true);
+  });
+});
+
+describe("Z-03 a deadline names its time zone", () => {
+  // The chain stores absolute UTC seconds. The formatter rendered in the
+  // device's zone but printed no zone, so a buyer in Tokyo and a studio in
+  // London saw the same numbers meaning different instants.
+  test("the rendered stamp carries a zone", async () => {
+    const { shortDate } = await import("./lib/format");
+    const at = Date.UTC(2026, 9, 21, 14, 30) / 1000;
+    const text = shortDate(at);
+    // A zone name, not just the clock time: "BST", "GMT+9", "UTC", etc.
+    expect(text).toMatch(/[A-Z]{2,5}|GMT[+-]\d/);
+    // And the time itself is still there.
+    expect(text).toMatch(/\d{1,2}:\d{2}/);
+  });
+});
+
+describe("Z-05 the countdown is announced", () => {
+  // The countdown changes every 30 s. A screen reader user was told the
+  // deadline once and then nothing.
+  const source = () =>
+    readFileSync("apps/web/src/routes/OrderView.tsx", "utf8");
+
+  test("the changing text is a polite live region", () => {
+    const text = source();
+    expect(text.includes('aria-live="polite"')).toBe(true);
+    expect(text.includes('aria-atomic="true"')).toBe(true);
+  });
+
+  test("it is polite, not assertive", () => {
+    // Assertive would interrupt the action buttons, which are the thing the
+    // user is trying to reach.
+    expect(source().includes('aria-live="assertive"')).toBe(false);
+  });
+});

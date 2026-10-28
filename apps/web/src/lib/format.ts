@@ -7,11 +7,23 @@ const money = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+/**
+ * A deadline, shown in the reader's own time zone **with the zone named**.
+ *
+ * Z-03: the chain stores deadlines as absolute UTC seconds, and this formatter
+ * had no `timeZone`, so it rendered in the device's zone. That is the right
+ * choice for a person reading a deadline — but it printed only "21 Oct, 14:30",
+ * so a buyer in Tokyo and a studio in London saw the same numbers meaning
+ * different instants, and neither could tell which. Adding `timeZoneName` makes
+ * the two agree without forcing everyone onto UTC, which would be worse for the
+ * common case (a buyer reading their own deadline).
+ */
 const stamp = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
   month: "short",
   hour: "2-digit",
   minute: "2-digit",
+  timeZoneName: "short",
 });
 
 const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
