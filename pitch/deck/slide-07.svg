@@ -5,10 +5,11 @@
   <text x="80" y="155" font-family="Georgia, serif" font-size="36" fill="#1c1917">Dual-state, published honestly</text>
   <rect x="80" y="210" width="540" height="300" rx="12" fill="#ecfdf5" stroke="#34d399"/>
   <text x="110" y="260" font-family="system-ui, sans-serif" font-size="18" fill="#047857">WHAT IS PROVEN (execution)</text>
-  <text x="110" y="315" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">Network: Midnight Preprod</text>
-  <text x="110" y="360" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">14 / 14 circuits exercised</text>
-  <text x="110" y="405" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">Latest state tx + block verified</text>
-  <text x="110" y="450" font-family="system-ui, sans-serif" font-size="18" fill="#065f46">Source: RECEIPTS.md (indexer GraphQL)</text>
+  <text x="110" y="315" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">Preprod: 2 contracts, 14 keys each</text>
+  <text x="110" y="360" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">Local lane: 14 / 14 exercised</text>
+  <text x="110" y="405" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">Preprod: reserve + accept proved</text>
+  <text x="110" y="440" font-family="system-ui, sans-serif" font-size="20" fill="#064e3b">State tx + block re-queried</text>
+  <text x="110" y="482" font-family="system-ui, sans-serif" font-size="18" fill="#065f46">Source: RECEIPTS.md + Blockfrost query</text>
   <rect x="660" y="210" width="540" height="300" rx="12" fill="#fef2f2" stroke="#f87171"/>
   <text x="690" y="260" font-family="system-ui, sans-serif" font-size="18" fill="#b91c1c">WHAT IS NOT YET (acceptance)</text>
   <text x="690" y="315" font-family="system-ui, sans-serif" font-size="20" fill="#7f1d1d">Provider acceptance 0 / 6</text>
