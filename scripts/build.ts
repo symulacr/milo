@@ -251,14 +251,19 @@ const git = (args: string[]) => {
   const run = Bun.spawnSync(["git", ...args]);
   return run.exitCode === 0 ? run.stdout.toString().trim() : "";
 };
+const HEAD = ["rev-parse", "HEAD"];
+const BRANCH = ["branch", "--show-current"];
 const env = process.env;
 await Bun.write(
   `${outdir}/deploy.json`,
   `${JSON.stringify(
     {
-      commit: env.VERCEL_GIT_COMMIT_SHA || git(["rev-parse", "HEAD"]) || null,
+      // VERCEL_GIT_* on Vercel, GITHUB_* on Actions, else the checkout. CI checks
+      // out a detached HEAD, where `git branch --show-current` prints nothing, so
+      // without GITHUB_REF_NAME every CI build stamped `branch: null`.
+      commit: env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA || git(HEAD) || null,
       branch:
-        env.VERCEL_GIT_COMMIT_REF || git(["branch", "--show-current"]) || null,
+        env.VERCEL_GIT_COMMIT_REF || env.GITHUB_REF_NAME || git(BRANCH) || null,
       dirty: git(["status", "--porcelain", "--untracked-files=no"]) !== "",
       builtAt: new Date().toISOString(),
     },

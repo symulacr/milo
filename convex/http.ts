@@ -109,7 +109,11 @@ export function summariseCspReport(report: unknown): Record<string, string> {
   };
   return {
     type: text(envelope.type) || "csp-violation",
-    directive: text(body["effective-directive"] ?? body.effectiveDirective),
+    directive: text(
+      body["effective-directive"] ??
+        body.effectiveDirective ??
+        body["violated-directive"],
+    ),
     blocked: origin(body["blocked-uri"] ?? body.blockedURL),
     document: origin(body["document-uri"] ?? body.documentURL ?? envelope.url),
   };
@@ -549,8 +553,12 @@ export async function cspReportHandler(
   if (!reports) return codedRefusal("INVALID_INPUT", "Not a CSP report");
   // Bounded: one page can emit a burst, and a log line per report is the point,
   // not a log flood.
-  for (const report of reports.slice(0, 20))
-    console.warn("csp-report", JSON.stringify(summariseCspReport(report)));
+  // The uptime probe marks itself here; it is not a violation (96 WARN/day).
+  for (const report of reports.slice(0, 20)) {
+    const summary = summariseCspReport(report);
+    if (summary.directive === "uptime-probe") continue;
+    console.warn("csp-report", JSON.stringify(summary));
+  }
   // 204: the browser ignores the body, and a body would be one more thing to
   // keep free of the data this handler refuses to store.
   return new Response(null, { status: 204, headers: NO_STORE.headers });

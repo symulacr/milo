@@ -28,8 +28,12 @@ concurrency:
 # green CI run did not mean a green deploy. These are deliberately fake origins:
 # they exist to make CI take the same branch, not to reach anything.
 env:
-  BETTER_AUTH_URL: https://ci.invalid.convex.site
-  CONVEX_URL: https://ci.invalid.convex.cloud
+  # The REAL origins, not placeholders: this job's `dist/` is what gets deployed
+  # to Cloudflare below, and a build with `ci.invalid` would ship a CSP that
+  # points at a host which does not exist.
+  SITE_URL: https://milo.k2jodz91zi.workers.dev
+  BETTER_AUTH_URL: https://tremendous-rooster-473.convex.site
+  CONVEX_URL: https://tremendous-rooster-473.convex.cloud
   MIDNIGHT_NETWORK: preprod
 
 jobs:
@@ -101,12 +105,29 @@ jobs:
       - name: Assert the build used the configured deployment origins
         run: |
           test -f dist/vercel.json
-          grep -q 'ci.invalid.convex.site' dist/vercel.json
+          grep -q 'tremendous-rooster-473.convex.site' dist/vercel.json
           if grep -q 'https://\*\.convex\.cloud' dist/vercel.json; then
             echo 'CSP was left as shipped (wildcard origins): narrowing did not run.' >&2
             exit 1
           fi
+          if grep -q 'ci\.invalid' dist/_headers dist/vercel.json; then
+            echo 'dist/ carries placeholder origins; refusing to pass.' >&2
+            exit 1
+          fi
           echo 'CSP narrowed to the configured origins.'
+
+      - name: Deploy to Cloudflare Workers
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: d3a827e41b99a67dc1fc2169dfdacb30
+        run: |
+          set -eu
+          npm install --no-save --no-audit --no-fund wrangler@4.152.0
+          npx --no-install wrangler deploy \
+            --tag "$GITHUB_SHA" \
+            --message "$GITHUB_SHA $GITHUB_REF_NAME"
 
   # The native Midnight lane needs no container runtime: setup-native-services.py
   # extracts pinned binaries straight from the OCI registry over HTTPS and
@@ -197,7 +218,7 @@ jobs:
       - name: The page answers 200 and is the app, not a parked page
         run: |
           set -eu
-          url=https://milo-nine-delta.vercel.app/
+          url=https://milo.k2jodz91zi.workers.dev/
           code=$(curl -sS -o /tmp/page.html -w '%{http_code}' --max-time 20 "$url")
           echo "$url -> $code"
           test "$code" = 200
@@ -208,7 +229,7 @@ jobs:
       - name: The public config is served and names a Convex deployment
         run: |
           set -eu
-          body=$(curl -sS --max-time 20 https://milo-nine-delta.vercel.app/api/public-config)
+          body=$(curl -sS --max-time 20 https://milo.k2jodz91zi.workers.dev/api/public-config)
           echo "$body"
           echo "$body" | grep -q '"convexUrl":"https://'
           echo "$body" | grep -q '"betterAuthUrl":"https://'
