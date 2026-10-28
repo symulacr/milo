@@ -253,3 +253,28 @@ jobs:
             https://tremendous-rooster-473.convex.site/csp-report)
           echo "convex.site /csp-report -> $code"
           test "$code" = 204
+
+      # The Stripe webhook has a blind spot that nothing else covers: when its
+      # env is missing the handler refuses every delivery with 503 and writes no
+      # inbox row, so no digest entry is ever created and the operator sees
+      # silence rather than a fault. This probe is the only signal.
+      #
+      # It is unauthenticated BY DESIGN: a bogus body must be refused at the
+      # signature gate with 400, which proves the route is registered AND the
+      # secret/account env is present without needing any Stripe key. Measured
+      # live 2026-10-28: 400 healthy, 503 when STRIPE_ACCOUNT_ID is unset, 404
+      # when the route is gone.
+      - name: The Stripe webhook refuses a bogus delivery instead of failing closed
+        run: |
+          set -eu
+          code=$(curl -sS -o /tmp/webhook.json -w '%{http_code}' --max-time 20 \
+            -X POST -H 'content-type: application/json' -d '{}' \
+            https://tremendous-rooster-473.convex.site/webhooks/stripe)
+          echo "convex.site /webhooks/stripe -> $code"
+          cat /tmp/webhook.json; echo
+          case "$code" in
+            400) echo 'signature gate answered: route registered, webhook env present.' ;;
+            503) echo 'STRIPE_WEBHOOK_SECRET or STRIPE_ACCOUNT_ID is unset or malformed on the Convex deployment; every Stripe delivery is being refused and no inbox row is written.' >&2; exit 1 ;;
+            404) echo 'the /webhooks/stripe route is not registered on the Convex deployment (convex/http.ts).' >&2; exit 1 ;;
+            *)   echo "unexpected status $code from /webhooks/stripe; expected 400 (healthy), 503 (env unset) or 404 (route gone)." >&2; exit 1 ;;
+          esac
