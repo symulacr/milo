@@ -14,6 +14,7 @@ import type {
   PrivateStateProvider,
   SigningKeyExport,
 } from "@midnight-ntwrk/midnight-js-types";
+import { deriveAesKey } from "../../../../packages/backend/src/encoding";
 
 type BrowserPrivateStateProvider<PS> = PrivateStateProvider<
   PrivateStateId,
@@ -230,27 +231,8 @@ const exportPassword = (password: string | undefined): string => {
   return password;
 };
 
-const exportKey = async (password: string, salt: Uint8Array) => {
-  const base = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt as BufferSource,
-      iterations: EXPORT_ITERATIONS,
-      hash: "SHA-256",
-    },
-    base,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-};
+const exportKey = (password: string, salt: Uint8Array) =>
+  deriveAesKey(password, salt, EXPORT_ITERATIONS);
 
 /** Seal a payload. The IV is the first 12 payload bytes so the envelope keeps the
  * two fields the SDK types define. */

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deriveAesKey } from "../../../../packages/backend/src/encoding";
 
 const ITERATIONS = 310_000;
 const FORMAT = "milo-order-keys";
@@ -274,27 +275,8 @@ export const writeQuoteDraft = (draft: QuoteDraft) => {
   else storage.clear(QUOTE_DRAFT, "session");
 };
 
-async function derive(password: string, salt: Uint8Array) {
-  const base = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveKey"],
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt as BufferSource,
-      iterations: ITERATIONS,
-      hash: "SHA-256",
-    },
-    base,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
+const derive = (password: string, salt: Uint8Array) =>
+  deriveAesKey(password, salt, ITERATIONS);
 
 /** Seal an arbitrary payload into the backup envelope. */
 export async function sealBackup(payload: unknown, password: string) {

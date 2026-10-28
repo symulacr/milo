@@ -51,3 +51,35 @@ export function timingSafeEqualHex(aHex: string, bHex: string): boolean {
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
 }
+
+/**
+ * PBKDF2-SHA256 -> AES-GCM-256, the one derivation both encrypted blobs use
+ * (`workspace/keys.ts` backups, `chain/private-state.ts` exports). The iteration
+ * count is the caller's policy, so it is a parameter. `extractable: false` keeps
+ * the derived bytes out of JavaScript.
+ */
+export const deriveAesKey = async (
+  password: string,
+  salt: Uint8Array,
+  iterations: number,
+): Promise<CryptoKey> => {
+  const base = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt as BufferSource,
+      iterations,
+      hash: "SHA-256",
+    },
+    base,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+};

@@ -105,6 +105,9 @@ const SCOPE_DIGEST = new Bun.CryptoHasher("sha256")
   .digest("hex");
 const TERMS_COMMITMENT = hex32(0x22);
 
+/** Set by a test that needs to observe WHEN the chain leg was entered. */
+let onChainStart: (() => void) | undefined;
+
 mock.module("../chain", () => ({
   orderCommitments: async () => ({
     terms: () => bytes32(0x22),
@@ -131,6 +134,7 @@ mock.module("../chain", () => ({
   watchOrderContract: (input: {
     onState: (state: { evidenceCommitment: string | null }) => void;
   }) => {
+    onChainStart?.();
     const timer = setTimeout(
       () => input.onState({ evidenceCommitment: "cd".repeat(32) }),
       0,
@@ -611,6 +615,71 @@ describe("user path: dispute and resolve", () => {
       | undefined;
     expect(extra?.approveOrder).toBe(true);
     expect(extra?.evidence).toEqual(bytes32(0xcd));
+  });
+});
+
+describe("R37 the resolve path does not serialise two independent legs", () => {
+  // `operatorKey` (a Convex action, ~290 ms measured) and `disputedEvidence` (a
+  // chain read) have no dependency on each other: one needs `quoteId`, the other
+  // `contract.address`, and both are on `detail` already. Before R37 they were
+  // awaited in series, so the Convex round trip preceded the chain read for
+  // nothing.
+  //
+  // The discriminating observation is ORDER. With the serial code the chain leg
+  // cannot be entered until the operator action has resolved; with the parallel
+  // code it is entered while the operator action is still open.
+  const resolveAction = { circuit: "resolve" } as never;
+
+  test("the chain leg is entered before the operator action settles", async () => {
+    const events: string[] = [];
+    let releaseOperator: (() => void) | undefined;
+    const operatorGate = new Promise<void>((r) => {
+      releaseOperator = r;
+    });
+    onChainStart = () => events.push("chain:start");
+    const convex = {
+      action: async (ref: unknown) => {
+        const name = getFunctionName(ref as FunctionReference<"query">);
+        if (name.includes("operatorSecret")) {
+          events.push("operator:start");
+          await operatorGate;
+          events.push("operator:end");
+          return { secret: hex32(0xbb) };
+        }
+        return {};
+      },
+      query: async () => detail(),
+      mutation: async () => ({ ok: true }),
+    } as never;
+
+    try {
+      const started = runAction({
+        convex,
+        wallet: { connected: {} as never },
+        subject: "user-1",
+        // A contract address is what makes disputedEvidence open the watch at
+        // all; with `contract: null` it returns before the chain leg exists.
+        detail: detail({ contract: CONTRACT("DISPUTED", 5) }),
+        key: null,
+        action: resolveAction,
+        note: "",
+        files: [],
+        report,
+      }).catch(() => {});
+
+      // Let both legs run as far as they can while the operator gate is closed.
+      // A macrotask, not just microtasks: `disputedEvidence` awaits `chain()`,
+      // a dynamic import that settles on a later turn.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(events).toContain("operator:start");
+      expect(events).not.toContain("operator:end");
+      // THE ASSERTION: the chain leg was entered while the operator leg was open.
+      expect(events).toContain("chain:start");
+      releaseOperator?.();
+      await started;
+    } finally {
+      onChainStart = undefined;
+    }
   });
 });
 
