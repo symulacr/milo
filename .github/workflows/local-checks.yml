@@ -7,7 +7,11 @@ on:
   # A $0 uptime check. GitHub's minimum interval is five minutes and a run can
   # slip under load, so this is a backstop, not an SLO instrument.
   schedule:
-    - cron: '*/15 * * * *'
+    # Off the top of the hour on purpose. `*/15` fires at :00, :15, :30 and :45,
+    # and GitHub documents the start of every hour as a high-load window where
+    # `schedule` events are delayed and, under load, dropped. This is the same
+    # four ticks an hour at minutes that the docs recommend instead.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -44,6 +48,12 @@ env:
 jobs:
   local-checks:
     name: Compiler, local tests and build (Node 26.11.1 / Bun 1.4.2)
+    # A `schedule` tick exists to probe the live site, not to re-run the suite.
+    # Measured on the one real tick (run 40697404925): this job 49 s, the native
+    # lane 280 s, the probe 4 s. Ninety-six ticks a day at that size is 7.5
+    # runner-hours for four seconds of work, and a cron that heavy is the first
+    # thing a busy scheduler drops. Push and PR runs are unchanged.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -148,6 +158,9 @@ jobs:
   # the `local-checks` job above.
   native-network:
     name: Native Midnight smoke (no container runtime)
+    # Same reason as `local-checks`: this job is the whole 280 s tick, and the
+    # probe needs none of it. A schedule tick now runs only `uptime`.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
