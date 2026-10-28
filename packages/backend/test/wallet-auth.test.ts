@@ -306,6 +306,31 @@ describe("wallet sign-in message", () => {
       }
     });
 
+    // R42: `SITE_URL` may be a comma-separated list (the deploy sets several
+    // origins). `canonicalSiteUrl` takes the FIRST entry, so the audience is the
+    // first origin and is deterministic — a wallet message built under the list
+    // must be byte-identical to one built under that origin alone. Without a
+    // test, a future change to the split order would silently move the audience.
+    test("a list of origins uses the first, deterministically", async () => {
+      const list = "https://milo-nine-delta.vercel.app,https://milo.app";
+      const first = "https://milo-nine-delta.vercel.app";
+      await withSite(list, async () => {
+        expect(walletMessageDomain()).toBe("milo-nine-delta.vercel.app");
+        const underList = buildWalletSignInMessage(request);
+        // Same audience as the first origin alone.
+        await withSite(first, async () => {
+          expect(buildWalletSignInMessage(request)).toBe(underList);
+          expect(parseWalletSignInMessage(underList)).toEqual(request);
+        });
+      });
+    });
+
+    test("spaces around a list entry do not change the audience", async () => {
+      await withSite(" https://a.example , https://b.example ", async () => {
+        expect(walletMessageDomain()).toBe("a.example");
+      });
+    });
+
     test("an unset origin falls back to the old literal, not to a crash", async () => {
       await withSite(undefined, async () => {
         expect(walletMessageDomain()).toBe(WALLET_MESSAGE_DOMAIN);

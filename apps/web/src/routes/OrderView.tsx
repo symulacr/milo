@@ -578,8 +578,8 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 <Note>
                   The client did give a reason, but this browser cannot open it:
                   the key for this order no longer matches the one it was sealed
-                  to. The digest on chain is still the client&apos;s, so decide
-                  on the delivery itself.
+                  to, and it cannot be recovered. The digest on chain is still
+                  the client&apos;s, so decide on the delivery itself.
                 </Note>
               ) : (
                 <>

@@ -578,22 +578,6 @@ export async function readDisputeNote(
   };
 }
 
-async function operatorKey(
-  convex: Convex,
-  detail: OrderDetail,
-): Promise<OrderKey> {
-  const result = await convex.action(api.operatorSecret, {
-    quoteId: detail.quoteId,
-  });
-  if (!("secret" in result)) throw new Error(result.reason);
-  return {
-    quoteId: detail.quoteId,
-    actor: "operator",
-    secret: result.secret,
-    nonce: detail.chain.orderNonce,
-  };
-}
-
 export async function runAction(input: {
   readonly convex: Convex;
   readonly wallet: Signer;
@@ -634,7 +618,17 @@ export async function runAction(input: {
   const [signing, found] =
     circuit === "resolve"
       ? await Promise.all([
-          operatorKey(convex, detail),
+          convex
+            .action(api.operatorSecret, { quoteId: detail.quoteId })
+            .then((r) => {
+              if (!("secret" in r)) throw new Error(r.reason);
+              return {
+                quoteId: detail.quoteId,
+                actor: "operator" as const,
+                secret: r.secret,
+                nonce: detail.chain.orderNonce,
+              };
+            }),
           disputedEvidence(wallet, detail),
         ])
       : [key, null];
