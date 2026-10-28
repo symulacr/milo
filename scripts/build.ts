@@ -8,7 +8,12 @@ import {
   workspaceAppRoutes,
   zkVersion,
 } from "../apps/web/src/route-table";
-import { narrowCsp, publicConfig } from "../packages/backend/src/public-config";
+import {
+  cloudflareHeaders,
+  cloudflareRedirects,
+  narrowCsp,
+  publicConfig,
+} from "../packages/backend/src/public-config";
 import { wasmBindings } from "./wasm-bindings-plugin";
 
 const browserConfig = publicConfig(process.env);
@@ -322,6 +327,13 @@ if (browserConfig.betterAuthUrl)
   narrowCsp(manifest, browserConfig, Boolean(process.env.PROVER_SERVER_URI));
 else console.warn("CSP left as shipped: no BETTER_AUTH_URL configured.");
 await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+// Cloudflare reads `_headers`/`_redirects` from the asset directory. Both are
+// generated from the manifest just narrowed above, so the policy the site ships
+// has one source and cannot drift into a hand-maintained second copy. They are
+// build output, not repo files: the CSP origins differ per deployment.
+await Bun.write(`${outdir}/_headers`, cloudflareHeaders(manifest, zkVersion));
+await Bun.write(`${outdir}/_redirects`, cloudflareRedirects(manifest));
 
 // Artifacts are addressed by circuit name alone, so replacing them in place
 // would silently swap the keys an already-deployed order was created with.

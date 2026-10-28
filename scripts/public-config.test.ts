@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import {
   CSP_REPORT_PATH,
   CSP_REPORT_PLACEHOLDER,
+  cloudflareHeaders,
+  cloudflareRedirects,
   narrowCsp,
   publicConfig,
   publicConfigResponse,
@@ -511,6 +513,78 @@ describe("CSP narrowing", () => {
     expect(workflow).toContain(
       "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
     );
+  });
+
+  // Cloudflare's `_headers` has no regex and JOINS a repeated header instead of
+  // replacing it, so the translation from vercel.json is not a syntax swap:
+  // a narrower rule must detach the catch-all or the browser sees
+  // `must-revalidate, immutable` and honours neither.
+  describe("Cloudflare _headers", () => {
+    // The REAL manifest, not the three-header stub above: the translation is
+    // about the whole rule set (catch-all, zk, wasm, js, css, api).
+    const generated = () => {
+      const manifest = JSON.parse(
+        readFileSync("apps/web/public/vercel.json", "utf8"),
+      ) as ReturnType<typeof shipped>;
+      narrowCsp(manifest, config, false);
+      return cloudflareHeaders(manifest, "453af640523557a4");
+    };
+
+    test("a narrower Cache-Control detaches the catch-all", () => {
+      const out = generated();
+      const blocks = out.split(/\n(?=\S)/);
+      const wasm = blocks.find((b) => b.startsWith("/*.wasm")) ?? "";
+      expect(wasm).toContain("! Cache-Control");
+      expect(wasm).toContain("immutable");
+      // The catch-all is the broadest rule: nothing to detach, and emitting a
+      // detach there would strip its own value.
+      const all = blocks.find((b) => b.split("\n")[0] === "/*") ?? "";
+      expect(all).not.toContain("! Cache-Control");
+    });
+
+    test("the versioned zk path is literal, because the version is known", () => {
+      const out = generated();
+      expect(out).toContain("/zk/453af640523557a4/*");
+      expect(out).not.toContain("([0-9a-f]{16})");
+      expect(out).toContain("immutable");
+    });
+
+    test("a regex Cloudflare cannot express is dropped, not approximated", () => {
+      // `-(8 hex).(webp|png)` has no _headers spelling. Dropping it leaves those
+      // files on the catch-all, which is what the live site serves today.
+      expect(generated()).not.toContain("[a-z0-9]{8}");
+      expect(generated()).not.toContain(".webp");
+    });
+
+    test("the policy and the report endpoint survive the translation", () => {
+      const out = generated();
+      expect(out).toContain("Content-Security-Policy-Report-Only: default-src");
+      expect(out).toContain(
+        `Reporting-Endpoints: default="https://deploy.convex.site`,
+      );
+      expect(out).toContain("report-to csp-endpoint");
+      expect(out).not.toContain("placeholder");
+      expect(out).toContain("Permissions-Policy: camera=()");
+      expect(out).toContain("Cache-Control: no-store");
+    });
+  });
+
+  // `_redirects` proxies to a DIRECTORY, not to `index.html`: naming the file
+  // makes wrangler reject the rule as an infinite loop, because the proxy
+  // re-triggers the `.html` strip. Measured: `/orders/* /orders 200` answers 200
+  // for `/orders/abc`, which is the Vercel behaviour.
+  test("Cloudflare _redirects mirrors vercel.json and proxies to a directory", () => {
+    const manifest = JSON.parse(
+      readFileSync("apps/web/public/vercel.json", "utf8"),
+    ) as {
+      redirects: { source: string; destination: string; permanent: boolean }[];
+      rewrites: { source: string; destination: string }[];
+    };
+    const out = cloudflareRedirects(manifest);
+    for (const rule of manifest.redirects)
+      expect(out).toContain(`${rule.source} ${rule.destination} 308`);
+    expect(out).toContain("/orders/* /orders 200");
+    expect(out).not.toContain("index.html 200");
   });
 
   test("refuses to ship a policy that still points at the placeholder", () => {

@@ -1,0 +1,21 @@
+# Cloudflare Workers static assets. This replaces the previous `wrangler.toml`,
+# which was a Cloudflare **Pages** config (`pages_build_output_dir`) for a
+# **Workers** target with no `assets` block, so `wrangler deploy` rejected it.
+#
+# There is no `main`: the site is entirely static, so no Worker script is
+# uploaded and no request is billable. Cloudflare serves assets for free and
+# without a daily request cap; only a Worker invocation counts against the
+# 100,000/day free limit, and this config never invokes one.
+name = "milo"
+compatibility_date = "2026-10-19"
+
+[assets]
+directory = "./dist"
+# `404-page` serves dist/404.html with a real 404 status, which is what Vercel
+# does for an unknown path (measured: /this-path-does-not-exist -> 404).
+not_found_handling = "404-page"
+# Vercel serves /privacy and /privacy/ both at 200. `drop-trailing-slash` is the
+# only mode that answers /privacy with 200 without a redirect; `auto-` would 307
+# it to /privacy/. The cost is that /privacy/ 307s back, which Vercel answers
+# 200 — recorded in the cutover plan as the one accepted difference.
+html_handling = "drop-trailing-slash"
