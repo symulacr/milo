@@ -58,9 +58,9 @@ DEPLOYED → RESERVED → ACCEPTED → SUBMITTED → APPROVED
 
 ### Deployed on Preprod
 
-Two contracts are live on Midnight Preprod, each carrying all 14 proof circuits. Every hash
-below was read back from the Blockfrost indexer, so each one is queryable — none is copied
-from a local log.
+Three contracts are live on Midnight Preprod, each carrying all 14 proof circuits. Every hash
+below was read back from the Blockfrost indexer (`https://midnight-preprod.blockfrost.io/api/v0`),
+so each one is queryable — none is copied from a local log.
 
 **Deployment is not one transaction per circuit.** The staged 7+7 deploy installs verifier
 *keys*: one transaction deploys seven, a second maintenance transaction installs the remaining
@@ -69,18 +69,21 @@ a separate transaction and does get its own hash, listed separately below.
 
 | Contract | Address | Deploy tx hash (7 keys) | Insert tx hash (7 keys) |
 |---|---|---|---|
-| Main | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` | `1c094210cb96316ad28887f9b8f45dfbcec3bb2648973bd717beb708e3de5ca9` |
-| Stress instance 0 | `6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee` | `e12bf102ed4874e241f4fde8d1d90f3de964f7c57283869335603f33c3572a56` | `6ad37524c6d57b43d645679210ddf85d4f173b1f2effcb64361248a85454b40e` |
+| Main | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` (block 3095265) | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` (block 3095269) |
+| Stress instance 0 | `6d97d92e1c9f1030f8410682c47902efa600f9f42dd79b9e8a89b3fe6b84c6ee` | `923eb10651212f347c822d9d5c9a2afe075c0951ae30523e263118581765b1e3` (block 3095433) | `e12bf102ed4874e241f4fde8d1d90f3de964f7c57283869335603f33c3572a56` (block 3095437) |
 
 Both read back as 14 operations with maintenance counter 1, which is the on-chain evidence that
 exactly one insert ran per contract.
 
-Circuit calls executed on Preprod, each its own transaction:
+Circuit calls executed on Preprod, each its own transaction. **Both call a third contract,
+`76a8579a…`, not either instance above** — it was deployed at block 3095485
+(`f7ba647d04a0e08133f81ed11f2ffab081ac7b7b2c29236073f25634f0321ef7`) and its insert ran at
+block 3095488 (`c4e5b5f9790376daa71bc97d885b2f4a9af7f6dc70e4979f2a91d998eace20bf`):
 
 | Circuit | Contract | Tx hash | Block |
 |---|---|---|---|
-| `reserve` | stress instance 0 | `274434a3198edff00f874586c4b06d6234cd9ae1db6707d892e173a876bc8406` | 3095493 |
-| `accept` | stress instance 0 | `d27943872ad6e73ef84831afab4d97473e1b332c373bffd4c17378e34f12b27f` | 3095499 |
+| `reserve` | `76a8579af8b558e4e6daf11f547f2329033c9a5280c68bb093ab5218f0e92798` | `274434a3198edff00f874586c4b06d6234cd9ae1db6707d892e173a876bc8406` | 3095493 |
+| `accept` | `76a8579af8b558e4e6daf11f547f2329033c9a5280c68bb093ab5218f0e92798` | `d27943872ad6e73ef84831afab4d97473e1b332c373bffd4c17378e34f12b27f` | 3095499 |
 
 Read any of them yourself:
 

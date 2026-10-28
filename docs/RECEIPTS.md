@@ -1,8 +1,15 @@
 # RECEIPTS.md
 
-Verified against Midnight Preprod indexer GraphQL  
-`https://indexer.preprod.midnight.network/api/v4/graphql`  
-Read date: 2026-10-22. Method: `contractAction(address:)` + `block.height`.
+Verified against the Midnight Preprod indexer, served by **Blockfrost** since the
+Midnight-hosted endpoints were decommissioned on 2026-10-09:
+
+`https://midnight-preprod.blockfrost.io/api/v0` (GraphQL, `project_id` header)
+
+Re-verified 2026-10-28 at tip block 3,174,370. Method: `block(offset:{height})` +
+`contractAction(address:)` + `transactions(offset:{hash})`.
+
+The old host `https://indexer.preprod.midnight.network/api/v4/graphql` now answers
+**HTTP 410 `ENDPOINT_DECOMMISSIONED`** and cannot be used to re-run any query below.
 
 ## On-chain facts
 
@@ -11,9 +18,10 @@ Read date: 2026-10-22. Method: `contractAction(address:)` + `block.height`.
 | Network | Midnight Preprod | VERIFIED-ONCHAIN |
 | Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` | VERIFIED-ONCHAIN |
 | Latest action type | `ContractDeploy` + one `ContractUpdate` (staged 7+7) | VERIFIED-ONCHAIN |
-| Deploy tx | `000516b28419ab4ab957d6411cf957fb2be472bd8c5eaae7bc1afe784d2070da23` | VERIFIED-ONCHAIN |
-| Maintenance insert tx | `00b80c3ad0e375cb2373a6514996c1a72c5d3356b48c3a1b8a1bd1db640562e0e5` | VERIFIED-ONCHAIN |
-| Block height (state) | `3095269` | VERIFIED-ONCHAIN |
+| Deploy tx (7 keys) | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` | VERIFIED-ONCHAIN |
+| Maintenance insert tx (7 keys) | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` | VERIFIED-ONCHAIN |
+| Deploy block | `3095265` (`ContractDeploy`) | VERIFIED-ONCHAIN |
+| Insert block | `3095269` (`ContractUpdate`) | VERIFIED-ONCHAIN |
 | Network label in state | `preprod` (ASCII in contract state) | VERIFIED-ONCHAIN |
 | Circuit names in state | reserve, accept, submitDelivery, approve, cancelReserved, decline, disputeBuyer, disputeMerchant, resolve, expireBootstrap, expireReserved, expireUndelivered, expireDispute, escalateUnreviewed | VERIFIED-ONCHAIN (state bytes) |
 
@@ -21,19 +29,33 @@ Read date: 2026-10-22. Method: `contractAction(address:)` + `block.height`.
 
 | Variant | SHA256 | Origin | Verdict |
 |---|---|---|---|
-| **canonical** | `0bede3fbadbda00410db4888394f430fd327f89dd868714fb93f23da12096fe0` | git `1188413` seal wave-5 (current tree) | **USE THIS** |
+| **current tree** | `453af640523557a44e75c7feb0b827e76d279898ff53d72997bf91740605d23e` | `sha256(packages/contract/src/order.compact)` at `fe838ad` | **USE THIS** |
+| historical anchor | `0bede3fbadbda00410db4888394f430fd327f89dd868714fb93f23da12096fe0` | git `1188413` seal wave-5 | superseded by two contract fixes |
 | older | `8fe02a3949879a87cead236e92414449b2b4ece614d03783b6012cf4ca67bd96` | git `9689fae` v0.0.1 (zip baseline) | superseded |
 | mid | `a8c6f3f5…` | git `61182c4` seal constructor | intermediate |
 
-History: `9689fae` → `61182c4` → `1188413`.  
-Delta sealed variant vs v0.0.1 is `export sealed ledger` on protocolVersion/configuration.  
-**Preprod identity vs source keys:** UNREACHABLE to full verifier-key compare this session (state dump is ledger, not vk hashes). State is live and names match 14 circuits. **Verdict: canonical `0bede3fb`.**
+History: `9689fae` → `61182c4` → `1188413` → … → `453af640…`.  
+Delta sealed variant vs v0.0.1 is `export sealed ledger` on protocolVersion/configuration.
+
+**How the current hash is obtained:** `sha256sum packages/contract/src/order.compact`. It equals
+`sourceSha256` in `packages/contract/generated/compile-receipt.json`, which is what
+`scripts/compile-contract.ts:52` compares against to decide the artifacts are current. The receipt
+is gitignored (`.gitignore:72`), so recompute the hash rather than trusting the file.
+
+`0bede3fb…` was the anchor **before** the two contract fixes that `COHORT-UPGRADE.md:15-20` records
+(immutable dispute evidence, merchant dispute deadline). It is a historical identity, not this
+tree's.
+
+**Preprod identity vs source keys:** UNREACHABLE to a full verifier-key compare (the state dump is
+ledger, not vk hashes). State is live and names match 14 circuits. **Verdict: current tree is
+`453af640…`.**
 
 ## Execution vs acceptance
 
 | Metric | Value | Note |
 |---|---|---|
-| Circuits exercised on Preprod | 14 / 14 (prior CHANGELOG + state names) | execution |
+| Circuits exercised on Preprod | **2 / 14** — `reserve` (block 3095493) and `accept` (block 3095499), both on `76a8579a…`, each its own transaction | execution |
+| Circuits exercised on the local native lane | 14 / 14 | execution |
 | Provider acceptance | 0 / 6 | acceptance |
 | Operation acceptance | 0 / 14 | acceptance |
 
@@ -114,7 +136,7 @@ transaction is listed here: the retained 2026-09-30 receipts record `"status":"f
 | DUST seed snapshot | `wallet-state/dust.json`, roots verified, cutoff 1575327 | VERIFIED |
 | Wallet-state verify | 16/16 PASS, UTXO crosscheck 7=7 | VERIFIED |
 | Happy-path tx hashes | none (deploy failed: `could not balance dust`) | **NOT LANDED** |
-| Indexer read-back | `ContractUpdate` `5ce74cb9…` block 2639638; tip 2770140 | VERIFIED-ONCHAIN |
+| Indexer read-back | `ContractUpdate` `5ce74cb9…` block 2639638; tip 2770140 — **historical**: this is the failed 2026-09-30 attempt, not the landed deploy | VERIFIED-ONCHAIN at the time |
 | Ingest (deployment) | `observationIngest:recordDeployment` → `{"kind":"recorded","observationId":"obs_d2c_preprod_1"}` | VERDICT: recorded |
 | Ingest (chain) | `orders:recordObservation` missing on Convex | VERDICT: blocked |
 | Label | SDK-connector / harness | — |
@@ -130,10 +152,11 @@ transaction the node had accepted. Fixed in `packages/integration/src/config.mjs
 | Fact | Value |
 |---|---|
 | Contract address | `09e354f97d420926bb8dd48fa27c2f73ae55bb429201586085ccd8dc8f184fdb` |
-| Deploy tx | `000516b28419ab4ab957d6411cf957fb2be472bd8c5eaae7bc1afe784d2070da23` (7 circuits) |
-| Maintenance insert tx | `00b80c3ad0e375cb2373a6514996c1a72c5d3356b48c3a1b8a1bd1db640562e0e5` (7 circuits) |
+| Deploy tx | `bbc03f926d42981a08461463d9e9d8361c9702c94e69e6a27362eb488797e294` (7 keys) |
+| Maintenance insert tx | `c854587f35e53191797af8d2d79ff8440d82bc7d1770494c87d9951b9ae36e50` (7 keys) |
 | Receipt status | `complete` |
-| On-chain block | 3095269 |
+| Deploy block | 3095265 (`ContractDeploy`) |
+| Insert block | 3095269 (`ContractUpdate`) |
 | State | 54,590 hex chars, header `midnight:contract-state[v6]:` |
 | Circuits read back | **14 / 14** via `ContractState.deserialize(...).operations()` |
 | Maintenance authority | threshold 1, counter 1 |
@@ -141,8 +164,19 @@ transaction the node had accepted. Fixed in `packages/integration/src/config.mjs
 | Fee estimate | 1 speck (the `additionalFeeOverhead` 0.3 DUST is a margin, not the fee) |
 
 **Deployment is not execution.** All fourteen keys are installed and the state deserializes,
-which proves the staged 7+7 path works end to end. No circuit has been *called* on Preprod, so
-execution remains 0/14 there. The 14/14 execution figure belongs to the local native lane.
+which proves the staged 7+7 path works end to end.
+
+Two circuits have since been *called* on Preprod, each its own transaction, both on the separate
+contract `76a8579af8b558e4e6daf11f547f2329033c9a5280c68bb093ab5218f0e92798` (deployed at block
+3095485, tx `f7ba647d04a0e08133f81ed11f2ffab081ac7b7b2c29236073f25634f0321ef7`):
+
+| Circuit | Tx | Block |
+|---|---|---|
+| `reserve` | `274434a3198edff00f874586c4b06d6234cd9ae1db6707d892e173a876bc8406` | 3095493 |
+| `accept` | `d27943872ad6e73ef84831afab4d97473e1b332c373bffd4c17378e34f12b27f` | 3095499 |
+
+So Preprod execution is **2 / 14**, not 0. The 14/14 execution figure belongs to the local native
+lane.
 
 ## Preprod genesis replay (make the funded wallet spendable)
 

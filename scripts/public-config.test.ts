@@ -401,6 +401,23 @@ describe("CSP narrowing", () => {
     expect(connect).toContain("wss://midnight-preprod.blockfrost.io");
   });
 
+  test("the retired Midnight-hosted origins are gone, not merely joined", () => {
+    // indexer.preprod.midnight.network and rpc.preprod.midnight.network were
+    // decommissioned on 2026-10-09 (docs.midnight.network, 2026-10-20; the indexer
+    // answers 410 ENDPOINT_DECOMMISSIONED). Blockfrost replaced them. A policy that
+    // still lists the old hosts would let the browser open a socket that can only
+    // fail, and it would hide the day a caller is pointed back at them.
+    const manifest = shipped();
+    narrowCsp(manifest, config, false);
+    const connect =
+      header(manifest, "Content-Security-Policy-Report-Only").match(
+        /connect-src [^;]+/,
+      )?.[0] ?? "";
+    expect(connect).not.toContain("preprod.midnight.network");
+    // The replacement must be there, so this cannot pass by the list being empty.
+    expect(connect).toContain("midnight-preprod.blockfrost.io");
+  });
+
   test("loopback is added only when a prover server is configured", () => {
     const without = shipped();
     narrowCsp(without, config, false);
