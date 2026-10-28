@@ -19,7 +19,10 @@ import {
   hexToBytes,
   randomHex,
 } from "../packages/backend/src/encoding";
-import { REFRESH_COOLDOWN_MS } from "../packages/backend/src/order-windows";
+import {
+  type DeadlineStrings,
+  REFRESH_COOLDOWN_MS,
+} from "../packages/backend/src/order-windows";
 import { requireSessionSubject } from "../packages/backend/src/session-identity";
 import { stripeMode } from "../packages/backend/src/stripe-mode";
 import {
@@ -31,7 +34,11 @@ import {
 import { provisionTestIntent } from "../packages/backend/src/stripe-provisioning.server";
 import type { DataModel } from "./_generated/dataModel";
 import { requiredEnv, unavailable } from "./admissionContext";
-import { quoteDraftFields, rejectWith } from "./admissionValidators";
+import {
+  deadlineStringsValidator,
+  quoteDraftFields,
+  rejectWith,
+} from "./admissionValidators";
 import { authComponent, createAuth } from "./auth";
 
 type JobInput = { jobId: GenericId<"paymentJobs">; generation: number };
@@ -225,6 +232,8 @@ const FINALIZE = makeFunctionReference<
       currency: string;
       buyerAccountId: string;
       stripeCustomerId: string | null;
+      /** R36 R-13: what this call just froze, so the hold can echo it. */
+      deadlines?: DeadlineStrings;
     }
   | { ok: false; reason: string }
 >("trustedProvisioning:finalizeQuote");
@@ -296,6 +305,17 @@ export const holdPayment = actionGeneric({
       v.literal("failed"),
     ),
     reason: v.optional(v.string()),
+    /**
+     * R36 R-13: the deadlines this hold froze, in the same wire shape
+     * `orders.order` returns. On a fresh QUOTE the quote does not exist until
+     * this action freezes it, so the client used to follow a successful hold
+     * with a second `api.order` round trip purely to learn these four strings.
+     *
+     * Optional: an older client ignores an extra field, and a newer client must
+     * tolerate its absence from an older server. It is genuinely absent when
+     * the hold did not reach the freeze.
+     */
+    deadlines: v.optional(deadlineStringsValidator),
   }),
   handler: async (
     ctx,
@@ -303,6 +323,7 @@ export const holdPayment = actionGeneric({
   ): Promise<{
     state: "held" | "pending" | "needs-card" | "failed";
     reason?: string;
+    deadlines?: DeadlineStrings;
   }> => {
     // Two hops, not three: this read exists only to seed the operator
     // capability, and `finalizeQuote` returns the accepted draft's own fields
@@ -398,10 +419,13 @@ export const holdPayment = actionGeneric({
         authorization: observed.authorization,
       });
       const status = observed.authorization.status;
+      // R36 R-13: carry the frozen deadlines on every outcome that got past
+      // `FREEZE`, because the quote is frozen from that point on and the client
+      // needs them to build the deploy configuration.
       if (status === "authorized" || status === "captured")
-        return { state: "held" as const };
+        return { state: "held" as const, deadlines: finalized.deadlines };
       if (status === "failed") return { state: "failed" as const };
-      return { state: "pending" as const };
+      return { state: "pending" as const, deadlines: finalized.deadlines };
     } catch (error) {
       return {
         state: "failed" as const,

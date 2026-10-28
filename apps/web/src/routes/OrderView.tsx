@@ -306,21 +306,19 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
     };
   }, [convex, manifest]);
 
-  // R-14: this used to discard the result. `refreshOrder` answers
-  // `{phase: null, revision: null}` *without reading the indexer* whenever
-  // `observedAt` is inside REFRESH_COOLDOWN_MS (30 s), and the 60 s cron also
-  // writes it — so the button was inert roughly half the time, with no feedback.
-  // The timestamp is already on the payload (`contract.observedAt`), so saying so
-  // costs no request.
+  // R-14 v1: the action answers `{refreshed, since}` itself, so this no longer
+  // infers "was I throttled?" from a null revision and then reads
+  // `order.contract.observedAt` — a value only as fresh as the last query
+  // subscription, and possibly older than the cooldown it describes.
   const check = () => {
     setBusy(true);
     void convex
       .action(api.refreshOrder, { quoteId: order.quoteId })
       .then((result) => {
-        if (result.revision !== null) return setChecked("Checked just now.");
+        if (result.refreshed) return setChecked("Checked just now.");
         setChecked(
-          order.contract?.observedAt
-            ? `The network was read ${relativeTo(order.contract.observedAt, now)}. Try again in a moment.`
+          result.since
+            ? `The network was read ${relativeTo(result.since, now)}. Try again in a moment.`
             : "The network has not been read yet. Try again in a moment.",
         );
       })

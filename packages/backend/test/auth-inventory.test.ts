@@ -894,6 +894,12 @@ const invokeFor: Record<string, (ctx: never) => Promise<unknown>> =
  * `{state, reason}` say "no" that way rather than by throwing. An object whose
  * every field is null is the third shape — `refreshOrder` answers "I read
  * nothing" as `{phase: null, revision: null}`.
+ *
+ * R36 R-14: `refreshOrder` also answers `{refreshed: false, since: null}` on
+ * every early return, so `refreshed === false` is now an explicit refusal
+ * signal of the same class as `ok === false` and `state === "failed"` — it is
+ * the action saying, in so many words, that it did not do the work. The
+ * all-null fallback is kept for any payload that carries no such flag.
  */
 const outcomeOf = async (
   invoke: (ctx: never) => Promise<unknown>,
@@ -908,9 +914,10 @@ const outcomeOf = async (
   if (out === null || (Array.isArray(out) && out.length === 0)) return "deny";
   if (typeof out !== "object") return "allow";
   const fields = Object.values(out as Record<string, unknown>);
-  const refusal = out as { ok?: boolean; state?: string };
+  const refusal = out as { ok?: boolean; state?: string; refreshed?: boolean };
   return refusal.ok === false ||
     refusal.state === "failed" ||
+    refusal.refreshed === false ||
     fields.every((value) => value === null)
     ? "deny"
     : "allow";

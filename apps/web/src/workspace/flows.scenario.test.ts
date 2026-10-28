@@ -644,8 +644,14 @@ describe("the hold settles before the deadlines are read", () => {
   // asserted exactly that ordering ("the deadlines query is issued while the
   // hold is pending") because it was written to prove an R19 overlap
   // optimisation — and it therefore pinned the defect: any correct fix had to
-  // fail it. This asserts the property that matters instead.
-  test("no deadlines read is issued before the hold settles", async () => {
+  // fail it.
+  //
+  // R-13 v3 (R36): the hold now RETURNS the deadlines it froze, so on the
+  // first-accept path there is no post-hold read at all. This test keeps its
+  // original purpose — nothing may read deadlines while the hold is pending —
+  // and additionally pins the new property: the hold's own answer is used, so
+  // no read happens after it either.
+  test("no deadlines read is issued before the hold settles, and none after", async () => {
     const events: string[] = [];
     let release: (() => void) | undefined;
     const gate = new Promise<void>((r) => {
@@ -658,7 +664,8 @@ describe("the hold settles before the deadlines are read", () => {
           events.push("hold:start");
           await gate;
           events.push("hold:end");
-          return { state: "held" };
+          // The real action now carries the deadlines it froze.
+          return { state: "held", deadlines: DEADLINES };
         }
         return name.includes("attachContract") ? { ok: true, reason: "" } : {};
       },
@@ -697,8 +704,9 @@ describe("the hold settles before the deadlines are read", () => {
     release?.();
     await started.catch(() => {});
     expect(events).toContain("hold:end");
-    // And the read that does happen comes after it.
-    expect(events).toContain("query:after");
+    // R-13 v3: and because the hold answered with the deadlines, the read that
+    // used to follow it is gone. This is the round trip the change removes.
+    expect(events).not.toContain("query:after");
   });
 
   // The other half of the same race, found by the real-handler harness: the
@@ -715,6 +723,11 @@ describe("the hold settles before the deadlines are read", () => {
   // `holdPayment` resolves), not a read count, so it cannot be satisfied by
   // accident. On the pre-fix code the read happens while the hold is pending,
   // sees no deadlines, and the flow throws "The order has no deadlines yet".
+  //
+  // R-13 v3 (R36): the hold now carries the deadlines, so this test's fake
+  // returns them from the action — which is what a real server does. The
+  // property under test is unchanged: a fresh QUOTE still deploys, and it now
+  // deploys without the follow-up read.
   test("a fresh QUOTE whose first deadlines read is empty still deploys", async () => {
     let frozen = false;
     const convex = {
@@ -722,7 +735,7 @@ describe("the hold settles before the deadlines are read", () => {
         const name = getFunctionName(ref as FunctionReference<"query">);
         if (name.includes("holdPayment")) {
           frozen = true; // the freeze that creates the deadlines
-          return { state: "held" };
+          return { state: "held", deadlines: DEADLINES };
         }
         if (name.includes("attachContract")) return { ok: true };
         return {};
@@ -740,6 +753,71 @@ describe("the hold settles before the deadlines are read", () => {
       INVITE,
       report,
     );
+  });
+
+  // R-13 v3: the point of the change, stated as its own test. A server that
+  // returns the deadlines must not be followed by a read — that read is the
+  // 290 ms this removes. A server that does NOT return them (an older
+  // deployment mid-rollout) must still work, via the fallback read. Both halves
+  // matter: the first is the optimisation, the second is the rollout.
+  test("a hold that returns deadlines costs no follow-up read", async () => {
+    let reads = 0;
+    const convex = {
+      action: async (ref: unknown) => {
+        const name = getFunctionName(ref as FunctionReference<"query">);
+        if (name.includes("holdPayment"))
+          return { state: "held", deadlines: DEADLINES };
+        if (name.includes("attachContract")) return { ok: true };
+        return {};
+      },
+      mutation: async () => ({ ok: true }),
+      query: async () => {
+        reads += 1;
+        return detail();
+      },
+    } as unknown as Parameters<typeof openOrder>[0];
+    await openOrder(
+      convex,
+      { connected: {} as never },
+      "user-1",
+      "q1",
+      "token-abc",
+      INVITE,
+      report,
+    );
+    // Exactly the one read `openOrder` does before `startOrder`. No second one.
+    expect(reads).toBe(1);
+  });
+
+  test("an older server that omits deadlines still deploys via the fallback read", async () => {
+    // Mid-rollout: the client is new, the deployment is not. `deadlines` is
+    // absent from the action's answer, so the client must fall back rather than
+    // fail — this is what makes the change additive.
+    let reads = 0;
+    const convex = {
+      action: async (ref: unknown) => {
+        const name = getFunctionName(ref as FunctionReference<"query">);
+        if (name.includes("holdPayment")) return { state: "held" };
+        if (name.includes("attachContract")) return { ok: true };
+        return {};
+      },
+      mutation: async () => ({ ok: true }),
+      query: async () => {
+        reads += 1;
+        return detail();
+      },
+    } as unknown as Parameters<typeof openOrder>[0];
+    await openOrder(
+      convex,
+      { connected: {} as never },
+      "user-1",
+      "q1",
+      "token-abc",
+      INVITE,
+      report,
+    );
+    // The pre-hold read plus the fallback one.
+    expect(reads).toBe(2);
   });
 
   test("a declined card surfaces, and no rejection escapes", async () => {

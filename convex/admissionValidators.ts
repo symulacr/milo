@@ -91,6 +91,18 @@ export const frozenQuoteFields = {
   ...sharedQuoteObservationFields,
 };
 
+/**
+ * R36 R-13: the wire shape of the four order deadlines, declared once for both
+ * producers — `orders.order`'s field and `finalizeQuote`'s echo — because the
+ * client substitutes one for the other on the first-accept path.
+ */
+export const deadlineStringsValidator = v.object({
+  acceptance: s,
+  delivery: s,
+  review: s,
+  resolution: s,
+});
+
 export const imagePackPolicyFields = {
   serviceVersion: v.literal(1),
   packQuantity: v.literal(1),

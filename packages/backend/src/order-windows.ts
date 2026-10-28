@@ -47,3 +47,30 @@ export function deadlines(now: number): Deadlines {
     resolution: at(acceptance + delivery + review + resolution),
   };
 }
+
+/**
+ * R36 R-13: the wire form of the four deadlines — strings, because the chain
+ * takes `BigInt` seconds. Both producers (`orders.order` reading the frozen row,
+ * `holdPayment` returning what it just froze) must emit the identical shape or
+ * the client cannot substitute one for the other.
+ */
+export type DeadlineStrings = {
+  acceptance: string;
+  delivery: string;
+  review: string;
+  resolution: string;
+};
+
+export function deadlineStrings(row: {
+  acceptanceDeadlineSeconds: number;
+  deliveryDeadlineSeconds: number;
+  reviewDeadlineSeconds: number;
+  resolutionDeadlineSeconds: number;
+}): DeadlineStrings {
+  return {
+    acceptance: String(row.acceptanceDeadlineSeconds),
+    delivery: String(row.deliveryDeadlineSeconds),
+    review: String(row.reviewDeadlineSeconds),
+    resolution: String(row.resolutionDeadlineSeconds),
+  };
+}

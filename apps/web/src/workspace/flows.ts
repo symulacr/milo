@@ -1,5 +1,6 @@
 import type { ConnectedAPI } from "@midnight-ntwrk/dapp-connector-api";
 import type { ConvexReactClient } from "convex/react";
+import type { DeadlineStrings } from "../../../../packages/backend/src/order-windows";
 import { api, type OrderDetail, type QuoteTerms } from "../api";
 import type {
   OrderCircuitName,
@@ -232,10 +233,14 @@ async function startOrder(
         "The terms do not match their commitment. Do not continue. Contact the studio.",
       );
   });
-  // The hold must settle before the deadlines are read: on a fresh QUOTE the
-  // hold is what freezes the quote and creates them, so a read issued alongside
-  // it is always empty. On every later stage `holdNow` is null, so awaiting
-  // it is instant and this is still one read.
+  // R-13 v3: the hold RETURNS the deadlines it froze, so the read that used to
+  // follow it is gone on the first-accept path — one fewer 290 ms round trip at
+  // the moment the user is waiting. The read stays as a fallback for a server
+  // that predates the field (an older deployment omits it).
+  //
+  // `held` is a mutable box, not a `let` the callback assigns: TypeScript
+  // narrows a `let` assigned only inside a closure to `never` at the read site.
+  const held: { deadlines?: DeadlineStrings } = {};
   const holdNow =
     detail.stage !== "QUOTE"
       ? null
@@ -248,6 +253,7 @@ async function startOrder(
                   ? "Live card entry is not available yet."
                   : "The payment hold did not complete. Try again."),
             );
+          held.deadlines = hold.deadlines;
         });
   if (detail.stage !== "QUOTE") report("hold", "done");
   let address = detail.contract?.address ?? "";
@@ -258,7 +264,8 @@ async function startOrder(
     // A declined card is the more actionable failure, so it wins over a
     // missing deadline row.
     await holdNow;
-    const deadlines = (await convex.query(api.order, { quoteId }))?.deadlines;
+    const deadlines =
+      held.deadlines ?? (await convex.query(api.order, { quoteId }))?.deadlines;
     if (!deadlines)
       throw new Error("The order has no deadlines yet. Reload the order.");
     const deployed = await run(report, "deploy", () =>

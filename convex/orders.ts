@@ -11,6 +11,7 @@ import {
 } from "../packages/backend/src/admission-policy";
 import { timingSafeEqualHex } from "../packages/backend/src/encoding";
 import { inviteUrl } from "../packages/backend/src/invite-link";
+import { deadlineStrings } from "../packages/backend/src/order-windows";
 import {
   operatorEmails,
   requireSessionSubject,
@@ -18,6 +19,7 @@ import {
 import { fail, type ReadContext } from "./admissionContext";
 import {
   chainPhaseValidator,
+  deadlineStringsValidator,
   quoteTermsValidator,
   stageValidator,
 } from "./admissionValidators";
@@ -368,15 +370,7 @@ const orderDetailValidator = v.object({
    * the cheapest correct source: one number on a payload that is already sent.
    */
   serverNow: v.number(),
-  deadlines: v.union(
-    v.object({
-      acceptance: v.string(),
-      delivery: v.string(),
-      review: v.string(),
-      resolution: v.string(),
-    }),
-    v.null(),
-  ),
+  deadlines: v.union(deadlineStringsValidator, v.null()),
   chain: v.object({
     network: v.string(),
     orderNonce: v.string(),
@@ -527,14 +521,7 @@ export const order = queryGeneric({
       // instant. The client turns this into an offset (`serverNow - Date.now()`)
       // and applies it to its own ticker.
       serverNow: Date.now(),
-      deadlines: frozen
-        ? {
-            acceptance: String(frozen.acceptanceDeadlineSeconds),
-            delivery: String(frozen.deliveryDeadlineSeconds),
-            review: String(frozen.reviewDeadlineSeconds),
-            resolution: String(frozen.resolutionDeadlineSeconds),
-          }
-        : null,
+      deadlines: frozen ? deadlineStrings(frozen) : null,
       chain: {
         network: NETWORK_HEX,
         orderNonce: draft.orderNonce,

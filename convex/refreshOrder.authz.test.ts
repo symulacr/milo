@@ -89,11 +89,22 @@ const handler = (
     _handler: (
       ctx: never,
       args: { quoteId: string },
-    ) => Promise<{ phase: string | null; revision: number | null }>;
+    ) => Promise<{
+      phase: string | null;
+      revision: number | null;
+      refreshed: boolean;
+      since: number | null;
+    }>;
   }
 )._handler;
 
-const NULL = { phase: null, revision: null };
+/**
+ * R36 R-14: every early return now also answers `{refreshed, since}`. `NULL`
+ * keeps its old meaning — "no phase, no revision, nothing was read" — and gains
+ * the two new fields, so the pre-existing assertions below still prove exactly
+ * what they proved before: that these callers never reached the indexer.
+ */
+const NULL = { phase: null, revision: null, refreshed: false, since: null };
 const STRANGER = { issuer: "privy.io", subject: "did:privy:stranger" };
 const OPERATOR_EMAIL = "ops@studio.example";
 const original = process.env.MILO_OPERATOR_EMAILS;
@@ -242,17 +253,24 @@ describe("R29 AC-03: refreshOrder caps the indexer spend per order", () => {
     );
 
   test("an order observed inside the window is not read again", async () => {
-    const f = fixture({ observedAt: Date.now() - 1_000 });
-    // Answers from the recorded state without spending an indexer read.
-    await expect(handler(f.ctx, { quoteId: "quote-1" })).resolves.toEqual(NULL);
+    const observedAt = Date.now() - 1_000;
+    const f = fixture({ observedAt });
+    // Answers from the recorded state without spending an indexer read, and
+    // R36 R-14: reports WHEN it was read so the caller can say so.
+    await expect(handler(f.ctx, { quoteId: "quote-1" })).resolves.toEqual({
+      ...NULL,
+      since: observedAt,
+    });
   });
 
   test("the boundary: just inside is refused, just outside is allowed", async () => {
-    // Inside: refused (resolves null, no indexer).
-    const inside = fixture({ observedAt: Date.now() - 1_000 });
-    await expect(handler(inside.ctx, { quoteId: "quote-1" })).resolves.toEqual(
-      NULL,
-    );
+    // Inside: refused (no indexer), and the timestamp is reported back.
+    const observedAt = Date.now() - 1_000;
+    const inside = fixture({ observedAt });
+    await expect(handler(inside.ctx, { quoteId: "quote-1" })).resolves.toEqual({
+      ...NULL,
+      since: observedAt,
+    });
     // Outside: the read is attempted. The indexer env is unset in this suite,
     // so it fails closed — which is proof the cap did NOT short-circuit.
     const outside = fixture({ observedAt: Date.now() - 10 * 60_000 });
@@ -266,5 +284,71 @@ describe("R29 AC-03: refreshOrder caps the indexer spend per order", () => {
     // epoch" would block the very first refresh forever.
     const f = fixture({ observedAt: null });
     await expect(handler(f.ctx, { quoteId: "quote-1" })).rejects.toThrow();
+  });
+});
+
+/**
+ * R36 R-14: the cooldown used to be invisible.
+ *
+ * `refreshOrder` answered `{phase: null, revision: null}` both when it read the
+ * indexer and found nothing new AND when it refused to read at all, so the
+ * "Check network" button was inert roughly half the time with no feedback. The
+ * action now distinguishes the two, and reports the timestamp that caused the
+ * refusal so the UI can say "already checked N seconds ago".
+ *
+ * These pin the distinction by value, including that a *refused* call reports
+ * `refreshed: false` while still carrying the server's own timestamp.
+ */
+describe("R36 R-14: a throttled refresh says so instead of doing nothing", () => {
+  const PARTICIPANT = { issuer: "privy.io", subject: "did:privy:buyer" };
+  const MEMBERSHIP = [
+    {
+      _id: "m1",
+      privySubject: PARTICIPANT.subject,
+      scopeId: "scope-1",
+      role: "buyer",
+      status: "active",
+      accountId: "buyer-1",
+    },
+  ];
+
+  test("inside the cooldown: refreshed is false and since is the last read", async () => {
+    const observedAt = Date.now() - 5_000;
+    const f = ctxDouble(
+      PARTICIPANT,
+      { quoteDrafts: [DRAFT], memberships: MEMBERSHIP, chainOrders: [] },
+      { observedAt },
+    );
+    const out = await handler(f.ctx, { quoteId: "quote-1" });
+    expect(out.refreshed).toBe(false);
+    expect(out.since).toBe(observedAt);
+    // The distinction the UI needs: it did not read, but it knows when it did.
+    expect(out.since).not.toBeNull();
+  });
+
+  test("a caller refused by membership reports no timestamp at all", async () => {
+    // Nothing was read and nothing is known about the order, so `since` must be
+    // null rather than a fabricated time. This is what keeps the UI honest.
+    const f = ctxDouble(PARTICIPANT, {
+      quoteDrafts: [DRAFT],
+      memberships: [],
+      chainOrders: [],
+    });
+    const out = await handler(f.ctx, { quoteId: "quote-1" });
+    expect(out.refreshed).toBe(false);
+    expect(out.since).toBeNull();
+  });
+
+  test("the field is present on every path, so a client never reads undefined", async () => {
+    // A missing field would force every consumer to optional-chain it; the
+    // validator declares both as required, so this must hold for a refusal too.
+    const f = ctxDouble(PARTICIPANT, {
+      quoteDrafts: [DRAFT],
+      memberships: [],
+      chainOrders: [],
+    });
+    const out = await handler(f.ctx, { quoteId: "quote-1" });
+    expect(Object.hasOwn(out, "refreshed")).toBe(true);
+    expect(Object.hasOwn(out, "since")).toBe(true);
   });
 });

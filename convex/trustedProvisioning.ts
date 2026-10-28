@@ -13,7 +13,10 @@ import {
   timingSafeEqualHex,
 } from "../packages/backend/src/encoding";
 import { inviteUrl } from "../packages/backend/src/invite-link";
-import { deadlines } from "../packages/backend/src/order-windows";
+import {
+  deadlineStrings,
+  deadlines,
+} from "../packages/backend/src/order-windows";
 import {
   validateFreeze,
   validateImagePackPolicy,
@@ -33,6 +36,7 @@ import {
 } from "../packages/backend/src/trusted-provisioning-policy";
 import { type AdmissionContext, fail, readEnv } from "./admissionContext";
 import {
+  deadlineStringsValidator,
   frozenQuoteFields,
   imagePackPolicyFields,
   paymentAuthorization,
@@ -935,6 +939,13 @@ export const finalizeQuote = internalMutationGeneric({
       currency: v.string(),
       buyerAccountId: v.string(),
       stripeCustomerId: v.union(v.string(), v.null()),
+      /**
+       * R36 R-13: the deadlines this call just froze, in the same wire shape
+       * `orders.order` emits. Already in `value` below, so returning them costs
+       * nothing and saves the client a 290 ms round trip on the first-accept
+       * path. Optional so a client built against the older shape still works.
+       */
+      deadlines: v.optional(deadlineStringsValidator),
     }),
     v.object({ ok: v.literal(false), reason: v.string() }),
   ),
@@ -967,7 +978,12 @@ export const finalizeQuote = internalMutationGeneric({
       .query("approvedQuotes")
       .withIndex("by_quote", (q) => q.eq("id", draft.id))
       .unique();
-    if (approved) return { ...accepted, version: approved.version };
+    if (approved)
+      return {
+        ...accepted,
+        version: approved.version,
+        deadlines: deadlineStrings(approved),
+      };
     const genesis = readEnv("MILO_PREPROD_GENESIS_HASH", /^0x[a-f0-9]{64}$/);
     if (!genesis) return reject("The Preprod genesis hash is not configured.");
     const timing = await ctx.db
@@ -1027,6 +1043,6 @@ export const finalizeQuote = internalMutationGeneric({
       finalizedAt: now,
       updatedAt: now,
     });
-    return { ...accepted, version: 1 };
+    return { ...accepted, version: 1, deadlines: deadlineStrings(value) };
   },
 });

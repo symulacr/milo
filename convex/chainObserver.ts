@@ -655,11 +655,35 @@ export const orderScopeMember = internalQueryGeneric({
   },
 });
 
+/**
+ * R36 R-14: the shape of every "did not read the indexer" return from
+ * `refreshOrder`, declared once so the four early exits cannot disagree.
+ */
+const NOT_REFRESHED = {
+  phase: null,
+  revision: null,
+  refreshed: false,
+  since: null,
+} as const;
+
 export const refreshOrder = actionGeneric({
   args: { quoteId: v.string() },
   returns: v.object({
     phase: v.union(v.string(), v.null()),
     revision: v.union(v.number(), v.null()),
+    /**
+     * R36 R-14: whether this call actually spent an indexer read. `false` on
+     * every early return, so the client can tell "read it, nothing changed"
+     * from "did not read it" — both used to look identical (`phase: null`).
+     */
+    refreshed: v.boolean(),
+    /**
+     * When the network was last read for this order (epoch ms), or null if it
+     * never has been. On a cooldown return this is the timestamp the client
+     * needs to say "already checked N seconds ago". Reuses the `observedAt` the
+     * observer already writes — no new field, index or read.
+     */
+    since: v.union(v.number(), v.null()),
   }),
   handler: async (ctx, args) => {
     // Only a participant in the order's scope may spend an indexer read.
@@ -668,22 +692,25 @@ export const refreshOrder = actionGeneric({
       quoteId: args.quoteId,
       subject,
     });
-    if (!allowed) return { phase: null, revision: null };
+    if (!allowed) return NOT_REFRESHED;
     const order = await ctx.runQuery(orderForQuoteRef, {
       quoteId: args.quoteId,
     });
-    if (!order) return { phase: null, revision: null };
+    if (!order) return NOT_REFRESHED;
     // R29 AC-03: each refresh spends two Blockfrost reads against the SAME
     // project id that `poll` uses, so a member looping this action can exhaust
     // the daily allowance and stop chain observation for every order. The cap
     // is per order and reuses `observedAt`, which the observer already writes —
     // no new table, no new index. A refresh inside the window is not an error:
     // it answers from the recorded state, so the caller still sees the order.
+    //
+    // R36 R-14: it now also says WHEN, so the caller can report it instead of
+    // silently doing nothing.
     if (
       order.observedAt !== null &&
       Date.now() - order.observedAt < REFRESH_COOLDOWN_MS
     )
-      return { phase: null, revision: null };
+      return { ...NOT_REFRESHED, since: order.observedAt };
     const decode = requireDecoder(await loadRuntimeDecoder());
     const { url, token } = indexerConfig();
     const transport = createIndexerTransport(url, token, fetch);
@@ -707,13 +734,19 @@ export const refreshOrder = actionGeneric({
       lastStateHex: order.lastStateHex,
       decode,
     });
-    if (plan.kind !== "project") return { phase: null, revision: null };
+    if (plan.kind !== "project")
+      return { ...NOT_REFRESHED, since: order.observedAt };
     const committed = await commitObservation(
       (ref, args) => ctx.runMutation(ref as never, args as never),
       order,
       plan,
     );
-    if (!committed) return { phase: null, revision: null };
-    return { phase: plan.phase, revision: plan.revision };
+    if (!committed) return { ...NOT_REFRESHED, since: order.observedAt };
+    return {
+      phase: plan.phase,
+      revision: plan.revision,
+      refreshed: true,
+      since: Date.now(),
+    };
   },
 });
