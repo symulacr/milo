@@ -32,6 +32,7 @@ import {
   openOrder,
   PLAN,
   type Report,
+  readDisputeNote,
   reviewDelivery,
   runAction,
   warmChain,
@@ -227,6 +228,10 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   const [plan, setPlan] = useState<readonly (readonly [string, string])[]>([]);
   const [busy, setBusy] = useState(false);
   const [checked, setChecked] = useState("");
+  // R40: the operator's copy of the dispute reason. Loaded only for an operator
+  // on a disputed order, so a buyer never triggers the read.
+  const [disputeNote, setDisputeNote] =
+    useState<Awaited<ReturnType<typeof readDisputeNote>>>(null);
   /** Synchronous double-click guard: `busy` is a render behind (lib/utils). */
   const inFlight = useGuard();
   const [error, setError] = useState("");
@@ -310,6 +315,22 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
   // infers "was I throttled?" from a null revision and then reads
   // `order.contract.observedAt` — a value only as fresh as the last query
   // subscription, and possibly older than the cooldown it describes.
+  // R40: fetch and verify the sealed reason once, when an operator opens a
+  // disputed order. `review.files` is not a dependency: the note does not change.
+  useEffect(() => {
+    if (order.stage !== "DISPUTED" || order.role !== "operator") return;
+    let live = true;
+    readDisputeNote(convex, order).then(
+      (result) => {
+        if (live) setDisputeNote(result);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [convex, order]);
+
   const check = () => {
     setBusy(true);
     void convex
@@ -542,6 +563,21 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
                 {picked.length === 3
                   ? picked.map((file) => file.name).join(" · ")
                   : `Pick three files. ${picked.length} selected.`}
+              </Note>
+            </div>
+          )}
+          {disputeNote && (
+            <div className="grid gap-2 rounded-md bg-muted p-3">
+              <CardTitle className="text-sm">
+                The client&apos;s reason
+              </CardTitle>
+              <p className="text-sm leading-relaxed whitespace-pre-line">
+                {disputeNote.note}
+              </p>
+              <Note>
+                {disputeNote.digestMatches && disputeNote.chainMatches
+                  ? "This text hashes to the digest the chain holds, so it is the reason that was signed."
+                  : "This text does not match the digest on chain. Do not decide on it; ask the client to re-file."}
               </Note>
             </div>
           )}

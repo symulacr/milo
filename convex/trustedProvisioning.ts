@@ -489,6 +489,12 @@ export const writeQuoteDraft = internalMutationGeneric({
      * read path falls back to the legacy derivation for those.
      */
     operatorSecret: v.optional(v.string()),
+    /**
+     * R40: the X25519 public half of `operatorSecret`, derived by the caller
+     * (an action, so WebCrypto is available) and published on the order payload
+     * so a buyer can seal a dispute note the operator can read.
+     */
+    notePublicKey: v.optional(v.string()),
     // Present only on the combined first-order path: the action used to call
     // `studioFor` then `createStudio` before this mutation, which was three
     // round-trips for one user action. `ensureStudio` is idempotent and derives
@@ -606,6 +612,7 @@ export const writeQuoteDraft = internalMutationGeneric({
       merchantCommitment: args.merchantCommitment,
       operatorCommitment: args.operatorCommitment,
       operatorSecret: args.operatorSecret,
+      notePublicKey: args.notePublicKey,
       termsCommitment: args.termsCommitment,
       terms: args.terms,
       inviteToken: token,

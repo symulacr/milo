@@ -28,4 +28,6 @@ export const api = {
   attachUpload: generated.files.attachUploadMutation,
   freezeFiles: generated.files.freezeMutation,
   serveFile: generated.files.serveFileAction,
+  putDisputeNote: generated.disputeNotes.put,
+  disputeNote: generated.disputeNotes.get,
 };

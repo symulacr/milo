@@ -20,6 +20,7 @@ import {
   hexToBytes,
   randomHex,
 } from "../packages/backend/src/encoding";
+import { operatorPublicKey } from "../packages/backend/src/note-key";
 import {
   type DeadlineStrings,
   REFRESH_COOLDOWN_MS,
@@ -176,9 +177,17 @@ async function writeAndInvite(
   // the server-side draft. The commitment the contract checks is derived from
   // it, so a leak of MILO_OPERATOR_SECRET derives nothing for this order.
   const operatorSecret = randomSecret();
+  // R40: the public half is derived once, here, because this is an action (Node
+  // runtime, WebCrypto present) and because this is where the secret is born.
+  // A query must not do curve arithmetic, and storing it means the order payload
+  // is a plain read.
+  const notePublicKey = await operatorPublicKey(
+    hexToBytes(operatorSecret),
+  ).catch(() => null);
   const draft = await ctx.runMutation(DRAFT, {
     ...quote,
     operatorSecret,
+    notePublicKey: notePublicKey ? bytesToHex(notePublicKey) : undefined,
     operatorCommitment: await capability(
       "preprod",
       quote.orderNonce,

@@ -6,8 +6,15 @@ import { installMemoryStorage } from "./test-storage";
 
 installMemoryStorage();
 
-const { backupBlob, keyFor, readKeys, restoreBackup, sealBackup } =
-  await import("./keys");
+const {
+  backupBlob,
+  keyFor,
+  openNote,
+  readKeys,
+  restoreBackup,
+  sealBackup,
+  sealNote,
+} = await import("./keys");
 
 const PASSWORD = "correct horse battery";
 
@@ -146,5 +153,105 @@ describe("U-03 a store that refuses the key is reported, not thrown", () => {
   test("a successful write still reports true", async () => {
     const { saveKey } = await import("./keys");
     expect(saveKey("subject-u03b", GOOD_KEY)).toBe(true);
+  });
+});
+
+describe("R40 a dispute note is sealed to the operator's per-order key", () => {
+  // X25519 needs a real keypair: a private JWK requires BOTH `d` and a correct
+  // `x`, and a zero `x` is a DataError in Chromium and WebKit. These tests
+  // generate a pair and treat its raw private bytes as the "operator secret",
+  // which is what the server does — it derives `x` and publishes it.
+  const NOTE = "  The third file duplicates the first.  ";
+  const QUOTE = "quote_r40";
+
+  const sha256 = async (text: string) =>
+    [
+      ...new Uint8Array(
+        await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+      ),
+    ]
+      // hex bytes, not a zero-padded label
+      .map((b) => b.toString(16).padStart(2, "0")) // taste-skill-ignore
+      .join("");
+
+  /** A real pair, plus the raw private bytes the server would store. */
+  const pair = async () => {
+    const keys = (await crypto.subtle.generateKey({ name: "X25519" }, true, [
+      "deriveBits",
+    ])) as CryptoKeyPair;
+    const jwk = (await crypto.subtle.exportKey("jwk", keys.privateKey)) as {
+      d?: string;
+    };
+    const b64u = (s: string) =>
+      Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) =>
+        c.charCodeAt(0),
+      );
+    return {
+      secret: b64u(jwk.d ?? ""),
+      publicKey: new Uint8Array(
+        await crypto.subtle.exportKey("raw", keys.publicKey),
+      ),
+    };
+  };
+
+  test("the operator opens what the buyer sealed", async () => {
+    const operator = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    expect(
+      await openNote(box, operator.secret, operator.publicKey, QUOTE),
+    ).toBe(NOTE);
+  });
+
+  test("a different key cannot open it", async () => {
+    const operator = await pair();
+    const stranger = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    await expect(
+      openNote(box, stranger.secret, stranger.publicKey, QUOTE),
+    ).rejects.toBeDefined();
+  });
+
+  test("the decrypted text hashes to the on-chain digest", async () => {
+    const operator = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    // What the chain stores is sha256(note.trim()) — flows.ts evidenceOf.
+    const onChain = await sha256(NOTE.trim());
+    const opened = await openNote(
+      box,
+      operator.secret,
+      operator.publicKey,
+      QUOTE,
+    );
+    expect(await sha256(opened.trim())).toBe(onChain);
+  });
+
+  test("a tampered ciphertext is rejected", async () => {
+    const operator = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    const raw = Uint8Array.from(atob(box.sealed), (c) => c.charCodeAt(0));
+    raw[0] ^= 1;
+    await expect(
+      openNote(
+        { ...box, sealed: btoa(String.fromCharCode(...raw)) },
+        operator.secret,
+        operator.publicKey,
+        QUOTE,
+      ),
+    ).rejects.toBeDefined();
+  });
+
+  test("a note sealed for one order does not open for another", async () => {
+    const operator = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    await expect(
+      openNote(box, operator.secret, operator.publicKey, "quote_other"),
+    ).rejects.toBeDefined();
+  });
+
+  test("the ciphertext does not contain the plaintext", async () => {
+    const operator = await pair();
+    const box = await sealNote(NOTE, operator.publicKey, QUOTE);
+    expect(atob(box.sealed)).not.toContain("duplicates");
+    expect(box.epk).not.toContain("duplicates");
   });
 });

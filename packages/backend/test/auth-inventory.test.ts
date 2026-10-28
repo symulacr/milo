@@ -9,6 +9,7 @@ import { join } from "node:path";
 import * as auth from "../../../convex/auth";
 import { requireMembership } from "../../../convex/auth/identity";
 import * as chainObserver from "../../../convex/chainObserver";
+import * as disputeNotes from "../../../convex/disputeNotes";
 import * as files from "../../../convex/files";
 import { stripeWebhookHandler } from "../../../convex/http";
 import {
@@ -128,6 +129,23 @@ const PUBLIC_QUERY_MUTATION: Array<{
         quoteId: "quote-1",
         expectedVersion: 1,
       }),
+  },
+  {
+    name: "disputeNotes.put",
+    kind: "mutation",
+    invoke: (ctx) =>
+      handlerOf(disputeNotes.put)(ctx, {
+        quoteId: "quote-1",
+        epk: "ZXBr",
+        iv: "aXY=",
+        sealed: "c2VhbGVk",
+        digest: "aa".repeat(32),
+      }),
+  },
+  {
+    name: "disputeNotes.get",
+    kind: "query",
+    invoke: (ctx) => handlerOf(disputeNotes.get)(ctx, { quoteId: "quote-1" }),
   },
   {
     name: "paymentMonitoring.status",
@@ -840,6 +858,11 @@ const MATRIX: Record<string, Record<Actor, Outcome>> = {
   "provisioning.freeze": every("deny"),
   // Monitor rows are created by `holdPayment`, which needs a provider key;
   // `paymentMonitoring.test.ts` covers the positive paths.
+  // No dispute note row in the fixture, and `put` also requires the caller to be
+  // the draft's buyer — which no fixture actor is.
+  "disputeNotes.put": every("deny"),
+  // `get` answers null for a non-operator instead of throwing, which is a deny.
+  "disputeNotes.get": every("deny"),
   "paymentMonitoring.status": every("deny"),
   "paymentMonitoring.start": every("deny"),
   "paymentMonitoring.stop": every("deny"),

@@ -152,6 +152,23 @@ export default defineSchema({
     .index("by_subject_scope", ["privySubject", "scopeId"])
     .index("by_subject", ["privySubject"])
     .index("by_scope_role", ["scopeId", "role"]),
+  /**
+   * R40: the buyer's dispute reason, sealed to the operator's per-order key.
+   *
+   * Ciphertext only — the plaintext never reaches the server. `digest` is
+   * `sha256(plaintext.trim())`, the same value the chain stores as
+   * `evidenceCommitment`, so the operator can verify a decryption against the
+   * chain rather than trusting this row. `epk`/`iv`/`sealed` are base64; the
+   * AAD is the quote id, so a row copied to another order will not open.
+   */
+  disputeNotes: defineTable({
+    quoteId: s,
+    epk: s,
+    iv: s,
+    sealed: s,
+    digest: s,
+    createdAt: n,
+  }).index("by_quote", ["quoteId"]),
   quoteDrafts: defineTable({
     id: s,
     scopeId: s,
@@ -175,6 +192,13 @@ export default defineSchema({
      * `HMAC(MILO_OPERATOR_SECRET, nonce)` derivation.
      */
     operatorSecret: optS,
+    /**
+     * R40: the X25519 public half of `operatorSecret`, derived once at creation
+     * (an action, so WebCrypto is available) and published on the order payload
+     * so a buyer can seal a dispute note. A public key reveals nothing about the
+     * secret. Absent for orders created before this field existed.
+     */
+    notePublicKey: optS,
     /**
      * R38: the hosted Checkout session a live-mode hold created, so the quote
      * can be tied to its eventual PaymentIntent before that intent exists.

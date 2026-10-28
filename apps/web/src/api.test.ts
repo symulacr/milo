@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { getFunctionName } from "convex/server";
 import * as auth from "../../../convex/auth";
 import * as chainObserver from "../../../convex/chainObserver";
+import * as disputeNotes from "../../../convex/disputeNotes";
 import * as files from "../../../convex/files";
 import * as orders from "../../../convex/orders";
 import * as stripeProvisioning from "../../../convex/stripeProvisioning";
@@ -17,6 +18,7 @@ import { api } from "./api";
 const MODULES: Record<string, Record<string, unknown>> = {
   auth,
   chainObserver,
+  disputeNotes,
   files,
   orders,
   stripeProvisioning,

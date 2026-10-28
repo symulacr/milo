@@ -101,6 +101,138 @@ export async function sha256Hex(data: string | ArrayBuffer | Uint8Array) {
   );
 }
 
+/**
+ * A dispute note sealed to the operator, so the operator can read the reason
+ * without the server ever seeing it.
+ *
+ * The operator's key is its existing per-order signing secret, not a new one.
+ * X25519's public key is `scalar-mult(private, base point)` and WebCrypto's
+ * `deriveBits({public: P}, priv)` computes `priv · P`, so passing the base point
+ * as P derives the public key from the secret. Measured in Chromium, Firefox and
+ * WebKit (2026-10-28): all three agree with `exportKey("raw", publicKey)`.
+ *
+ * That matters because it removes a rotation problem. A stored keypair would
+ * orphan every sealed note the moment the operator cleared storage or changed
+ * machine; a key derived from a per-order secret cannot, because the secret is
+ * written once at quote creation and never rotates for a live order.
+ *
+ * The on-chain digest is untouched: `evidenceOf` still signs
+ * `sha256(note.trim())`, so the commitment is byte-identical and the operator
+ * verifies a decryption by recomputing that same digest.
+ *
+ * AAD is the quote id, so a ciphertext lifted into another order fails to open.
+ */
+export type SealedNote = { epk: string; iv: string; sealed: string };
+
+const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+const unb64 = (text: string) =>
+  Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+
+/**
+ * A private X25519 JWK. Both `d` and a **correct** `x` are required: a zero `x`
+ * is a `DataError` in Chromium and WebKit (bun tolerates it, which is how the
+ * first version of this shipped a browser bug), and omitting `x` is "the required
+ * JWK member x was missing". The operator has both — its secret, and the public
+ * key the server publishes on the order payload.
+ */
+const jwkOf = (secret: Uint8Array, publicKey: Uint8Array) => {
+  const b64u = (bytes: Uint8Array) =>
+    b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return {
+    kty: "OKP",
+    crv: "X25519",
+    d: b64u(secret),
+    x: b64u(publicKey),
+    ext: true,
+    key_ops: ["deriveBits"],
+  };
+};
+
+/** X25519 agreement to a one-use AES-GCM key. */
+const agreeKey = async (privateKey: CryptoKey, peerPublic: Uint8Array) => {
+  const peer = await crypto.subtle.importKey(
+    "raw",
+    peerPublic as BufferSource,
+    { name: "X25519" },
+    false,
+    [],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "X25519", public: peer },
+    privateKey,
+    256,
+  );
+  return crypto.subtle.importKey("raw", bits, { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
+};
+
+const aadFor = (quoteId: string) => new TextEncoder().encode(quoteId);
+
+/** Seal `plain` to `recipientPublic`, bound to this order. */
+export async function sealNote(
+  plain: string,
+  recipientPublic: Uint8Array,
+  quoteId: string,
+): Promise<SealedNote> {
+  const pair = (await crypto.subtle.generateKey({ name: "X25519" }, true, [
+    "deriveBits",
+  ])) as CryptoKeyPair;
+  const key = await agreeKey(pair.privateKey, recipientPublic);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const sealed = await crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv: iv as BufferSource,
+      additionalData: aadFor(quoteId) as BufferSource,
+    },
+    key,
+    new TextEncoder().encode(plain) as BufferSource,
+  );
+  return {
+    epk: b64(
+      new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey)),
+    ),
+    iv: b64(iv),
+    sealed: b64(new Uint8Array(sealed)),
+  };
+}
+
+/**
+ * Open a sealed note with the operator's per-order secret. Throws when the
+ * ciphertext was tampered with, when the AAD names a different order, or when the
+ * secret is not the intended one — all three are the same AES-GCM authentication
+ * failure, which is the point.
+ */
+export async function openNote(
+  box: SealedNote,
+  secret: Uint8Array,
+  operatorPublicKey: Uint8Array,
+  quoteId: string,
+): Promise<string> {
+  const key = await agreeKey(
+    await crypto.subtle.importKey(
+      "jwk",
+      jwkOf(secret, operatorPublicKey),
+      { name: "X25519" },
+      false,
+      ["deriveBits"],
+    ),
+    unb64(box.epk),
+  );
+  const plain = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: unb64(box.iv) as BufferSource,
+      additionalData: aadFor(quoteId) as BufferSource,
+    },
+    key,
+    unb64(box.sealed) as BufferSource,
+  );
+  return new TextDecoder().decode(plain);
+}
+
 export const readKeys = (subject: string): KeyRing => {
   // The legacy single-entry ring first, then every per-order entry, which wins
   // because it is the newer format.

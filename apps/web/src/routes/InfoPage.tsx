@@ -39,7 +39,7 @@ const PAGES = {
       Files:
         "Exactly three images, each PNG, JPEG or WebP, up to 5 MiB. Milo stores them server-side and records each SHA-256 digest.",
       Disputes:
-        "The named operator decides a dispute in full: approve or cancel. The operator cannot change the agreed terms.",
+        "The named operator decides a dispute in full: approve or cancel. The operator cannot change the agreed terms. When you open a dispute you give a reason; it is encrypted to the operator in your browser, so only the operator can read it — not the studio, and not Milo's servers, which store only the ciphertext. The ledger keeps a hash of that reason, so what the operator reads can be checked against what you signed.",
       Network:
         "Orders run on Midnight Preprod and your wallet pays the network fee in tDUST. Mainnet comes after the pilot.",
       Contact: `Questions about an order: ${CONTACT_EMAIL}.`,

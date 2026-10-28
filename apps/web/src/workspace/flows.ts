@@ -12,8 +12,10 @@ import {
   fromHex,
   keyFor,
   type OrderKey,
+  openNote,
   randomHex,
   saveKey,
+  sealNote,
   sha256Hex,
   toHex,
 } from "./keys";
@@ -513,6 +515,57 @@ export async function reviewDelivery(
   };
 }
 
+/**
+ * The operator's view of a dispute reason: the plaintext, and whether it is the
+ * one the chain holds.
+ *
+ * Two checks, because they answer different questions. `digestMatches` asks
+ * "does this ciphertext open to the text whose hash was stored beside it?" — that
+ * catches a tampered row. `chainMatches` asks "is that hash the one the contract
+ * committed to?" — that catches a row that was honest but belongs to a different
+ * note. Only both together mean the operator is reading the buyer's real reason.
+ *
+ * Returns null when there is nothing to show, so the UI can stay silent rather
+ * than render an empty panel.
+ */
+export async function readDisputeNote(
+  convex: Convex,
+  detail: OrderDetail,
+): Promise<{
+  note: string;
+  digestMatches: boolean;
+  chainMatches: boolean;
+} | null> {
+  const box = await convex.query(api.disputeNote, { quoteId: detail.quoteId });
+  if (!box) return null;
+  const result = await convex.action(api.operatorSecret, {
+    quoteId: detail.quoteId,
+  });
+  // A non-operator gets a refusal here, which is the same answer as "nothing to
+  // show" from this screen's point of view.
+  if (!("secret" in result)) return null;
+  let note: string;
+  try {
+    note = await openNote(
+      box,
+      fromHex(result.secret),
+      // The public half the server derived and published. X25519 needs it to
+      // build a usable private JWK; a zero placeholder is a DataError.
+      fromHex(detail.operatorPublicKey ?? ""),
+      detail.quoteId,
+    );
+  } catch {
+    // A ciphertext that does not open is not a message the operator can act on.
+    return null;
+  }
+  const digest = await sha256Hex(note.trim());
+  return {
+    note,
+    digestMatches: digest === box.digest,
+    chainMatches: digest === detail.contract?.evidenceCommitment,
+  };
+}
+
 async function operatorKey(
   convex: Convex,
   detail: OrderDetail,
@@ -582,6 +635,25 @@ export async function runAction(input: {
   const evidence =
     found?.bytes ??
     (action.needs === "note" ? await evidenceOf(note) : undefined);
+  // R40: the note is hashed for the chain, so nothing can read it back — not the
+  // studio, not the operator, not the buyer after the draft clears. Seal it to
+  // the operator's per-order key and store the ciphertext, so the person who has
+  // to decide the dispute can read the reason. The digest is unchanged: the same
+  // `evidence` above is what gets signed.
+  //
+  // This runs BEFORE the signature on purpose. A signature commits to the digest;
+  // if the sealed copy then failed to store, the operator would hold a hash with
+  // no readable counterpart, which is the state this round exists to end.
+  if (action.needs === "note" && evidence && detail.operatorPublicKey)
+    await convex.mutation(api.putDisputeNote, {
+      quoteId: detail.quoteId,
+      ...(await sealNote(
+        note,
+        fromHex(detail.operatorPublicKey),
+        detail.quoteId,
+      )),
+      digest: toHex(evidence),
+    });
   if (circuit === "resolve" && !evidence)
     // An escalated order recorded no evidence, so `resolve` can never satisfy
     // its own non-default check. Retrying cannot help; the order has to expire.

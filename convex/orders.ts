@@ -374,6 +374,14 @@ const orderDetailValidator = v.object({
    * it can now warn before the buyer commits a note and a transaction.
    */
   disputes: v.union(v.string(), v.null()),
+  /**
+   * R40: the operator's X25519 public key for this order, hex. Derived from the
+   * per-order `operatorSecret` by scalar-multiplying the base point, which is
+   * what `operatorPublicKey` does in the browser too. Publishing it is safe: a
+   * public key reveals nothing about the secret, and the buyer needs it to seal
+   * a dispute note the operator can read. `null` when no operator is configured.
+   */
+  operatorPublicKey: v.union(v.string(), v.null()),
   chain: v.object({
     network: v.string(),
     orderNonce: v.string(),
@@ -526,6 +534,10 @@ export const order = queryGeneric({
       serverNow: Date.now(),
       deadlines: frozen ? deadlineStrings(frozen) : null,
       disputes: disputesBlockedNotice(),
+      // R40: the buyer needs this to seal a dispute note the operator can read.
+      // Derived once at creation and stored, so this is a plain read and no
+      // curve arithmetic happens in a query.
+      operatorPublicKey: draft.notePublicKey ?? null,
       chain: {
         network: NETWORK_HEX,
         orderNonce: draft.orderNonce,
