@@ -63,6 +63,17 @@ one circuit call against the receipt's address, reusing the deploy's private sta
 without `--sweep`'s ten fresh deployments. It is **not yet exercised end to end** — the
 attempts above died in sync, before reaching it.
 
+### Private state is per working directory
+
+The private state store is a LevelDB directory named `midnight-level-db`, created
+**relative to the process working directory**, and the deploy writes each actor's
+witnesses into it as `<label>-<actor>`. A `--call` run started from anywhere else finds
+no store, creates an empty one, completes the whole dust sync, and only then reports
+`no private state at main-buyer`. The fix is to run the call from the directory the
+deploy ran in, or copy that directory's `midnight-level-db` into the new working
+directory first. `--call` now refuses immediately when the store holds no `.ldb` file,
+so a misconfigured run costs a second rather than two hours.
+
 ## Live wiring on Preprod
 
 The order contract is deployed at `b653b13a8ca93308d103d0fc7d0f6eac35dbdfc53d7b70cf3b1fe1d7fdc5818f` (14 of 14 circuits, staged deploy completed 2026-10-28).
