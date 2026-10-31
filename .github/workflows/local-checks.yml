@@ -132,10 +132,20 @@ jobs:
             echo 'dist/ carries placeholder origins; refusing to pass.' >&2
             exit 1
           fi
-          if grep -q Content-Security-Policy-Report-Only dist/vercel.json; then
-            echo 'CSP is report-only; the shipped policy enforces.' >&2
-            exit 1
-          fi
+          # Both artefacts carry the policy: Vercel reads vercel.json, the mirror
+          # reads _headers. Check BOTH, and require the header to be PRESENT in
+          # each, so a build that drops it entirely fails instead of passing on
+          # an absent string.
+          for artefact in dist/vercel.json dist/_headers; do
+            if ! grep -q 'Content-Security-Policy' "$artefact"; then
+              echo "no Content-Security-Policy in $artefact" >&2
+              exit 1
+            fi
+            if grep -q 'Content-Security-Policy-Report-Only' "$artefact"; then
+              echo "CSP is report-only in $artefact; the shipped policy enforces." >&2
+              exit 1
+            fi
+          done
           echo 'CSP narrowed to the configured origins.'
 
       # `secrets` is not available in a step-level `if:` (GitHub's context
@@ -183,6 +193,11 @@ jobs:
   # from the loop below in the same change that retires Vercel.
   deploy-stamp:
     name: deploy.json names commit, branch, dirty and builtAt
+    # Cutover is deleting one entry here, not editing a loop.
+    env:
+      DEPLOY_STAMP_HOSTS: >-
+        https://milo.k2jodz91zi.workers.dev
+        https://milo-nine-delta.vercel.app
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -190,13 +205,36 @@ jobs:
       - name: Both hosts stamp a full commit, a branch, a dirty flag and a build time
         run: |
           set -euo pipefail
+          # CUTOVER NOTE: drop the Vercel entry from DEPLOY_STAMP_HOSTS in the same
+          # change that retires Vercel. Left in place, `curl -fsS` 404s, `set -e`
+          # propagates it through `wait`, and every run goes red.
+          dir=$(mktemp -d)
+          i=0
           pids=
-          for url in https://milo.k2jodz91zi.workers.dev/deploy.json https://milo-nine-delta.vercel.app/deploy.json; do
-            curl -fsS --max-time 20 "$url" | tr -d '\n' | grep -Eq '"commit": *"[a-f0-9]{40}".*"branch":.*"dirty": *(true|false).*"builtAt": *"[^"]+"' &
+          for host in $DEPLOY_STAMP_HOSTS; do
+            i=$((i + 1))
+            curl -fsS --max-time 20 "$host/deploy.json" -o "$dir/$i.json" &
             pids="$pids $!"
           done
           for pid in $pids; do wait "$pid"; done
-          echo 'both deploy stamps are well formed.'
+
+          commits=
+          for f in "$dir"/*.json; do
+            # Shape: a full 40-hex commit, a branch key, a boolean dirty flag, a build time.
+            tr -d '\n' < "$f" | grep -Eq '"commit": *"[a-f0-9]{40}".*"branch":.*"dirty": *(true|false).*"builtAt": *"[^"]+"' \
+              || { echo "$f is not a well-formed deploy stamp" >&2; cat "$f" >&2; exit 1; }
+            commits="$commits $(jq -r .commit "$f")"
+          done
+
+          # Shape alone is not enough: two individually valid stamps naming
+          # DIFFERENT commits both pass, which is exactly how the mirror sat three
+          # days stale against Vercel without a red run. The pair is what matters.
+          distinct=$(printf '%s\n' $commits | sort -u | wc -l)
+          if [ "$distinct" -ne 1 ]; then
+            echo "hosts disagree on the deployed commit:$commits" >&2
+            exit 1
+          fi
+          echo "both hosts serve $(printf '%s\n' $commits | head -1)"
 
   # The native Midnight lane needs no container runtime: setup-native-services.py
   # extracts pinned binaries straight from the OCI registry over HTTPS and

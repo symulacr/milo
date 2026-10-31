@@ -6,7 +6,11 @@ import { magicLink } from "better-auth/plugins";
 import { queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { inviteFailureReason, sendEmail } from "../packages/backend/src/email";
-import { canonicalSiteUrl, env } from "../packages/backend/src/encoding";
+import {
+  authTrustedOrigins,
+  canonicalSiteUrl,
+  env,
+} from "../packages/backend/src/encoding";
 import { ORDER_WINDOWS_MS } from "../packages/backend/src/order-windows";
 import {
   operatorConfig,
@@ -161,10 +165,15 @@ export const createAuth = (ctx: GenericCtx<DataModel>) =>
     // Dev default matches scripts/dev.ts (PORT||3000). Production SITE_URL is
     // a comma list; keep the canonical public origin first so magic-link
     // callbacks do not land on localhost.
-    trustedOrigins: required(ctx, "SITE_URL", "http://localhost:3000")
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    //
+    // R51: `authTrustedOrigins` drops loopback entries unless this deployment is
+    // itself local, so production SITE_URL can keep carrying localhost for a
+    // developer's `.env.local` without putting it in the live trusted list.
+    // Better Auth: "Do not leave the localhost origin in a trusted origins list
+    // of a production auth instance."
+    trustedOrigins: authTrustedOrigins(
+      required(ctx, "SITE_URL", "http://localhost:3000"),
+    ),
     hooks: { before: confirmMagicLink, after: noReferrerOnVerify },
     database: authComponent.adapter(ctx),
     /**
