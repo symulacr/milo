@@ -30,38 +30,124 @@ flowchart LR
   terms[Private terms] -.hashed.-> LEDGER
 ```
 
-### Why no circuit has been executed on Preprod yet (measured 2026-10-31)
+### Why no circuit has been executed on Preprod yet (measured 2026-10-31, revised 2026-11-01)
 
-The contract is deployed and its 14 verifier keys match the compiled artifacts, but
-**no circuit call has ever been submitted** — the deployment is still at revision 0.
-The blocker is the DUST wallet sync, not the contract, the proof server or the circuits.
+The contract is deployed and all 14 verifier keys match the compiled artifacts byte for
+byte, but **no circuit call has ever been submitted** — the deployment is still at
+revision 0. The blocker is upstream in the DUST wallet sync, not in the contract, the
+proof server or the circuits.
 
-Measured over two attempts against `preprod-r38b`, the snapshot the deploying run left:
+What is proven on chain (re-queried 2026-11-01 against Blockfrost v4 GraphQL):
 
-| Observation | Value |
+| Fact | Value |
 | --- | --- |
-| DUST progress, first 11 minutes | 179,750 of 1,820,957 events (10%) |
-| Extrapolated full dust sync from genesis | roughly 110 minutes |
-| `"restored": true` across 95 sync events | **never** — the saved state is not adopted |
-| State written by a 57-minute run | `dust.json`, 1,074,309 bytes, then never reloaded |
+| Circuits deployed | 14 of 14 |
+| Verifier keys equal to the compiled artifacts | 14 of 14, sha256-identical at block 3176417 |
+| Deploy transaction | `96df7228…`, block 3176413, fee 1, SUCCESS |
+| Maintenance insert transaction | `3c83ce2d…`, block 3176417, fee 1, SUCCESS |
+| Specks spent | 2 (deploy fee + insert fee) |
+| Latest contract action | the insert's `ContractUpdate`, block 3176417 |
 
-Two independent guards refuse the fast path, and both are deliberate:
+That last row is the proof of revision 0, and it needs no deserialization: a circuit call
+produces a `ContractCall` action, a deploy produces `ContractDeploy`, and a maintenance
+insert produces `ContractUpdate`. The address's entire action history is
+`ContractDeploy` then `ContractUpdate`. No `ContractCall` exists, so no circuit has run.
 
-- `dust-seed-fallback` -> `seed-refused`: *"emitted snapshot holds no dust UTXOs for a
-  wallet that has already registered NIGHT: a collapsed update carries the tree roots
-  but not the wallet's own leaves, so the restored wallet would report zero balance and
-  could never spend."*
-- `wallet-state-rejected` -> `restore-verification-failed`, `failed: ["receipt-freshness"]`.
+#### The four attempts, and what each died of
 
-Each attempt therefore replays dust from genesis, so one that dies at minute 11 or
-minute 57 has made no durable progress. A call needs roughly two hours of uninterrupted
-sync first; `MILO_AWAIT_TIMEOUT_MS` must exceed that, and the WSL guest here is capped
-at 10 GB of RAM.
+| # | Route | Died of |
+| --- | --- | --- |
+| 1 | standalone `FluentWalletBuilder` + `syncWallet` | `Wallet sync timeout after 90000ms`, after replaying genesis from a run directory that had been reset to a fresh one |
+| 2 | `preprod-lane.mjs --call expireBootstrap` on the repo snapshot | restore rejected (`restore-verification-failed`), fell back to full sync, killed at 985,000 of 1,820,957 dust events |
+| 3 | the lane again, with `graphql-ws` installed and the six SDK packages pinned | restore passed 18/18 and the tail synced in ~90 s, then died on a missing `midnight-js-utils`; a later run reached 1,455,597 of 1,821,853 (79.9%) in ~51 min |
+| 4 | `mn contract call --address … --circuit expireBootstrap` | `SYNC_TIMEOUT` (exit 4) on every attempt |
 
-`packages/integration/src/preprod-lane.mjs --call <circuit>` exists for exactly this:
-one circuit call against the receipt's address, reusing the deploy's private state,
-without `--sweep`'s ten fresh deployments. It is **not yet exercised end to end** — the
-attempts above died in sync, before reaching it.
+Attempt 4 is the informative one. The native DUST sidecar works (`dust: native sidecar:
+…/@nel349/dust-sync-linux-x64/dust-sync`), a warm `mn dust status` takes **32 s** against
+~78 min cold, and the wallet really holds **175,000 DUST across 7 registered UTXOs**. The
+call path then refuses to proceed because it needs a full-facade strict sync with a
+**hardcoded 120 s timeout on public networks** and no override:
+`l = n.syncTimeoutMs ?? (d ? Lg : Fg)` with `Lg = 120000`, `Fg = 30000`.
+
+Neither the wallet nor the DUST balance is the problem. The submission path's sync budget
+is, and behind it the sync itself.
+
+#### The root cause is upstream: `midnight-wallet` #425
+
+Issue #425 ("Could not deserialize Ledger Event on `DustSpendProcessed`", opened
+2026-05-24, still open) documents it, and the maintainer corrected the diagnosis:
+
+> "This actually wasn't a serialization error as such but that **WASM was running out of
+> memory**."
+
+A sync that exhausts WASM memory corrupts `DustLocalState`, and the corruption is silent:
+
+- `serializeState()` does not validate — `Serialization.js` encodes `state.serialize()`
+  directly, so whatever is in WASM is written to disk.
+- `isStrictlyComplete()` never touches the state. `SyncProgress.js` compares cursors
+  (`isCompleteWithin(data, maxGap)` → `|highestRelevantWalletIndex - appliedIndex| <= maxGap`),
+  so a corrupted state reports itself fully synced.
+- `waitForSyncedState()` just awaits the three sub-wallets; nothing walks the trees.
+
+The failure therefore surfaces later, at the first `walletBalance()`, as #425's
+`RuntimeError: unreachable`.
+
+#### Why local hardening cannot close it
+
+`batchUpdates.size` is already **5000** (commit `3ebcca9`, 2026-09-20) — the maintainer's
+documented workaround, and a 500x increase over the SDK default of 10. It was present in
+every failed attempt above, and a third party reported on #425 that it is not sufficient on
+this chain (7.9 h, then the same WASM trap at ~53% of the event range).
+
+The fix is a **projections-based fast sync** that reads the current tree from the indexer
+instead of replaying events. It exists only on **ledger 9**: the `./v2` export of
+`wallet-sdk-dust-wallet` 5.0.0-rc.1 imports `DustLocalState` from
+`@midnightntwrk/ledger-v9`, which is published only as `1.0.0-rc.6`. PR #585, which
+prototyped it against `ledger-v8@8.2.0-rc.1`, was **closed unmerged** and
+`wallet-sdk-dust-fast-sync` was never published; `ledger-v8` has no 8.2.x release at all.
+The maintainers' own position (2026-08-19, issue #639) is that "there is a real fix that is
+available on Ledger 9 and Ledger 9 has an imminent release".
+
+A ledger bump is not a version change here. `validateCohort()` in
+`packages/integration/src/artifacts.mjs` `deepEqual`s the **entire** dependency map and then
+re-resolves each of 15 packages from disk; `preprod-profile.mjs` pins the proof server to
+`8.1.3`, the same line as the ledger, and `infra/midnight/compose.yml` pins that image by
+digest; and a new `compact-runtime` recompiles `order.compact`, producing different verifier
+keys, so the contract must be redeployed. That is a deliberate, separately-scoped decision,
+not a step in a hardening round.
+
+#### What the guards do, and do not do
+
+`receipt-freshness` refuses to restore a snapshot that cannot be shown to describe the files
+on disk. It is not over-strict: a receipt only claims to describe files it was written at or
+after, so files newer than the receipt are reported `UNEXERCISED` rather than `FAIL`, and a
+`FAIL` is reserved for a receipt that post-dates the files and still disagrees with them.
+
+G14 (`dust-state-usable`) is the only gate that walks the restored WASM trees, calling
+`utxos()` and `walletBalance()` under a 30 s bound. It **detects** a corrupted snapshot at
+restore time instead of at the first fee payment, at a cost of about 2 microseconds on a
+7-UTXO state. It cannot **prevent** the corruption, which happens inside the ledger WASM
+during sync. A run that trips G14 still has no usable snapshot and still falls back to a
+full genesis replay.
+
+#### What a future successful run must produce
+
+1. `sync-progress` reaching `dustComplete: true` with no `Wallet.Sync` line in the log.
+2. `wallet-state-verified` with `checks: 19` (was 18; G14 is the new one) and `failed: []`.
+3. A receipt entry `"id": "dust-state-usable", "status": "PASS"` naming a real utxo count
+   and balance.
+4. A second run restoring from that snapshot and reaching the same PASS, proving the
+   snapshot survived a round trip.
+5. A negative control: corrupt one byte of `dust.json`, confirm G14 FAILs, and confirm the
+   lane falls back to a full sync instead of proceeding.
+
+Only then attempt `preprod-lane.mjs --call <circuit>`, from the directory the deploy ran in.
+Success is a `ContractCall` action on `b653b13a…` and a revision of at least 1.
+
+One caveat on the last step: even a clean sync may not be enough. Issues #700 and #849 (both
+open) describe a zero-fee DUST balancing defect that fails on GA Preprod with this exact
+stack, so the first circuit call may also need `additionalFeeOverhead` set.
+
 
 ### Private state is per working directory
 
