@@ -187,14 +187,16 @@ jobs:
   # The deploy stamp is the only proof that what is live came from a commit, and
   # both hosts are checked independently because they can drift apart.
   #
-  # Why this job gates nothing, and why it has no `needs:`. Deploys are
-  # asynchronous: Vercel builds on push and the mirror is uploaded by the
-  # `local-checks` job above, so at the moment this job runs the live stamps
-  # describe the PREVIOUS release. Asserting `commit == $GITHUB_SHA` would turn
-  # every push red on a healthy deploy, so that comparison is reported as a
-  # notice and only host-to-host disagreement fails the run. Adding `needs:`
-  # would let a red `local-checks` hide this result AND still leave Vercel's
-  # async build unaccounted for.
+  # Why this job gates nothing, and why it has no `needs:`. Neither host updates
+  # itself from this workflow, measured 2026-10-31: every production deployment
+  # of the Vercel `milo` project is `source: "cli"` (a manual `dist/` upload; the
+  # one git-linked deployment is an old PREVIEW from the `publish` branch), and
+  # the mirror upload in `local-checks` is skipped unless CLOUDFLARE_API_TOKEN is
+  # set. A stamp pair naming a commit older than this run is therefore the NORMAL
+  # state, not a fault, and failing on it would paint every push red until
+  # somebody deploys. The lag goes to a notice and the step summary instead.
+  # Host-to-host disagreement is what fails here, because that is the drift
+  # nobody would otherwise see.
   #
   # CUTOVER NOTE: this step probes Vercel as well as the mirror. When Vercel is
   # retired, `curl -fsS` on its URL returns 404, `set -euo pipefail` propagates
@@ -289,8 +291,22 @@ jobs:
 
           live=${commits[0]}
           echo "all ${#commits[@]} hosts serve $live"
+
+          # The run page is where a human looks first, so the served commit goes
+          # there whether or not it matches this run.
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Deployed commit"
+              echo ""
+              echo "| | commit |"
+              echo "| --- | --- |"
+              echo "| live on ${#commits[@]} hosts | \`$live\` |"
+              echo "| this run | \`${GITHUB_SHA:-unknown}\` |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           if [ "$live" != "${GITHUB_SHA:-}" ]; then
-            echo "::notice::hosts serve $live, this run is ${GITHUB_SHA:-unknown}; deploys are asynchronous so a lag here is expected, not a failure"
+            echo "::notice::hosts serve $live, this run is ${GITHUB_SHA:-unknown}; neither host deploys from this workflow, so a lag is expected rather than a failure"
           fi
 
   # The native Midnight lane needs no container runtime: setup-native-services.py
