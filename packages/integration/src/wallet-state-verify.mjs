@@ -875,6 +875,28 @@ async function checkIndexerMarker(checks, snapshotDir, endpoints) {
   return marker;
 }
 
+/**
+ * Walk the restored dust state with the two calls that actually touch the WASM trees.
+ * Exported so the test exercises this function rather than a copy of it: a test that
+ * re-implements the probe proves only that the copy works.
+ *
+ * Upstream #425: a sync that exhausted WASM memory corrupts DustLocalState, and the next
+ * `walletBalance()` throws `RuntimeError: unreachable` from the ledger WASM. `serializeState()`
+ * does not validate and `isStrictlyComplete()` is only a cursor comparison, so such a state
+ * reports itself synced and is written to disk. Reading it here is the only thing that catches
+ * it before the first fee payment.
+ */
+export async function probeDustState(dust) {
+  const utxos = dust?.utxos ?? dust?.state?.utxos;
+  const count =
+    typeof utxos === "function" ? utxos.call(dust).length : utxos?.length;
+  const balance = dust?.walletBalance ? dust.walletBalance(new Date()) : null;
+  return {
+    utxoCount: count ?? null,
+    balance: balance === null ? null : String(balance),
+  };
+}
+
 /** G13: the receipt on disk describes the snapshot on disk.
  *
  * Every other check re-derives its answer from the files in front of it, so a receipt
@@ -1297,6 +1319,36 @@ async function checkBoundedRestore(checks, texts, opts, chain, endpoints) {
     );
   }
 
+  // A dust snapshot can restore without throwing and still be unusable. upstream #425: a
+  // sync that ran the WASM out of memory "corrupts DustLocalState; the next walletBalance()
+  // call hits RuntimeError: unreachable in the ledger WASM". `serializeState()` does not
+  // validate (Serialization.js calls `state.serialize()` directly), and `isStrictlyComplete()`
+  // is only `isConnected && |highestRelevantWalletIndex - appliedIndex| <= 0` (SyncProgress.js),
+  // so a corrupted state reports itself fully synced and is then written to disk. Nothing above
+  // reads the restored state: `getAddress()` is metadata. Exercise the two calls that actually
+  // walk the WASM trees, so corruption is caught here instead of at the first fee payment.
+  if (out.instances.dust) {
+    const dust = out.instances.dust;
+    const probe = await withTimeout("dust-state-probe", 30_000, () =>
+      probeDustState(dust),
+    );
+    checks.add(
+      "dust-state-usable",
+      "the restored dust state can be read without a WASM fault",
+      probe.status === "ok" ? "PASS" : "FAIL",
+      {
+        expected:
+          "utxos() and walletBalance() both return on the restored state (upstream #425: a corrupted DustLocalState throws RuntimeError: unreachable here)",
+        observed:
+          probe.status === "ok"
+            ? `utxos=${probe.value.utxoCount} balance=${probe.value.balance}`
+            : `${probe.status} after ${probe.elapsedMs}ms: ${probe.error}`,
+        remedy:
+          "The snapshot restores but its DustLocalState cannot be walked, which is the #425 corruption. Fall back to a full from-seed sync; do not trust or re-save this snapshot.",
+      },
+    );
+  }
+
   // Unshielded needs no secret key to start: exercise the full restore -> start -> sync.
   const unshielded = out.instances.unshielded;
   if (unshielded) {
@@ -1655,6 +1707,11 @@ export const GATE_DEFINITION = Object.freeze({
       id: "G13",
       check: "receipt-freshness",
       text: "the receipt on disk describes the snapshot on disk: every role's recorded sha256 equals the file about to be restored, whenever the receipt was written at or after those files. Without this, a PASS verdict written for an older snapshot is read as evidence about new files that were never verified, because every other check re-derives its answer from whatever is on disk now. An absent receipt is UNEXERCISED (the first run of a snapshot has none). A receipt OLDER than the files is UNEXERCISED too: `--verify` writes the receipt and the lane then syncs and rewrites the files, so on every ordinary run the files are newer by construction, and calling that corruption refused the fast path on every attempt after the first. A receipt written at or after the files does claim to describe them, and a mismatch there is FAIL and refuses the fast path; a receipt with no parseable timestamp gets no exemption.",
+    },
+    {
+      id: "G14",
+      check: "dust-state-usable",
+      text: "the restored dust state can be walked: utxos() and walletBalance() both return. A dust snapshot can restore without throwing and still be unusable. Upstream #425: a sync that ran the WASM out of memory corrupts DustLocalState, and the next walletBalance() call hits RuntimeError: unreachable in the ledger WASM. The maintainer's cause is WASM memory exhaustion, not a serialization fault, so a larger JS heap cannot help; the documented workaround is a larger sync batch (batchUpdates.size, default 10, set to 5000 here). serializeState() itself does not validate, and isStrictlyComplete() is only a cursor comparison, so a corrupted state reports itself synced and is written to disk. Every other gate reads metadata or re-derives from files; only this one walks the restored trees, so without it corruption surfaces at the first fee payment instead of here.",
     },
   ],
   onFailure:
