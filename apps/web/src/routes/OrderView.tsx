@@ -45,6 +45,12 @@ import {
   writeDraft,
 } from "../workspace/keys";
 import {
+  connectPreferred,
+  TEST_CARD,
+  useConnected,
+  WALLET_MISSING,
+} from "../workspace/order-wallet";
+import {
   actionsFor,
   deadlineOf,
   type OrderAction,
@@ -53,12 +59,6 @@ import {
   turnOf,
   useNow,
 } from "../workspace/stages";
-import {
-  connectPreferred,
-  WALLET_MISSING,
-  TEST_CARD,
-  useConnected,
-} from "../workspace/order-wallet";
 import { differentAccount, useWallet } from "../workspace/wallet";
 import { OrderInvite } from "./OrderInvite";
 import { WorkspaceNotFound } from "./WorkspaceNotFound";
@@ -237,10 +237,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
 
   const run = (action: OrderAction) => {
     if (!connected) {
-      if (!connectPreferred())
-        setError(
-          WALLET_MISSING,
-        );
+      if (!connectPreferred()) setError(WALLET_MISSING);
       return;
     }
     // `busy` only disables the button after a re-render, so two clicks in the
@@ -362,7 +359,10 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
             body={
               <>
                 <p>{turn.body}</p>
-                <p>Signs with Lace on Midnight Preprod. This step cannot be undone.</p>
+                <p>
+                  Signs with Lace on Midnight Preprod. This step cannot be
+                  undone.
+                </p>
               </>
             }
             confirmLabel={seal?.label ?? "Confirm"}
@@ -408,10 +408,7 @@ function Order({ order, me }: { order: OrderDetail; me: Me }) {
               ) : (
                 <Button
                   onClick={() => {
-                    if (!connectPreferred())
-                      setError(
-                        WALLET_MISSING,
-                      );
+                    if (!connectPreferred()) setError(WALLET_MISSING);
                   }}
                 >
                   Connect a wallet

@@ -1,10 +1,10 @@
 import { motion } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type PlusIconHandle = MotionIconHandle;
@@ -13,6 +13,7 @@ const PlusIcon = forwardRef<PlusIconHandle, MotionIconProps>((props, ref) => (
   <MotionIconShell ref={ref} {...props}>
     {(controls, size) => (
       <motion.svg
+        aria-hidden="true"
         {...svgBase(size)}
         animate={controls}
         initial="normal"

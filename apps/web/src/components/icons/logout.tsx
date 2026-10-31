@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type LogoutIconHandle = MotionIconHandle;
@@ -23,9 +23,7 @@ const LogoutIcon = forwardRef<LogoutIconHandle, MotionIconProps>(
   (props, ref) => (
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
+        <svg aria-hidden="true" {...svgBase(size)}>
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
           <motion.polyline
             animate={controls}

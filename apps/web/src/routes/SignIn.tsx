@@ -74,86 +74,86 @@ export function SignIn({ expired = false }: { expired?: boolean }) {
   return (
     <div className="grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] lg:items-start">
       <div className="grid max-w-xl content-start gap-6">
-      <PageTitle
-        title={
-          linkError
-            ? "Request a new link"
-            : invited
-              ? "Open your order"
-              : "Sign in to Milo"
-        }
-      >
-        <p className="max-w-[52ch] text-muted-foreground">
-          {linkError
-            ? `Enter your email for a new one. ${LINK_WINDOW}`
-            : invited
-              ? // R39: signed out, `orders:invite` is UNAUTHENTICATED, so this
-                // page cannot know the quote exists. Saying "a studio sent you
-                // an order" for a stale or invented link sends the user through
-                // sign-in to find nothing. Say what is true: the link will be
-                // checked once there is a session to check it with.
-                "Sign in to open the order this link points to. Email starts the session; Lace signs order steps later."
-              : "Email starts your session. Lace signs order steps when an action needs it."}
-        </p>
-      </PageTitle>
-      <form
-        className="grid gap-4 rounded-lg bg-card p-5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          // U-01: a double submit sent two links and burned one of the
-          // three-per-minute allowance.
-          if (!send.start()) return;
-          setBusy(true);
-          setLinkError("");
-          setError("");
-          // D-01: never put the invite token in callbackURL. It would be
-          // embedded in the emailed verify link and logged by the provider.
-          //
-          // G-17: the token still has to survive the hop, or the buyer can
-          // never reopen the order. It is stashed for the tab and restored by
-          // OrderView after the session exists, so the emailed link stays
-          // token-free while the order stays reachable.
-          void sendMagicLink(email, here)
-            .then((result) =>
-              result.sent
-                ? setSent(`${result.message} ${LINK_WINDOW}`)
-                : setError(result.message),
-            )
-            .catch((cause) => setError(errorText(cause)))
-            .finally(() => {
-              send.end();
-              setBusy(false);
-            });
-        }}
-      >
-        <Field label="Email" id="signin-email" error={fieldError}>
-          <Input
-            id="signin-email"
-            type="email"
-            required
-            autoComplete="email"
-            enterKeyHint="send"
-            inputMode="email"
-            aria-invalid={fieldError ? true : undefined}
-            aria-describedby={fieldError ? "signin-email-error" : undefined}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </Field>
-        <Button type="submit" pending={busy}>
-          <Mark icon={MailboxIcon} />
-          Email me a sign-in link
-        </Button>
-        {/* The field's own sentence is already announced by Field; passing it
+        <PageTitle
+          title={
+            linkError
+              ? "Request a new link"
+              : invited
+                ? "Open your order"
+                : "Sign in to Milo"
+          }
+        >
+          <p className="max-w-[52ch] text-muted-foreground">
+            {linkError
+              ? `Enter your email for a new one. ${LINK_WINDOW}`
+              : invited
+                ? // R39: signed out, `orders:invite` is UNAUTHENTICATED, so this
+                  // page cannot know the quote exists. Saying "a studio sent you
+                  // an order" for a stale or invented link sends the user through
+                  // sign-in to find nothing. Say what is true: the link will be
+                  // checked once there is a session to check it with.
+                  "Sign in to open the order this link points to. Email starts the session; Lace signs order steps later."
+                : "Email starts your session. Lace signs order steps when an action needs it."}
+          </p>
+        </PageTitle>
+        <form
+          className="grid gap-4 rounded-lg bg-card p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            // U-01: a double submit sent two links and burned one of the
+            // three-per-minute allowance.
+            if (!send.start()) return;
+            setBusy(true);
+            setLinkError("");
+            setError("");
+            // D-01: never put the invite token in callbackURL. It would be
+            // embedded in the emailed verify link and logged by the provider.
+            //
+            // G-17: the token still has to survive the hop, or the buyer can
+            // never reopen the order. It is stashed for the tab and restored by
+            // OrderView after the session exists, so the emailed link stays
+            // token-free while the order stays reachable.
+            void sendMagicLink(email, here)
+              .then((result) =>
+                result.sent
+                  ? setSent(`${result.message} ${LINK_WINDOW}`)
+                  : setError(result.message),
+              )
+              .catch((cause) => setError(errorText(cause)))
+              .finally(() => {
+                send.end();
+                setBusy(false);
+              });
+          }}
+        >
+          <Field label="Email" id="signin-email" error={fieldError}>
+            <Input
+              id="signin-email"
+              type="email"
+              required
+              autoComplete="email"
+              enterKeyHint="send"
+              inputMode="email"
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? "signin-email-error" : undefined}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </Field>
+          <Button type="submit" pending={busy}>
+            <Mark icon={MailboxIcon} />
+            Email me a sign-in link
+          </Button>
+          {/* The field's own sentence is already announced by Field; passing it
             here too made a screen reader say it twice. */}
-        <Outcome status={sent} error={fieldError ? "" : error} />
-      </form>
-      <div className="max-w-[52ch] text-sm text-muted-foreground">
-        Have a wallet and no email?{" "}
-        <span className="inline-flex align-middle">
-          <ConnectWallet signIn />
-        </span>
-      </div>
+          <Outcome status={sent} error={fieldError ? "" : error} />
+        </form>
+        <div className="max-w-[52ch] text-sm text-muted-foreground">
+          Have a wallet and no email?{" "}
+          <span className="inline-flex align-middle">
+            <ConnectWallet signIn />
+          </span>
+        </div>
       </div>
       <img
         className="hidden aspect-[4/5] w-full object-cover lg:block"

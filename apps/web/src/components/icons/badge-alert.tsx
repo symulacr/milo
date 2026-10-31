@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type BadgeAlertIconHandle = MotionIconHandle;
@@ -27,6 +27,7 @@ const BadgeAlertIcon = forwardRef<BadgeAlertIconHandle, MotionIconProps>(
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
         <motion.svg
+          aria-hidden="true"
           {...svgBase(size)}
           animate={controls}
           initial="normal"

@@ -8,12 +8,12 @@ import { PageTitle } from "../components/PageTitle";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardTitle } from "../components/ui/card";
+import { OrderProgress } from "../components/ui/order-progress";
 import { SealSheet } from "../components/ui/seal-sheet";
 import { Mark } from "../components/ui/status";
 import { Note } from "../components/workspace";
 import { badgeTone } from "../lib/format";
 import { WALLET_MISSING } from "../workspace/order-wallet";
-import { OrderProgress } from "../components/ui/order-progress";
 import {
   actionsFor,
   PAYMENT_CAPTION,
@@ -47,7 +47,9 @@ const deadlines = {
   resolution: FAR_SEC,
 };
 
-const PAYMENT_STATES = Object.keys(PAYMENT_CAPTION) as (keyof typeof PAYMENT_CAPTION)[];
+const PAYMENT_STATES = Object.keys(
+  PAYMENT_CAPTION,
+) as (keyof typeof PAYMENT_CAPTION)[];
 
 function StageCard({ stage, role }: { stage: Stage; role: Role }) {
   const turn = turnOf(stage, role, true, false);

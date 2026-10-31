@@ -40,7 +40,9 @@ export function OrderProgress({
           }}
         />
       </div>
-      <p className="text-sm text-muted-foreground">{PAYMENT_CAPTION[payment]}</p>
+      <p className="text-sm text-muted-foreground">
+        {PAYMENT_CAPTION[payment]}
+      </p>
     </>
   );
 }

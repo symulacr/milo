@@ -51,15 +51,16 @@ export const PAYMENT_LABEL: Record<OrderDetail["payment"]["state"], string> = {
 };
 
 /** Phase-bar caption: payment as words, not a chip. */
-export const PAYMENT_CAPTION: Record<OrderDetail["payment"]["state"], string> = {
-  none: "No card on this order yet.",
-  pending: "Card authorized. Capture waits for approval.",
-  held: "Card authorized. Capture waits for approval.",
-  captured: "Card captured.",
-  released: "Authorization voided.",
-  failed: "Card payment failed.",
-  "needs-card": "A card is still needed to continue.",
-};
+export const PAYMENT_CAPTION: Record<OrderDetail["payment"]["state"], string> =
+  {
+    none: "No card on this order yet.",
+    pending: "Card authorized. Capture waits for approval.",
+    held: "Card authorized. Capture waits for approval.",
+    captured: "Card captured.",
+    released: "Authorization voided.",
+    failed: "Card payment failed.",
+    "needs-card": "A card is still needed to continue.",
+  };
 
 export const trackIndex = (stage: Stage) =>
   TRACK.indexOf(

@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type UploadIconHandle = MotionIconHandle;
@@ -26,9 +26,7 @@ const UploadIcon = forwardRef<UploadIconHandle, MotionIconProps>(
   (props, ref) => (
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
+        <svg aria-hidden="true" {...svgBase(size)}>
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <motion.g animate={controls} variants={ARROW_VARIANTS}>
             <polyline points="17 8 12 3 7 8" />

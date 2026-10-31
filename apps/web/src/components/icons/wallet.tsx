@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type WalletIconHandle = MotionIconHandle;
@@ -34,6 +34,7 @@ const WalletIcon = forwardRef<WalletIconHandle, MotionIconProps>(
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
         <motion.svg
+          aria-hidden="true"
           {...svgBase(size)}
           animate={controls}
           initial="normal"

@@ -16,19 +16,15 @@ import { openOrder, warmChain } from "../workspace/flows";
 import { clearInvite } from "../workspace/keys";
 import {
   connectPreferred,
-  WALLET_MISSING,
   TEST_CARD,
   useConnected,
+  WALLET_MISSING,
 } from "../workspace/order-wallet";
 import { useWallet } from "../workspace/wallet";
 
 const FIT = "w-fit";
 
-export function OrderInvite(props: {
-  quoteId: string;
-  token: string;
-  me: Me;
-}) {
+export function OrderInvite(props: { quoteId: string; token: string; me: Me }) {
   const { quoteId, token, me } = props;
   const convex = useConvex();
   const wallet = useWallet();
@@ -109,8 +105,8 @@ export function OrderInvite(props: {
           {preview.brief}
         </p>
         <Note>
-          Opening authorizes the card, publishes the contract, and reserves the
-          terms. Lace must sign.
+          {usd(preview.amountUsd)} is authorized now and captured on approval.
+          Opening publishes the contract and reserves the terms. Lace must sign.
           {config?.paymentsMode === "test" ? ` ${TEST_CARD}` : ""}
         </Note>
         <Button
@@ -136,8 +132,9 @@ export function OrderInvite(props: {
         body={
           <>
             <p>
-              Opening authorizes the card, publishes the contract, and reserves
-              the terms on Midnight Preprod.
+              {usd(preview.amountUsd)} is authorized now and captured on
+              approval. Opening publishes the contract and reserves the terms on
+              Midnight Preprod.
             </p>
             <p>Lace must sign. This step cannot be undone.</p>
           </>

@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type CheckIconHandle = MotionIconHandle;
@@ -30,24 +30,20 @@ const PATH_VARIANTS: Variants = {
   },
 };
 
-const CheckIcon = forwardRef<CheckIconHandle, MotionIconProps>(
-  (props, ref) => (
-    <MotionIconShell ref={ref} {...props}>
-      {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
-          <motion.path
-            animate={controls}
-            d="M4 12 9 17L20 6"
-            initial="normal"
-            variants={PATH_VARIANTS}
-          />
-        </svg>
-      )}
-    </MotionIconShell>
-  ),
-);
+const CheckIcon = forwardRef<CheckIconHandle, MotionIconProps>((props, ref) => (
+  <MotionIconShell ref={ref} {...props}>
+    {(controls, size) => (
+      <svg aria-hidden="true" {...svgBase(size)}>
+        <motion.path
+          animate={controls}
+          d="M4 12 9 17L20 6"
+          initial="normal"
+          variants={PATH_VARIANTS}
+        />
+      </svg>
+    )}
+  </MotionIconShell>
+));
 
 CheckIcon.displayName = "CheckIcon";
 

@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type BanIconHandle = MotionIconHandle;
@@ -47,32 +47,28 @@ const LINE_VARIANTS: Variants = {
   }),
 };
 
-const BanIcon = forwardRef<BanIconHandle, MotionIconProps>(
-  (props, ref) => (
-    <MotionIconShell ref={ref} {...props}>
-      {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
-          <motion.circle
-            animate={controls}
-            cx="12"
-            cy="12"
-            initial="normal"
-            r="10"
-            variants={CIRCLE_VARIANTS}
-          />
-          <motion.path
-            animate={controls}
-            d="m4.9 4.9 14.2 14.2"
-            initial="normal"
-            variants={LINE_VARIANTS}
-          />
-        </svg>
-      )}
-    </MotionIconShell>
-  ),
-);
+const BanIcon = forwardRef<BanIconHandle, MotionIconProps>((props, ref) => (
+  <MotionIconShell ref={ref} {...props}>
+    {(controls, size) => (
+      <svg aria-hidden="true" {...svgBase(size)}>
+        <motion.circle
+          animate={controls}
+          cx="12"
+          cy="12"
+          initial="normal"
+          r="10"
+          variants={CIRCLE_VARIANTS}
+        />
+        <motion.path
+          animate={controls}
+          d="m4.9 4.9 14.2 14.2"
+          initial="normal"
+          variants={LINE_VARIANTS}
+        />
+      </svg>
+    )}
+  </MotionIconShell>
+));
 
 BanIcon.displayName = "BanIcon";
 

@@ -36,8 +36,14 @@ export function App() {
               <Route path="/design/stages" element={<StageGallery />} />
             )}
             <Route path="/demo" element={<Navigate to="/orders" replace />} />
-            <Route path="/sign-in" element={<Navigate to="/account" replace />} />
-            <Route path="/signin" element={<Navigate to="/account" replace />} />
+            <Route
+              path="/sign-in"
+              element={<Navigate to="/account" replace />}
+            />
+            <Route
+              path="/signin"
+              element={<Navigate to="/account" replace />}
+            />
             <Route
               path="/connections"
               element={<Navigate to="/account" replace />}

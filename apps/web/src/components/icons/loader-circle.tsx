@@ -1,10 +1,10 @@
-import { motion, type Variants } from "motion/react";
+import { motion, type Transition, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type LoaderCircleIconHandle = MotionIconHandle;
@@ -31,16 +31,14 @@ const LoaderCircleIcon = forwardRef<LoaderCircleIconHandle, MotionIconProps>(
   (props, ref) => (
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
+        <svg aria-hidden="true" {...svgBase(size)}>
           <motion.path
-          animate={controls}
-          d="M21 12a9 9 0 1 1-6.219-8.56"
-          style={{ transformOrigin: "12px 12px" }}
-          transition={DEFAULT_TRANSITION}
-          variants={G_VARIANTS}
-        />
+            animate={controls}
+            d="M21 12a9 9 0 1 1-6.219-8.56"
+            style={{ transformOrigin: "12px 12px" }}
+            transition={DEFAULT_TRANSITION}
+            variants={G_VARIANTS}
+          />
         </svg>
       )}
     </MotionIconShell>

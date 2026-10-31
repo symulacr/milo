@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { ORDER_WINDOWS_MS } from "../../../../packages/backend/src/order-windows";
 import { checkSampleFiles, MISMATCH, sampleFiles } from "../assets";
 import {
@@ -8,10 +8,7 @@ import {
   XIcon,
 } from "../components/icons";
 import { mountFieldCanvas } from "../field-canvas";
-import {
-  PublicFooter,
-  PublicHeader,
-} from "../shells/public-chrome";
+import { PublicFooter, PublicHeader } from "../shells/public-chrome";
 
 const rise = (i: number): CSSProperties => ({ ["--i" as string]: i });
 
@@ -141,7 +138,11 @@ export function Landing() {
               </p>
               <a className="cta rise" href="/orders/new" style={rise(2)}>
                 Start an order{" "}
-                <ArrowRightIcon size={20} className="arrow" aria-hidden="true" />
+                <ArrowRightIcon
+                  size={20}
+                  className="arrow"
+                  aria-hidden="true"
+                />
               </a>
             </div>
             <aside
@@ -238,8 +239,8 @@ export function Landing() {
               Check the files yourself
             </h2>
             <p className="lead max-w-[34ch]">
-              The same check runs before every approval: your browser hashes each
-              file and compares the three digests with the locked list.
+              The same check runs before every approval: your browser hashes
+              each file and compares the three digests with the locked list.
             </p>
             <div className="grid gap-4">
               <button
@@ -259,7 +260,10 @@ export function Landing() {
                 )}
                 <span>Check the files</span>
               </button>
-              <p className="max-w-[40ch] text-[15px] empty:hidden" role="status">
+              <p
+                className="max-w-[40ch] text-[15px] empty:hidden"
+                role="status"
+              >
                 {status}
               </p>
             </div>
@@ -329,10 +333,7 @@ export function Landing() {
           </h2>
           <dl className="mx-auto mt-14 grid max-w-7xl gap-y-12 lg:gap-y-16">
             {FAQ.map(([q, a]) => (
-              <div
-                key={q}
-                className="grid gap-3 lg:grid-cols-2 lg:gap-16"
-              >
+              <div key={q} className="grid gap-3 lg:grid-cols-2 lg:gap-16">
                 <dt className="heading">{q}</dt>
                 <dd className="max-w-[44ch] text-[17px] leading-relaxed text-white/85">
                   {a}
@@ -364,10 +365,7 @@ export function Landing() {
           </dl>
         </section>
 
-        <section
-          aria-labelledby="close-title"
-          className="grid lg:grid-cols-2"
-        >
+        <section aria-labelledby="close-title" className="grid lg:grid-cols-2">
           <img
             className="aspect-[4/3] w-full object-cover lg:aspect-auto lg:h-full"
             src="/images/studio-shelf.webp"
@@ -383,7 +381,11 @@ export function Landing() {
                 href="/orders/new"
               >
                 Start an order{" "}
-                <ArrowRightIcon size={28} className="arrow" aria-hidden="true" />
+                <ArrowRightIcon
+                  size={28}
+                  className="arrow"
+                  aria-hidden="true"
+                />
               </a>
             </h2>
             <p className="lead max-w-[34ch]">

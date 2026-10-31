@@ -645,13 +645,19 @@ const GUARDS: readonly (readonly [string, string, string, string])[] = [
   [
     "D-10 the invite card names no step count",
     "apps/web/src/routes/OrderInvite.tsx",
-    "publishes the contract, and reserves the",
+    // The needle must be the PROMISE, not whatever copy shipped. A needle taken
+    // from the new wording passes even if the promise was dropped, which is how
+    // this guard went green while the card stopped saying when capture happens.
+    "is authorized now and captured on approval",
     "SIGN_STEPS",
   ],
   [
     "D-08 an ended order states its payment result",
     "apps/web/src/components/ui/order-progress.tsx",
-    "PAYMENT_CAPTION",
+    // `PAYMENT_CAPTION` alone was a bare identifier: it survives in the import
+    // even when the render is deleted, so the guard could not fail. The needle
+    // is the render expression, which disappears with the caption.
+    "{PAYMENT_CAPTION[payment]}",
     "captures the card payment next",
   ],
   [
@@ -1568,6 +1574,23 @@ describe("an invite survives the sign-in it needs", () => {
     expect(source.includes("stashedInvite(quoteId)")).toBe(true);
     // The stash is keyed by the route's own id, never a global one.
     expect(source.includes("stashedInvite()")).toBe(false);
+  });
+});
+
+describe("D-08 the payment caption states the result in words", () => {
+  // A source-text needle cannot see a Record's values, so the guard above can
+  // only prove the caption is rendered. This proves it says the right thing:
+  // an authorized card must say capture is still to come, not that it was taken.
+  test("an authorized card says capture waits for approval", async () => {
+    const { PAYMENT_CAPTION } = (await import("./workspace/stages")) as {
+      PAYMENT_CAPTION: Record<string, string>;
+    };
+    for (const state of ["pending", "held"])
+      expect(PAYMENT_CAPTION[state]).toContain("Capture waits for approval");
+    expect(PAYMENT_CAPTION.captured).toContain("captured");
+    // The failure mode this exists to stop: claiming money moved too early.
+    for (const state of ["pending", "held"])
+      expect(PAYMENT_CAPTION[state]).not.toMatch(/charged|taken|paid/i);
   });
 });
 

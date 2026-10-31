@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 
@@ -46,20 +46,28 @@ export function SealSheet({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-end bg-foreground/40 p-4 sm:place-items-center"
-      onClick={onCancel}
-    >
+    <div className="fixed inset-0 z-50 grid place-items-end p-4 sm:place-items-center">
+      {/* The scrim is a real button, not a div with a click handler: it is the
+          dismiss affordance, so it must be reachable and named. It sits behind
+          the sheet rather than wrapping it, because a button cannot contain the
+          dialog's own buttons. Escape and the cancel button remain the primary
+          paths; this is the pointer shortcut, labelled for anyone who lands on
+          it with a screen reader. */}
+      <button
+        type="button"
+        aria-label={cancelLabel}
+        className="absolute inset-0 cursor-default bg-foreground/40"
+        onClick={onCancel}
+      />
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         className={cn(
-          "grid w-full max-w-md gap-4 border border-border bg-background p-5 shadow-lg",
+          "relative grid w-full max-w-md gap-4 border border-border bg-background p-5 shadow-lg",
           "rounded-none sm:rounded-sm",
         )}
-        onClick={(event) => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-lg font-semibold tracking-tight">
           {title}

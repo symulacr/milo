@@ -1,11 +1,7 @@
-import type { AppIcon } from "../icons";
-import {
-  BadgeAlertIcon,
-  CheckIcon,
-  LoaderCircleIcon,
-} from "../icons";
-import { PageTitle } from "../PageTitle";
 import { cn } from "../../lib/utils";
+import type { AppIcon } from "../icons";
+import { BadgeAlertIcon, CheckIcon, LoaderCircleIcon } from "../icons";
+import { PageTitle } from "../PageTitle";
 
 const STATUS_ICON: Record<"working" | "done" | "failed", AppIcon> = {
   working: LoaderCircleIcon,

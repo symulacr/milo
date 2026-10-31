@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type MailboxIconHandle = MotionIconHandle;
@@ -33,9 +33,7 @@ const MailboxIcon = forwardRef<MailboxIconHandle, MotionIconProps>(
   (props, ref) => (
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
+        <svg aria-hidden="true" {...svgBase(size)}>
           <path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z" />
           <motion.path
             animate={controls}

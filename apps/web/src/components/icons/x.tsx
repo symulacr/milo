@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type XIconHandle = MotionIconHandle;
@@ -20,29 +20,25 @@ const PATH_VARIANTS: Variants = {
   },
 };
 
-const XIcon = forwardRef<XIconHandle, MotionIconProps>(
-  (props, ref) => (
-    <MotionIconShell ref={ref} {...props}>
-      {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
-          <motion.path
-            animate={controls}
-            d="M18 6 6 18"
-            variants={PATH_VARIANTS}
-          />
-          <motion.path
-            animate={controls}
-            d="m6 6 12 12"
-            transition={{ delay: 0.2 }}
-            variants={PATH_VARIANTS}
-          />
-        </svg>
-      )}
-    </MotionIconShell>
-  ),
-);
+const XIcon = forwardRef<XIconHandle, MotionIconProps>((props, ref) => (
+  <MotionIconShell ref={ref} {...props}>
+    {(controls, size) => (
+      <svg aria-hidden="true" {...svgBase(size)}>
+        <motion.path
+          animate={controls}
+          d="M18 6 6 18"
+          variants={PATH_VARIANTS}
+        />
+        <motion.path
+          animate={controls}
+          d="m6 6 12 12"
+          transition={{ delay: 0.2 }}
+          variants={PATH_VARIANTS}
+        />
+      </svg>
+    )}
+  </MotionIconShell>
+));
 
 XIcon.displayName = "XIcon";
 

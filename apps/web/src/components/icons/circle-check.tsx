@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type CircleCheckIconHandle = MotionIconHandle;
@@ -32,9 +32,7 @@ const CircleCheckIcon = forwardRef<CircleCheckIconHandle, MotionIconProps>(
   (props, ref) => (
     <MotionIconShell ref={ref} {...props}>
       {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
+        <svg aria-hidden="true" {...svgBase(size)}>
           <circle cx="12" cy="12" r="10" />
           <motion.path
             animate={controls}

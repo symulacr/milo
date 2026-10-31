@@ -1,8 +1,5 @@
 import { Link, Outlet } from "react-router";
-import {
-  PublicFooter,
-  PublicHeader,
-} from "./public-chrome";
+import { PublicFooter, PublicHeader } from "./public-chrome";
 
 export function PublicShell() {
   return (

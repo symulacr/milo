@@ -1,16 +1,16 @@
 import { useQuery_experimental as useQuery } from "convex/react";
-import { CircleDashedIcon, PlusIcon } from "../components/icons";
 import { Link } from "react-router";
 import { api, type OrderSummary } from "../api";
+import { CircleDashedIcon, PlusIcon } from "../components/icons";
 import { PageTitle } from "../components/PageTitle";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Loading, Mark } from "../components/ui/status";
 import { errorText } from "../components/workspace";
 import { badgeTone, usd, useAgo } from "../lib/format";
+import { CHUNK_LOAD } from "../shells/WorkspaceShell";
 import { StaleBuild, useMe } from "../workspace/backend";
 import { STAGE_LABEL, yourTurn } from "../workspace/stages";
-import { CHUNK_LOAD } from "../shells/WorkspaceShell";
 
 const ROW =
   "grid grid-cols-[minmax(0,1fr)] items-center gap-x-6 gap-y-1.5 px-5 py-3.5 transition-colors hover:bg-muted/60 md:grid-cols-[minmax(0,1fr)_130px_90px_90px] md:gap-y-1";

@@ -32,7 +32,9 @@ type FieldRenderer = {
 
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-async function createRenderer(canvas: HTMLCanvasElement): Promise<FieldRenderer | null> {
+async function createRenderer(
+  canvas: HTMLCanvasElement,
+): Promise<FieldRenderer | null> {
   try {
     const { WebGPURenderer } = await import("three/webgpu");
     const gpu = new WebGPURenderer({
@@ -77,7 +79,7 @@ export function mountFieldCanvas(host: HTMLElement): () => void {
   const pointer = { x: 0, y: 0 };
   const target = { x: 0, y: 0 };
   let scroll = 0;
-  let t0 = performance.now();
+  const t0 = performance.now();
 
   SRC.forEach((url, i) => {
     const front = i < 3;
@@ -134,8 +136,7 @@ export function mountFieldCanvas(host: HTMLElement): () => void {
       const lean = front ? 0.22 : 0.35;
       mesh.rotation.y =
         pointer.x * lean + drift * scroll + Math.sin(wave * 0.4 + i) * 0.04;
-      mesh.rotation.x =
-        pointer.y * -0.14 + Math.cos(wave * 0.35 + i) * 0.02;
+      mesh.rotation.x = pointer.y * -0.14 + Math.cos(wave * 0.35 + i) * 0.02;
       if (front) {
         mesh.position.x =
           (i - 1) * (1.2 - scroll * 0.08) + pointer.x * 0.04 * (i - 1);
@@ -146,8 +147,7 @@ export function mountFieldCanvas(host: HTMLElement): () => void {
         const side = i === 3 ? -1 : 1;
         mesh.position.x =
           side * (1.05 + scroll * 0.25) + pointer.x * 0.12 * side;
-        mesh.position.y =
-          0.12 + bob + pointer.y * 0.14 - scroll * 0.2;
+        mesh.position.y = 0.12 + bob + pointer.y * 0.14 - scroll * 0.2;
         mesh.position.z = -1.1 - scroll * 0.9 + Math.sin(wave * 0.5 + i) * 0.04;
       }
     });

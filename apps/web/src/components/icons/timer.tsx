@@ -1,10 +1,10 @@
 import { motion, type Variants } from "motion/react";
 import { forwardRef } from "react";
 import {
-  MotionIconShell,
-  svgBase,
   type MotionIconHandle,
   type MotionIconProps,
+  MotionIconShell,
+  svgBase,
 } from "./motion-host";
 
 export type TimerIconHandle = MotionIconHandle;
@@ -46,36 +46,32 @@ const BUTTON_VARIANTS: Variants = {
   },
 };
 
-const TimerIcon = forwardRef<TimerIconHandle, MotionIconProps>(
-  (props, ref) => (
-    <MotionIconShell ref={ref} {...props}>
-      {(controls, size) => (
-        <svg
-          {...svgBase(size)}
-        >
-          <motion.line
-            animate={controls}
-            variants={BUTTON_VARIANTS}
-            x1="10"
-            x2="14"
-            y1="2"
-            y2="2"
-          />
-          <motion.line
-            animate={controls}
-            initial="normal"
-            variants={HAND_VARIANTS}
-            x1="12"
-            x2="15"
-            y1="14"
-            y2="11"
-          />
-          <circle cx="12" cy="14" r="8" />
-        </svg>
-      )}
-    </MotionIconShell>
-  ),
-);
+const TimerIcon = forwardRef<TimerIconHandle, MotionIconProps>((props, ref) => (
+  <MotionIconShell ref={ref} {...props}>
+    {(controls, size) => (
+      <svg aria-hidden="true" {...svgBase(size)}>
+        <motion.line
+          animate={controls}
+          variants={BUTTON_VARIANTS}
+          x1="10"
+          x2="14"
+          y1="2"
+          y2="2"
+        />
+        <motion.line
+          animate={controls}
+          initial="normal"
+          variants={HAND_VARIANTS}
+          x1="12"
+          x2="15"
+          y1="14"
+          y2="11"
+        />
+        <circle cx="12" cy="14" r="8" />
+      </svg>
+    )}
+  </MotionIconShell>
+));
 
 TimerIcon.displayName = "TimerIcon";
 
