@@ -78,3 +78,93 @@ describe("item 10 the hold is usable for 60 s, not for the order", () => {
     ).toBe(false);
   });
 });
+
+/**
+ * R50: the guard the numbers above only describe.
+ *
+ * Stripe cancels an uncaptured PaymentIntent a fixed number of days after it is
+ * created — 7 by default. Capture happens only once the order reaches APPROVED
+ * (`settlement.ts`: `settlementAuthorized("capture", phase)`), and the contract
+ * can reach APPROVED at two points:
+ *
+ *   - `approve`, bounded by `reviewDeadline`     = acceptance + delivery + review
+ *   - `resolve`, bounded by `resolutionDeadline` = all four windows
+ *
+ * So the LATEST possible capture is the full cumulative window. If that ever
+ * exceeds the provider limit the authorization is already gone when capture
+ * runs, and the order fails with nothing to capture — silently, and only for
+ * orders that took the long path. Nothing else in the suite would notice: the
+ * assertions above hardcode 121 h, so lengthening `review` fails them with
+ * "expected 121 to be 169", which says nothing about why 121 mattered.
+ *
+ * Margin policy: require at least 24 h of slack (cumulative <= 6 days).
+ *
+ * Why 24 h and not more: today's margin is 47 h, so a 48 h policy would fail on
+ * the day it landed — a guard that is red before anyone breaks anything is
+ * worse than no guard. 24 h is the largest round number that passes with room
+ * to spare while still catching a real change: review 48 h -> 72 h passes
+ * (145 h, 23 h margin); review 48 h -> 96 h fails (169 h, -1 h).
+ *
+ * Why a margin at all: Stripe's 7 days is a *default* an account can lower, the
+ * capture call is subject to retry and clock skew, and `capture_before` is a
+ * provider-side instant we do not control. One day absorbs all three without
+ * pretending we know the account's real setting. The message states the
+ * arithmetic so the next person learns why the ceiling exists.
+ */
+const PROVIDER_AUTH_LIMIT_MS = 7 * DAY;
+const REQUIRED_MARGIN_MS = 24 * HOUR;
+
+/** `approve` is bounded by reviewDeadline: the common, earlier capture point. */
+const capturePointMs = () =>
+  ORDER_WINDOWS_MS.acceptance +
+  ORDER_WINDOWS_MS.delivery +
+  ORDER_WINDOWS_MS.review;
+
+/** `resolve` is bounded by resolutionDeadline: the latest possible capture. */
+const latestCaptureMs = () => capturePointMs() + ORDER_WINDOWS_MS.resolution;
+
+const overrunMessage = (latest: number) =>
+  `order windows total ${latest / HOUR} h; Stripe cancels an uncaptured ` +
+  `PaymentIntent after ${PROVIDER_AUTH_LIMIT_MS / HOUR} h, so capture at ` +
+  `APPROVED would fail with nothing to capture. Shorten a window or raise the ` +
+  `Stripe limit; ${REQUIRED_MARGIN_MS / HOUR} h of margin is required.`;
+
+describe("R50 the windows fit inside Stripe's authorization lifetime", () => {
+  test("the latest capture point leaves at least a day of margin", () => {
+    const latest = latestCaptureMs();
+    expect(
+      PROVIDER_AUTH_LIMIT_MS - latest >= REQUIRED_MARGIN_MS
+        ? "ok"
+        : overrunMessage(latest),
+    ).toBe("ok");
+  });
+
+  test("the earliest capture point is inside the limit by a wide margin", () => {
+    const earliest = capturePointMs();
+    // The approve path is the common one; it must never be the binding bound.
+    expect(
+      PROVIDER_AUTH_LIMIT_MS - earliest >= REQUIRED_MARGIN_MS
+        ? "ok"
+        : `approve is bounded by reviewDeadline = ${earliest / HOUR} h, leaving ` +
+            `only ${(PROVIDER_AUTH_LIMIT_MS - earliest) / HOUR} h before Stripe ` +
+            `cancels the authorization.`,
+    ).toBe("ok");
+  });
+
+  test("the guard fires, with the arithmetic, when review is lengthened", () => {
+    // The plausible product change this exists to catch: review 48 h -> 96 h.
+    const review = 96 * HOUR;
+    const latest =
+      ORDER_WINDOWS_MS.acceptance +
+      ORDER_WINDOWS_MS.delivery +
+      review +
+      ORDER_WINDOWS_MS.resolution;
+    const margin = PROVIDER_AUTH_LIMIT_MS - latest;
+    expect(margin).toBeLessThan(REQUIRED_MARGIN_MS);
+    expect(margin).toBeLessThan(0);
+    const message = overrunMessage(latest);
+    expect(message).toContain("169 h");
+    expect(message).toContain("168 h");
+    expect(message).toContain("nothing to capture");
+  });
+});
