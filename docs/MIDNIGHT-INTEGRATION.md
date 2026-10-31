@@ -30,7 +30,38 @@ flowchart LR
   terms[Private terms] -.hashed.-> LEDGER
 ```
 
-Real-fee Preprod lifecycle is pending DUST (B-DUST-01).
+### Why no circuit has been executed on Preprod yet (measured 2026-10-31)
+
+The contract is deployed and its 14 verifier keys match the compiled artifacts, but
+**no circuit call has ever been submitted** — the deployment is still at revision 0.
+The blocker is the DUST wallet sync, not the contract, the proof server or the circuits.
+
+Measured over two attempts against `preprod-r38b`, the snapshot the deploying run left:
+
+| Observation | Value |
+| --- | --- |
+| DUST progress, first 11 minutes | 179,750 of 1,820,957 events (10%) |
+| Extrapolated full dust sync from genesis | roughly 110 minutes |
+| `"restored": true` across 95 sync events | **never** — the saved state is not adopted |
+| State written by a 57-minute run | `dust.json`, 1,074,309 bytes, then never reloaded |
+
+Two independent guards refuse the fast path, and both are deliberate:
+
+- `dust-seed-fallback` -> `seed-refused`: *"emitted snapshot holds no dust UTXOs for a
+  wallet that has already registered NIGHT: a collapsed update carries the tree roots
+  but not the wallet's own leaves, so the restored wallet would report zero balance and
+  could never spend."*
+- `wallet-state-rejected` -> `restore-verification-failed`, `failed: ["receipt-freshness"]`.
+
+Each attempt therefore replays dust from genesis, so one that dies at minute 11 or
+minute 57 has made no durable progress. A call needs roughly two hours of uninterrupted
+sync first; `MILO_AWAIT_TIMEOUT_MS` must exceed that, and the WSL guest here is capped
+at 10 GB of RAM.
+
+`packages/integration/src/preprod-lane.mjs --call <circuit>` exists for exactly this:
+one circuit call against the receipt's address, reusing the deploy's private state,
+without `--sweep`'s ten fresh deployments. It is **not yet exercised end to end** — the
+attempts above died in sync, before reaching it.
 
 ## Live wiring on Preprod
 
