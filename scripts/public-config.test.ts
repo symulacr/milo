@@ -595,7 +595,7 @@ describe("CSP narrowing", () => {
 
     test("the policy and the report endpoint survive the translation", () => {
       const out = generated();
-      expect(out).toContain("Content-Security-Policy-Report-Only: default-src");
+      expect(out).toContain("Content-Security-Policy: default-src");
       expect(out).toContain(
         `Reporting-Endpoints: default="https://deploy.convex.site`,
       );

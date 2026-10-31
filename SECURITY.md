@@ -16,7 +16,7 @@ Report vulnerabilities privately to pajiton@atomicmail.io. Do not open a public 
 - A test checks every public Convex function against six kinds of user (`packages/backend/test/auth-inventory.test.ts`).
 - Stripe webhooks verify the signature, are stored once, and are reconciled on retry.
 - Private order secrets stay in the browser, encrypted with a non-extractable key.
-- A Content-Security-Policy runs in report-only mode and reports to the Convex `/csp-report` route. It does not yet block anything.
+- Content-Security-Policy is enforced and reports to `/csp-report`.
 
 The full audit register is in `docs/audit/REGISTER.md`.
 

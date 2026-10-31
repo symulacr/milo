@@ -132,6 +132,10 @@ jobs:
             echo 'dist/ carries placeholder origins; refusing to pass.' >&2
             exit 1
           fi
+          if grep -q Content-Security-Policy-Report-Only dist/vercel.json; then
+            echo 'CSP is report-only; the shipped policy enforces.' >&2
+            exit 1
+          fi
           echo 'CSP narrowed to the configured origins.'
 
       # `secrets` is not available in a step-level `if:` (GitHub's context
@@ -169,6 +173,30 @@ jobs:
           npx --no-install wrangler deploy \
             --tag "$GITHUB_SHA" \
             --message "$GITHUB_SHA $GITHUB_REF_NAME"
+
+  # The deploy stamp is the only proof that what is live came from a commit, and
+  # both hosts are checked independently because they can drift apart.
+  #
+  # CUTOVER NOTE: this step probes Vercel as well as the mirror. When Vercel is
+  # retired, `curl -fsS` on its URL returns 404, `set -euo pipefail` propagates
+  # that through `wait`, and EVERY run goes red. The Vercel URL MUST be dropped
+  # from the loop below in the same change that retires Vercel.
+  deploy-stamp:
+    name: deploy.json names commit, branch, dirty and builtAt
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both hosts stamp a full commit, a branch, a dirty flag and a build time
+        run: |
+          set -euo pipefail
+          pids=
+          for url in https://milo.k2jodz91zi.workers.dev/deploy.json https://milo-nine-delta.vercel.app/deploy.json; do
+            curl -fsS --max-time 20 "$url" | tr -d '\n' | grep -Eq '"commit": *"[a-f0-9]{40}".*"branch":.*"dirty": *(true|false).*"builtAt": *"[^"]+"' &
+            pids="$pids $!"
+          done
+          for pid in $pids; do wait "$pid"; done
+          echo 'both deploy stamps are well formed.'
 
   # The native Midnight lane needs no container runtime: setup-native-services.py
   # extracts pinned binaries straight from the OCI registry over HTTPS and
@@ -208,7 +236,9 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .tools/native-midnight
-          key: native-midnight-node-1.0.0-indexer-4.3.3-prover-8.1.3
+          # The provisioned binary is ledger-8.1.0 (scripts/setup-native-services.py:41),
+          # so an `8.1.3` key never matched the artifact it cached.
+          key: native-midnight-node-1.0.0-indexer-4.3.3-prover-8.1.0
 
       # `packages/contract/generated` is gitignored, so a fresh clone has none of
       # it and the driver's first stage (validateArtifacts) fails before it does
