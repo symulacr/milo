@@ -88,7 +88,10 @@ if (!result.success) {
 // consumer, so a share of Milo would have no card. SITE_URL is the deployment's
 // own origin (see .env.example); without it the relative value stays rather than
 // shipping a broken absolute one, the same posture as the CSP rewrite.
-const siteOrigin = (process.env.SITE_URL ?? "").replace(/\/$/, "");
+const siteOrigin = (process.env.SITE_URL ?? "")
+  .split(",")[0]
+  .trim()
+  .replace(/\/$/, "");
 
 for (const name of HTML_NAMES) {
   const path = `${outdir}/${name}.html`;

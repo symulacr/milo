@@ -27,6 +27,37 @@ describe("social tags", () => {
     expect(build).toContain("SITE_URL");
     expect(build).toContain('content="${siteOrigin}/og-card.png"');
   });
+
+  // R46: SITE_URL is a comma list during a host cutover (four entries on the live
+  // deploy), but the build treated the whole list as one origin, so canonical,
+  // og:url, og:image, every sitemap <loc> and security.txt's Canonical shipped the
+  // raw list. This evaluates the exact expression build.ts uses, so it asks the
+  // question the build answers rather than restating the answer.
+  test("the build origin is the first entry of a comma list", () => {
+    const build = readFileSync("scripts/build.ts", "utf8");
+    const expression =
+      build.match(/const siteOrigin = ([\s\S]*?);\n/)?.[1] ?? "";
+    expect(expression).not.toBe("");
+    const originFor = (siteUrl: string) =>
+      new Function("process", `return ${expression}`)({
+        env: { SITE_URL: siteUrl },
+      }) as string;
+    const list =
+      "https://milo-nine-delta.vercel.app,https://milo.k2jodz91zi.workers.dev,http://localhost:3000,http://127.0.0.1:3000";
+    const origin = originFor(list);
+    // The bug: the whole list became the origin, so every URL carried commas.
+    expect(origin).not.toContain(",");
+    expect(origin).toBe("https://milo-nine-delta.vercel.app");
+    // A value written with leading whitespace (an indented .env line) must yield
+    // the same origin, which is what the trim is for.
+    expect(originFor(`  ${list}`)).toBe("https://milo-nine-delta.vercel.app");
+    // A single origin is unchanged, so the mirror's output does not move.
+    expect(originFor("https://milo.k2jodz91zi.workers.dev")).toBe(
+      "https://milo.k2jodz91zi.workers.dev",
+    );
+    // A trailing slash is still stripped, as it was before this fix.
+    expect(originFor("https://a.test/,https://b.test")).toBe("https://a.test");
+  });
 });
 
 describe("shipped cache policy", () => {
