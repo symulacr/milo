@@ -17,7 +17,7 @@
     "typecheck": "sh scripts/with-bun.sh node_modules/typescript/bin/tsc --noEmit",
     "check:plan": "sh scripts/with-bun.sh scripts/check-plan.ts",
     "lint": "sh scripts/with-bun.sh node_modules/@biomejs/biome/bin/biome check .",
-    "test:unit": "sh scripts/with-bun.sh test --parallel apps/web packages/domain packages/contract packages/backend packages/midnight-client convex e2e scripts/*.test.ts",
+    "test:unit": "sh scripts/with-bun.sh test --parallel --max-concurrency=4 apps/web packages/domain packages/contract packages/backend packages/midnight-client convex e2e scripts/*.test.ts",
     "ship": "bash scripts/post-push-verify.sh",
     "ship:release": "bash scripts/post-push-verify.sh --release",
     "ship:force": "bash scripts/post-push-verify.sh --force",

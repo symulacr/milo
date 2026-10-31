@@ -134,9 +134,32 @@ jobs:
           fi
           echo 'CSP narrowed to the configured origins.'
 
-      - name: Deploy to Cloudflare Workers
+      # `secrets` is not available in a step-level `if:` (GitHub's context
+      # availability table), so the presence check runs as a step and publishes an
+      # output. Without this the deploy step reported `success` while deploying
+      # nothing: the secret is unset, wrangler exits 1, and `continue-on-error`
+      # turned that into a green tick. Measured on run 41217944987: step 16
+      # `success`, wrangler `[ERROR] ... necessary to set a CLOUDFLARE_API_TOKEN`.
+      - name: Check the Cloudflare deploy token is configured
+        id: cf-token
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -eu
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo 'Cloudflare token is configured; the deploy step will run.'
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo '::warning title=Cloudflare deploy SKIPPED::CLOUDFLARE_API_TOKEN is not set. This run did NOT update the mirror. Add the repository secret to enable deploys.'
+            echo 'CLOUDFLARE_API_TOKEN is not set: the deploy step will be SKIPPED, not passed.' >&2
+          fi
+
+      # No `continue-on-error`: with the token present, a real deploy failure must
+      # fail the run. With it absent the step is SKIPPED (grey), never `success`.
+      - name: Deploy to Cloudflare Workers
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.cf-token.outputs.present == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: d3a827e41b99a67dc1fc2169dfdacb30

@@ -137,6 +137,38 @@ describe("G13 receipt freshness", () => {
     assert.equal((await runGate(partial)).status, "PASS");
   });
 
+  // The real defect: `--verify` hashes the files, writes the receipt, and the lane then
+  // syncs and rewrites them. On the next run the files are newer than the receipt, so their
+  // hashes differ BY CONSTRUCTION. That is not corruption, and treating it as FAIL refused
+  // the fast path on every attempt after the first.
+  test("files written AFTER the receipt are not covered by it: UNEXERCISED, not FAIL", async () => {
+    const stale = receiptFor({
+      "dust.json": { sha256: sha("older"), bytes: 7893 },
+    });
+    stale.generatedAt = new Date(Date.now() - 86_400_000).toISOString();
+    const g13 = await runGate(stale);
+    assert.equal(g13.status, "UNEXERCISED");
+    assert.match(g13.observed, /dust/);
+  });
+
+  // The safety half: a receipt written at or after the files DOES claim to describe them,
+  // and a mismatch there is the defect the gate exists for. Must still refuse.
+  test("a receipt written at or after the files still FAILs on a mismatch", async () => {
+    const fresh = receiptFor({
+      "dust.json": { sha256: sha("older"), bytes: 7893 },
+    });
+    fresh.generatedAt = new Date(Date.now() + 60_000).toISOString();
+    const g13 = await runGate(fresh);
+    assert.equal(g13.status, "FAIL");
+    assert.match(g13.observed, /7893B/);
+  });
+
+  test("a matching receipt passes regardless of timestamps", async () => {
+    const ok = receiptFor();
+    ok.generatedAt = new Date(Date.now() - 86_400_000).toISOString();
+    assert.equal((await runGate(ok)).status, "PASS");
+  });
+
   test("the three roles the gate compares are the three snapshots", () => {
     assert.deepEqual(Object.keys(WALLET_STATE_FILES).sort(), [
       "dust",

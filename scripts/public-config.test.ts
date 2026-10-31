@@ -637,3 +637,52 @@ describe("CSP narrowing", () => {
     ).toThrow(/not in connect-src/);
   });
 });
+
+/**
+ * R49: the landing is a React route now, so `Bun.build` emits `index.html` with
+ * an empty `<div id="root">` and the copy only exists after the bundle runs.
+ * Crawlers and no-JS visitors got nothing: measured on production, `/` shipped
+ * 0 `<h1>` and 32 visible characters (just the noscript line), while
+ * `/privacy` and `/terms` shipped their full text.
+ *
+ * `mount()` uses `createRoot(...).render(...)`, not `hydrateRoot`, so markup
+ * inside `#root` is REPLACED on boot rather than reconciled — a static hero
+ * there is a first paint for crawlers and a fallback for people, and cannot
+ * produce a hydration mismatch. This test pins the fallback's presence and its
+ * substance, so a future refactor cannot quietly empty `#root` again.
+ */
+describe("the landing ships crawlable content (R49)", () => {
+  const landing = readFileSync("apps/web/index.html", "utf8");
+
+  const rootBody = (): string => {
+    const m = landing.match(/<div id="root">([\s\S]*?)<\/div>\s*<noscript/);
+    return m?.[1] ?? "";
+  };
+
+  test("the root container is not empty", () => {
+    expect(rootBody().trim().length).toBeGreaterThan(0);
+  });
+
+  test("it carries an h1 with the shipped hero", () => {
+    expect(rootBody()).toMatch(/<h1>Approve the exact files\.<\/h1>/);
+  });
+
+  test("it carries real body copy, not just a link", () => {
+    // Strip tags and count what a crawler would actually read.
+    const text = rootBody()
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&[a-zA-Z#0-9]+;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    expect(text.length).toBeGreaterThan(150);
+    expect(text).toContain("private order between a studio and its client");
+  });
+
+  test("the fallback is inside #root, where createRoot replaces it", () => {
+    // If it sat outside #root it would survive boot and duplicate the page.
+    expect(landing.indexOf('id="root"')).toBeLessThan(
+      landing.indexOf("<h1>Approve the exact files.</h1>"),
+    );
+  });
+});

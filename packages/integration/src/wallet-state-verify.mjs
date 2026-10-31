@@ -26,7 +26,7 @@
 // indices, counts, flags, sizes).
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -921,10 +921,32 @@ async function checkReceiptFreshness(checks, opts, hashes) {
   }
   const recorded = receipt?.snapshotFiles ?? {};
   const drift = [];
+  // A receipt only describes a snapshot it was written AT OR AFTER. `--verify` hashes the
+  // files, writes this receipt, and the lane then syncs and rewrites them, so on every
+  // ordinary run the files on disk are NEWER than the receipt and their hashes differ by
+  // construction. Treating that as corruption refused the fast path on every attempt after
+  // the first, which is why the DUST cache was never reused. Files newer than the receipt
+  // are simply not covered by it: UNEXERCISED, exactly like a missing receipt. A receipt
+  // written at or after the files DOES claim to describe them, and a hash mismatch there is
+  // the real defect this gate exists for.
+  const receiptMs = Number.isFinite(Date.parse(receipt?.generatedAt ?? ""))
+    ? Date.parse(receipt.generatedAt)
+    : null;
+  // Covered means the receipt was written at or after every file it names, so its hashes
+  // claim to describe them. Files newer than the receipt are not covered by it.
+  // A receipt with no parseable timestamp cannot be shown to predate the files, so it gets
+  // no exemption: fail closed rather than treat an undated receipt as free of claims.
+  let covered = true;
   for (const role of Object.keys(WALLET_STATE_FILES)) {
     const was = recorded[role];
     const now = hashes[role];
     if (!was || !now) continue;
+    if (covered && receiptMs !== null) {
+      const st = statSync(resolve(opts.snapshotDir ?? "", now.file), {
+        throwIfNoEntry: false,
+      });
+      if (!st || st.mtimeMs > receiptMs) covered = false;
+    }
     if (was.sha256 !== now.sha256) {
       drift.push(
         `${role}: receipt ${String(was.sha256).slice(0, 12)}…/${was.bytes}B vs disk ${String(now.sha256).slice(0, 12)}…/${now.bytes}B`,
@@ -934,7 +956,7 @@ async function checkReceiptFreshness(checks, opts, hashes) {
   checks.add(
     "receipt-freshness",
     "the receipt on disk was written for the snapshot on disk",
-    drift.length === 0 ? "PASS" : "FAIL",
+    drift.length === 0 ? "PASS" : covered ? "FAIL" : "UNEXERCISED",
     {
       expected:
         "every role's sha256 in the receipt equals the file about to be restored",
@@ -1632,7 +1654,7 @@ export const GATE_DEFINITION = Object.freeze({
     {
       id: "G13",
       check: "receipt-freshness",
-      text: "the receipt on disk describes the snapshot on disk: every role's recorded sha256 equals the file about to be restored. Without this, a PASS verdict written for an older snapshot is read as evidence about new files that were never verified, because every other check re-derives its answer from whatever is on disk now. An absent receipt is UNEXERCISED (the first run of a snapshot has none); a mismatched one is FAIL and refuses the fast path.",
+      text: "the receipt on disk describes the snapshot on disk: every role's recorded sha256 equals the file about to be restored, whenever the receipt was written at or after those files. Without this, a PASS verdict written for an older snapshot is read as evidence about new files that were never verified, because every other check re-derives its answer from whatever is on disk now. An absent receipt is UNEXERCISED (the first run of a snapshot has none). A receipt OLDER than the files is UNEXERCISED too: `--verify` writes the receipt and the lane then syncs and rewrites the files, so on every ordinary run the files are newer by construction, and calling that corruption refused the fast path on every attempt after the first. A receipt written at or after the files does claim to describe them, and a mismatch there is FAIL and refuses the fast path; a receipt with no parseable timestamp gets no exemption.",
     },
   ],
   onFailure:
@@ -1659,6 +1681,7 @@ export async function verifyWalletState(snapshotDir, options = {}) {
     timeoutMs: options.timeoutMs ?? 300_000,
     chainTimeoutMs: options.chainTimeoutMs ?? 90_000,
     quietMs: options.quietMs ?? 4_000,
+    snapshotDir,
     receiptPath:
       options.receiptPath ?? resolve(snapshotDir, "verification-receipt.json"),
     writeReceipt: options.writeReceipt !== false,

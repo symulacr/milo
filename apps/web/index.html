@@ -25,7 +25,25 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./public/apple-touch-icon.png" />
   </head>
   <body>
-    <div id="root"></div>
-    <noscript>Milo needs JavaScript. <a href="/orders">Sign in</a>.</noscript>
+    <!--
+      Crawlable fallback. `mount()` calls `createRoot(...).render(...)`, which
+      REPLACES this subtree rather than hydrating it, so no mismatch is possible:
+      the first frame is this markup, and React takes over when the module runs.
+      The landing moved from static HTML into `Landing.tsx`, which left `/` with
+      an empty `<div id="root">` for crawlers and no-JS visitors. Keep it to the
+      hero: it is a summary, not a second copy of the page.
+    -->
+    <div id="root">
+      <main>
+        <h1>Approve the exact files.</h1>
+        <p>
+          A private order between a studio and its client. Your browser checks
+          the three final images before you approve, and you sign in with your
+          Lace wallet on Midnight Preprod.
+        </p>
+        <p><a href="/orders">Sign in</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a></p>
+      </main>
+    </div>
+    <noscript>Milo needs JavaScript for the interactive parts. <a href="/orders">Sign in</a>.</noscript>
   </body>
 </html>
