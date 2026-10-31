@@ -479,6 +479,29 @@ jobs:
       - name: Run the native Midnight smoke
         run: npm run test:native-network
 
+      # The only place all 14 proof circuits are exercised without touching
+      # Preprod. `local-circuit-sweep.mjs` builds a fresh staged 7+7 instance per
+      # scenario on a local `undeployed` chain — 10 scenarios covering every
+      # proof circuit — so a failure names a circuit in minutes instead of hours.
+      #
+      # It is a separate STEP, not a second flag on the smoke above, so a red run
+      # says which of the two broke. It reuses this job's services, compiled
+      # contract and SDK cohort, so the incremental cost is the sweep itself; the
+      # inner script is invoked directly because `npm run test:native-network`
+      # would re-run provisioning that steps 4-7 already did.
+      #
+      # `--circuit-sweep` refuses to run alongside the other lanes by design
+      # (scripts/native-node-smoke.ts asserts it needs only `--transactions`) and
+      # `--transactions` itself requires `--with-services`.
+      - name: Every proof circuit succeeds on a local chain
+        run: >-
+          sh scripts/with-bun.sh scripts/test-native-network.ts
+          --circuit-sweep --transactions --with-services
+        env:
+          # Same ceiling the runbook documents: one minute per local driver step,
+          # with a per-step timeout inside so a stall names the step.
+          MILO_LOCAL_TIMEOUT_MS: "60000"
+
       # The assertion only reports an exit code; the driver's own `failed` event
       # and the service logs live in this directory, which is gitignored. Without
       # this upload a red run is undiagnosable from the log alone.
