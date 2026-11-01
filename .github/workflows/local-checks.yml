@@ -56,6 +56,10 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      # Set by the last step: did THIS run upload both hosts? `deploy-stamp`
+      # only demands a matching stamp when it did.
+      deployed: ${{ steps.deployed.outputs.both }}
     steps:
       - name: Check out source without persisted credentials
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -111,42 +115,73 @@ jobs:
           test "$(node --version)" = 'v26.11.1'
           npm run test:integration
 
-      - name: Build web app
+      # Each host must claim its OWN origin, and `scripts/build.ts` takes
+      # `SITE_URL.split(",")[0]` as canonical, so two hosts that must not claim
+      # each other's URL need two builds. Measured live 2026-10-31 before this
+      # change: the mirror served canonical=https://milo.k2jodz91zi.workers.dev/
+      # and Vercel served canonical=https://milo-nine-delta.vercel.app/, i.e. the
+      # deployed pair was built separately by hand. CI now does the same thing.
+      #
+      # `build.ts` always writes `dist` and clears it first, so the Vercel
+      # variant is built FIRST and moved aside. `dist` keeps the mirror variant
+      # because `wrangler.toml` reads it as the relative `assets.directory`.
+      - name: Build web app (Vercel origin)
         env:
-          # Only the build needs the canonical origin (sitemap, og:url, canonical).
+          SITE_URL: https://milo-nine-delta.vercel.app
+        run: |
+          set -eu
+          npm run build
+          rm -rf dist-vercel
+          mv dist dist-vercel
+
+      - name: Build web app (mirror origin)
+        env:
           SITE_URL: https://milo.k2jodz91zi.workers.dev
         run: npm run build
 
       # A build that silently skipped CSP narrowing would pass every other gate.
       # This asserts the emitted policy actually took the configured branch, so
       # "the build succeeded" cannot hide a different artifact than production.
-      - name: Assert the build used the configured deployment origins
+      - name: Assert both builds used the configured deployment origins
         run: |
-          test -f dist/vercel.json
-          grep -q 'tremendous-rooster-473.convex.site' dist/vercel.json
-          if grep -q 'https://\*\.convex\.cloud' dist/vercel.json; then
-            echo 'CSP was left as shipped (wildcard origins): narrowing did not run.' >&2
-            exit 1
-          fi
-          if grep -q 'ci\.invalid' dist/_headers dist/vercel.json; then
-            echo 'dist/ carries placeholder origins; refusing to pass.' >&2
-            exit 1
-          fi
-          # Both artefacts carry the policy: Vercel reads vercel.json, the mirror
-          # reads _headers. Check BOTH, and require the header to be PRESENT in
-          # each, so a build that drops it entirely fails instead of passing on
-          # an absent string.
-          for artefact in dist/vercel.json dist/_headers; do
-            if ! grep -q 'Content-Security-Policy' "$artefact"; then
-              echo "no Content-Security-Policy in $artefact" >&2
+          set -eu
+          for pair in \
+            "dist https://milo.k2jodz91zi.workers.dev" \
+            "dist-vercel https://milo-nine-delta.vercel.app"; do
+            dir=${pair% *}
+            origin=${pair##* }
+            echo "== $dir -> $origin"
+            test -f "$dir/vercel.json"
+            grep -q 'tremendous-rooster-473.convex.site' "$dir/vercel.json"
+            if grep -q 'https://\*\.convex\.cloud' "$dir/vercel.json"; then
+              echo "CSP was left as shipped (wildcard origins) in $dir: narrowing did not run." >&2
               exit 1
             fi
-            if grep -q 'Content-Security-Policy-Report-Only' "$artefact"; then
-              echo "CSP is report-only in $artefact; the shipped policy enforces." >&2
+            if grep -q 'ci\.invalid' "$dir/_headers" "$dir/vercel.json"; then
+              echo "$dir carries placeholder origins; refusing to pass." >&2
+              exit 1
+            fi
+            # Both artefacts carry the policy: Vercel reads vercel.json, the mirror
+            # reads _headers. Check BOTH, and require the header to be PRESENT, so
+            # a build that drops it entirely fails instead of passing on an absent
+            # string.
+            for artefact in "$dir/vercel.json" "$dir/_headers"; do
+              if ! grep -q 'Content-Security-Policy' "$artefact"; then
+                echo "no Content-Security-Policy in $artefact" >&2
+                exit 1
+              fi
+              if grep -q 'Content-Security-Policy-Report-Only' "$artefact"; then
+                echo "CSP is report-only in $artefact; the shipped policy enforces." >&2
+                exit 1
+              fi
+            done
+            # The whole reason there are two builds.
+            if ! grep -q "rel=\"canonical\" href=\"$origin/\"" "$dir/index.html"; then
+              echo "$dir does not claim $origin as canonical" >&2
               exit 1
             fi
           done
-          echo 'CSP narrowed to the configured origins.'
+          echo 'Both builds narrowed CSP and claim their own origin.'
 
       # `secrets` is not available in a step-level `if:` (GitHub's context
       # availability table), so the presence check runs as a step and publishes an
@@ -184,19 +219,87 @@ jobs:
             --tag "$GITHUB_SHA" \
             --message "$GITHUB_SHA $GITHUB_REF_NAME"
 
+      # Same shape as the Cloudflare check above, and for the same reason:
+      # `secrets` is not available in a step-level `if:`, so presence is published
+      # as an output. Absent means SKIPPED (grey), never a green tick.
+      - name: Check the Vercel deploy token is configured
+        id: vercel-token
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -eu
+          if [ -n "${VERCEL_TOKEN:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo 'Vercel token is configured; the deploy step will run.'
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo '::warning title=Vercel deploy SKIPPED::VERCEL_TOKEN is not set. This run did NOT update Vercel. Add the repository secret to enable deploys.'
+            echo 'VERCEL_TOKEN is not set: the deploy step will be SKIPPED, not passed.' >&2
+          fi
+
+      # Two traps this avoids, both measured 2026-10-31 while deploying by hand:
+      #   1. `vercel deploy <dir>` with no link treats the DIRECTORY NAME as the
+      #      project. It created `dist-vercel` (prj_cX6GrBggiMunMiFY7F63l65BWjm6)
+      #      beside `milo` and shipped a production deployment nobody asked for.
+      #   2. `vercel link` writes `.env.local` holding a fresh OIDC token INTO the
+      #      upload directory. Vercel does not serve dotfiles (measured:
+      #      /.env.local -> 404), but a credential has no business in an artefact.
+      # So the link file is written directly, and the CLI runs with `--cwd` so it
+      # reads that link rather than guessing from an argument path.
+      - name: Deploy to Vercel
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.vercel-token.outputs.present == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -eu
+          npm install --no-save --no-audit --no-fund vercel@64.5.0
+          mkdir -p dist-vercel/.vercel
+          printf '{"projectId":"%s","orgId":"%s","projectName":"milo"}\n' \
+            "prj_DYkwgMSCJVEAxtps324I7XFmGNwA" \
+            "team_QvocpUecoEGIETLHy21P9YZx" \
+            > dist-vercel/.vercel/project.json
+          npx --no-install vercel deploy \
+            --cwd dist-vercel \
+            --prod --yes --archive=tgz \
+            --token "$VERCEL_TOKEN" --scope xkq
+
+      # The one output `deploy-stamp` branches on. `always()` so it is still
+      # written when a deploy step failed: the stamp job is then skipped by
+      # `needs:` anyway, but a missing output would read as empty, not as "this
+      # run deployed".
+      - name: Record whether both hosts were deployed
+        id: deployed
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Passed as env rather than interpolated into the script: the values are
+        # step outputs, and a script that reads them from the environment cannot
+        # have a value interpreted as code.
+        env:
+          CF_PRESENT: ${{ steps.cf-token.outputs.present }}
+          VERCEL_PRESENT: ${{ steps.vercel-token.outputs.present }}
+        run: |
+          set -eu
+          if [ "${CF_PRESENT:-}" = 'true' ] && [ "${VERCEL_PRESENT:-}" = 'true' ]; then
+            echo "both=true" >> "$GITHUB_OUTPUT"
+            echo 'This run uploaded both hosts.'
+          else
+            echo "both=false" >> "$GITHUB_OUTPUT"
+            echo 'This run did NOT upload both hosts; the stamp check will report rather than fail.'
+          fi
+
   # The deploy stamp is the only proof that what is live came from a commit, and
   # both hosts are checked independently because they can drift apart.
   #
-  # Why this job gates nothing, and why it has no `needs:`. Neither host updates
-  # itself from this workflow, measured 2026-10-31: every production deployment
-  # of the Vercel `milo` project is `source: "cli"` (a manual `dist/` upload; the
-  # one git-linked deployment is an old PREVIEW from the `publish` branch), and
-  # the mirror upload in `local-checks` is skipped unless CLOUDFLARE_API_TOKEN is
-  # set. A stamp pair naming a commit older than this run is therefore the NORMAL
-  # state, not a fault, and failing on it would paint every push red until
-  # somebody deploys. The lag goes to a notice and the step summary instead.
-  # Host-to-host disagreement is what fails here, because that is the drift
-  # nobody would otherwise see.
+  # Runs AFTER `local-checks`, because that job is what uploads both hosts. When
+  # it did, the stamps must name THIS commit: a green run then means a live one,
+  # which is the whole point of deploying from CI.
+  #
+  # When a token is missing that job skips its deploy steps and nothing was
+  # uploaded. Demanding freshness then would paint every push red for something
+  # that is not a fault, so the lag is reported in a notice and the step summary
+  # instead. Host-to-host disagreement fails either way, because that is the drift
+  # nobody else would see (the mirror once sat three days behind Vercel with no
+  # red run).
   #
   # CUTOVER NOTE: this step probes Vercel as well as the mirror. When Vercel is
   # retired, `curl -fsS` on its URL returns 404, `set -euo pipefail` propagates
@@ -205,10 +308,13 @@ jobs:
   deploy-stamp:
     name: deploy.json names commit, branch, dirty and builtAt
     # Cutover is deleting one entry here, not editing a loop.
+    needs: local-checks
     env:
       DEPLOY_STAMP_HOSTS: >-
         https://milo.k2jodz91zi.workers.dev
         https://milo-nine-delta.vercel.app
+      # 'true' only when this run uploaded both hosts.
+      DEPLOYED_BY_CI: ${{ needs.local-checks.outputs.deployed }}
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -306,7 +412,11 @@ jobs:
           fi
 
           if [ "$live" != "${GITHUB_SHA:-}" ]; then
-            echo "::notice::hosts serve $live, this run is ${GITHUB_SHA:-unknown}; neither host deploys from this workflow, so a lag is expected rather than a failure"
+            if [ "${DEPLOYED_BY_CI:-}" = "true" ]; then
+              echo "::error::this run uploaded both hosts, so they must serve ${GITHUB_SHA:-unknown}, not $live" >&2
+              exit 1
+            fi
+            echo "::notice::hosts serve $live, this run is ${GITHUB_SHA:-unknown}; this run did not upload (a deploy token is missing), so a lag is expected rather than a failure"
           fi
 
   # The native Midnight lane needs no container runtime: setup-native-services.py
