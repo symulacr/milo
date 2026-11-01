@@ -19,6 +19,7 @@
  * Lane lock: flock on .locks/local-circuit-sweep.lock (run script wraps this).
  */
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { validateArtifacts, validateCohort } from "./artifacts.mjs";
 import { localConfig, publicReceipt } from "./config.mjs";
