@@ -524,8 +524,15 @@ jobs:
       # The assertion only reports an exit code; the driver's own `failed` event
       # and the service logs live in this directory, which is gitignored. Without
       # this upload a red run is undiagnosable from the log alone.
+      # Kept on success too. The sweep writes its only per-circuit record to
+      # `transactions.jsonl` (native-node-smoke.ts redirects the driver's stdout
+      # there), so with `if: failure()` a PASSING run leaves no evidence of which
+      # circuits it actually proved — the green tick is then the only claim, and
+      # "exit 0" has to be trusted rather than checked. The artefact measured 83 KB
+      # on the sharded sweep, and retention is 3 days, so keeping it always is
+      # nearly free and makes coverage auditable after the fact.
       - name: Upload the native diagnostic evidence
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: native-midnight-evidence
