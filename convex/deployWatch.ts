@@ -9,12 +9,22 @@
  * What it can and cannot know: Convex has no git access, so it cannot compare a
  * mirror's `commit` to HEAD. A mirror is one deploy behind on any given day
  * (measured: both served `918049b` while HEAD was `23821c7`), so "commit matches
- * HEAD" would alarm on every deploy. The check is therefore liveness + shape:
- * HTTP 200, JSON, and a `commit` that is a full 40-hex sha.
+ * HEAD" would alarm on every deploy.
  *
- * Emailing is transition-only. A 60 s tick that mails on every failure is 1,440
+ * R54 adds the two things it *can* know from the same two responses, because
+ * liveness + shape alone could not see the state that actually happened: on
+ * 2026-10-31 both hosts answered 200 with a valid 40-hex `commit` and production
+ * sat 12 commits behind `origin/main`. Both were "healthy" by every check here.
+ *
+ *   - disagreement: the two hosts serve different commits. That is real drift,
+ *     and it is the shape of the incident `5aa08af` records — the mirror sat
+ *     three days stale behind Vercel with no red run.
+ *   - staleness: a host's `builtAt` is older than `STALE_AFTER_MS`.
+ *
+ * Emailing is transition-only. A 5 min tick that mails on every failure is 288
  * emails a day; the operator would filter them and miss the real one. One email
- * when a mirror goes down, one when it comes back.
+ * when a fault appears, one when it clears — including a host that stays stale
+ * for a week, which costs exactly one email.
  */
 import {
   internalActionGeneric,
@@ -53,7 +63,55 @@ const COMMIT = /^[a-f0-9]{40}$/;
 /** One request must not hold the tick open. */
 export const WATCHDOG_TIMEOUT_MS = 10_000;
 
-export type MirrorState = { name: string; ok: boolean; reason: string };
+/**
+ * How old a `builtAt` may be before that host's artifact counts as stale.
+ *
+ * The arithmetic, from the two live artifacts measured 2026-10-31:
+ *   workers  builtAt 2026-10-31T12:49:33.992Z
+ *   vercel   builtAt 2026-10-31T12:49:06.695Z
+ * — the same push, 27.297 s apart. A spread under an hour is one deploy, so only
+ * an absolute age is worth alarming on.
+ *
+ * An absolute threshold is affordable *because* the email is transition-only: a
+ * host that stays stale for a week costs one email, not 288 a day. On a quiet
+ * repository it fires once when the artifact crosses the line and stays silent
+ * until the next deploy clears it. 24 h is "a full day with no successful
+ * rebuild", which on a repository that deploys on every push means either no
+ * pushes or a broken pipeline — the second is the case worth waking up for.
+ */
+export const STALE_AFTER_MS = 24 * 60 * 60_000;
+
+/**
+ * The cross-host fault: the two mirrors serve different commits.
+ *
+ * Neither host is necessarily wrong — this says they disagree, which is all the
+ * watchdog can know without git. It names both commits in the mail so the
+ * operator can tell which one is behind.
+ */
+export const COMMITS_DISAGREE = "commits-disagree";
+
+export type MirrorState = {
+  name: string;
+  ok: boolean;
+  reason: string;
+  /** The artifact's commit, when the body carried a valid one. */
+  commit?: string;
+  /** `builtAt` in epoch ms, when the body carried a parseable one. */
+  builtAt?: number;
+};
+
+/**
+ * `builtAt` is `new Date().toISOString()` (scripts/build.ts:269). An artifact
+ * built before that field existed carries no stamp, and a malformed one is not
+ * worth a page: both mean "staleness cannot be judged for this host", so the
+ * caller skips it rather than calling the host unhealthy. Refusing a host for a
+ * missing optional field would page on a non-problem.
+ */
+function parseBuiltAt(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : undefined;
+}
 
 /**
  * Fetch one mirror and decide whether it is healthy. Never throws: a watchdog
@@ -73,14 +131,24 @@ export async function probeMirror(
         ok: false,
         reason: `HTTP ${response.status}`,
       };
-    const body = (await response.json()) as { commit?: unknown };
+    const body = (await response.json()) as {
+      commit?: unknown;
+      builtAt?: unknown;
+    };
     if (typeof body.commit !== "string" || !COMMIT.test(body.commit))
       return {
         name: target.name,
         ok: false,
         reason: "commit not a 40-hex sha",
       };
-    return { name: target.name, ok: true, reason: "ok" };
+    const builtAt = parseBuiltAt(body.builtAt);
+    return {
+      name: target.name,
+      ok: true,
+      reason: "ok",
+      commit: body.commit,
+      ...(builtAt === undefined ? {} : { builtAt }),
+    };
   } catch (error) {
     return {
       name: target.name,
@@ -88,6 +156,33 @@ export async function probeMirror(
       reason: error instanceof Error ? error.name : "unreachable",
     };
   }
+}
+
+/**
+ * Every fault this tick can see, as the same `string[]` of names `recordWatch`
+ * already diffs. Reusing that set is what makes these two signals transition-only
+ * for free: a host that stays stale is `stillDown`, not a new fault, so it earns
+ * no second email.
+ *
+ * A host that failed a probe contributes only its own name — it has no commit to
+ * compare, and its `builtAt` is unknown, so neither new signal can be judged for
+ * it. That is why disagreement is only computed when every probe succeeded.
+ */
+export function faultsFor(states: MirrorState[], now: number): string[] {
+  const faults = states.filter((s) => !s.ok).map((s) => s.name);
+  const healthy = states.filter((s) => s.ok);
+  if (healthy.length !== states.length) return faults;
+
+  if (healthy.length > 1) {
+    const commits = new Set(healthy.map((s) => s.commit));
+    if (commits.size > 1) faults.push(COMMITS_DISAGREE);
+  }
+
+  for (const state of healthy)
+    if (state.builtAt !== undefined && now - state.builtAt > STALE_AFTER_MS)
+      faults.push(`${state.name}-stale`);
+
+  return faults;
 }
 
 /** The one row. A singleton keeps "is it down?" a single read. */
@@ -148,11 +243,11 @@ export const checkDeploy = internalActionGeneric({
     const states = await Promise.all(
       WATCHDOG_TARGETS.map((target) => probeMirror(target)),
     );
-    const down = states.filter((s) => !s.ok);
-    const names = down.map((d) => d.name);
+    const now = Date.now();
+    const names = faultsFor(states, now);
     const change = (await ctx.runMutation(recordWatchRef, {
       down: names,
-      now: Date.now(),
+      now,
     })) as Change;
 
     const transition =
@@ -170,9 +265,22 @@ export const checkDeploy = internalActionGeneric({
       return { down: names, emailed: 0, transition: true };
     }
 
-    const lines = states.map((s) =>
-      s.ok ? `${s.name}: ok` : `${s.name}: ${s.reason}`,
-    );
+    // Name the commit each host serves: for a disagreement that is the whole
+    // diagnosis, and for a stale host it says whether a deploy happened at all.
+    const lines = states.map((s) => {
+      if (!s.ok) return `${s.name}: ${s.reason}`;
+      const built =
+        s.builtAt === undefined
+          ? "builtAt unknown"
+          : `built ${new Date(s.builtAt).toISOString()}`;
+      return `${s.name}: ok ${String(s.commit).slice(0, 7)} (${built})`;
+    });
+    if (names.includes(COMMITS_DISAGREE))
+      lines.push(
+        `the two hosts serve different commits: ${states
+          .map((s) => `${s.name}=${String(s.commit).slice(0, 7)}`)
+          .join(", ")}`,
+      );
     const subject =
       change.becameDown.length > 0
         ? `Milo deploy watchdog: ${change.becameDown.join(", ")} DOWN`
