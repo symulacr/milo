@@ -484,23 +484,42 @@ jobs:
       # scenario on a local `undeployed` chain — 10 scenarios covering every
       # proof circuit — so a failure names a circuit in minutes instead of hours.
       #
-      # It is a separate STEP, not a second flag on the smoke above, so a red run
-      # says which of the two broke. It reuses this job's services, compiled
-      # contract and SDK cohort, so the incremental cost is the sweep itself; the
-      # inner script is invoked directly because `npm run test:native-network`
-      # would re-run provisioning that steps 4-7 already did.
+      # Three steps, not one, because of a measured budget: `main()` arms a
+      # whole-run watchdog of `MILO_LOCAL_TIMEOUT_MS` (sweep line 305-309), and
+      # `native-node-smoke.ts` forces that to 1_800_000 ms for this lane, which
+      # is also `PROBE_TIMEOUT_MS`. Measured on run 41257755418: the single-step
+      # form reached `call-expire-dispute-expireDispute` (scenario 9 of 10,
+      # circuit 14 of 14 in flight) and then emitted `timeout` at exactly
+      # 1800.00 s, having already proved the other nine. Two minutes short, and
+      # every failure cost a 30-minute round trip to learn nothing new.
+      #
+      # `MILO_SWEEP_ONLY` already accepts a comma list (sweep line 520-527), so
+      # sharding needs no code change. Each step is ~5-15 min, well inside the
+      # watchdog, and a red run now names the scenario group.
       #
       # `--circuit-sweep` refuses to run alongside the other lanes by design
       # (scripts/native-node-smoke.ts asserts it needs only `--transactions`) and
       # `--transactions` itself requires `--with-services`.
-      - name: Every proof circuit succeeds on a local chain
+      - name: Every proof circuit succeeds (happy path, cancel, decline)
         run: >-
           sh scripts/with-bun.sh scripts/test-native-network.ts
           --circuit-sweep --transactions --with-services
         env:
-          # Same ceiling the runbook documents: one minute per local driver step,
-          # with a per-step timeout inside so a stall names the step.
-          MILO_LOCAL_TIMEOUT_MS: "60000"
+          MILO_SWEEP_ONLY: happy-path,cancel,decline
+
+      - name: Every proof circuit succeeds (disputes and bootstrap expiry)
+        run: >-
+          sh scripts/with-bun.sh scripts/test-native-network.ts
+          --circuit-sweep --transactions --with-services
+        env:
+          MILO_SWEEP_ONLY: dispute-buyer,dispute-merchant,expire-bootstrap
+
+      - name: Every proof circuit succeeds (remaining expiry and escalation)
+        run: >-
+          sh scripts/with-bun.sh scripts/test-native-network.ts
+          --circuit-sweep --transactions --with-services
+        env:
+          MILO_SWEEP_ONLY: expire-reserved,expire-undelivered,escalate-unreviewed,expire-dispute
 
       # The assertion only reports an exit code; the driver's own `failed` event
       # and the service logs live in this directory, which is gitignored. Without
